@@ -16,6 +16,9 @@ var prefab: BayterekPrefab
 var is_mouse_over: bool = false
 var selected: bool = false
 
+var _icon_rect: TextureRect
+var _icon_fallback: ColorRect
+var _border_rect: TextureRect
 var _select_border: Panel
 
 var _is_dragging: bool = false
@@ -51,6 +54,36 @@ func _ready() -> void:
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 
+	_build_visuals()
+
+func _build_visuals() -> void:
+	# 1) Fallback (renkli kutu — texture yoksa görünür)
+	_icon_fallback = ColorRect.new()
+	_icon_fallback.name = "IconFallback"
+	_icon_fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon_fallback.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_icon_fallback.visible = false
+	add_child(_icon_fallback)
+
+	# 2) Icon texture
+	_icon_rect = TextureRect.new()
+	_icon_rect.name = "Icon"
+	_icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_icon_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_icon_rect)
+
+	# 3) Border
+	_border_rect = TextureRect.new()
+	_border_rect.name = "Border"
+	_border_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_border_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_border_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_border_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_border_rect)
+
+	# 4) Seçim çerçevesi
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -68,6 +101,50 @@ func _ready() -> void:
 	_select_border.add_theme_stylebox_override("panel", style)
 	_select_border.visible = false
 	add_child(_select_border)
+
+# ============================================================
+# GÖRSEL GÜNCELLEME
+# ============================================================
+
+func refresh_visuals() -> void:
+	if not node_data:
+		return
+
+	# Icon
+	if node_data.icon:
+		_icon_rect.texture = node_data.icon
+		_icon_rect.visible = true
+		_icon_fallback.visible = false
+	else:
+		_icon_rect.texture = null
+		_icon_rect.visible = false
+		_icon_fallback.visible = true
+		_icon_fallback.color = _get_type_color(node_data.type)
+
+	# Border (state'e göre ileride değişecek, şu an normal)
+	_update_border()
+
+func _update_border() -> void:
+	if not node_data:
+		return
+
+	# Şimdilik normal border kullanılıyor (state yönetimi 5+'ta)
+	var tex: Texture2D = node_data.border_normal
+
+	if tex:
+		_border_rect.texture = tex
+		_border_rect.visible = true
+	else:
+		_border_rect.texture = null
+		_border_rect.visible = false
+
+func _get_type_color(t: BayterekNode.NodeType) -> Color:
+	match t:
+		BayterekNode.NodeType.SMALL:  return Color(0.4, 0.7, 1.0, 0.8)
+		BayterekNode.NodeType.MEDIUM: return Color(0.4, 1.0, 0.5, 0.8)
+		BayterekNode.NodeType.LARGE:  return Color(1.0, 0.7, 0.4, 0.8)
+		BayterekNode.NodeType.DECORATION: return Color(0.7, 0.5, 1.0, 0.8)
+	return Color.WHITE
 
 func set_selected(value: bool) -> void:
 	selected = value
@@ -87,13 +164,12 @@ func _gui_input(event: InputEvent) -> void:
 			if event.pressed:
 				_press_pos = event.position
 				_is_dragging = false
-				accept_event()  # TreeView'a gitmesin (selection box başlamasın)
+				accept_event()
 			else:
 				if _is_dragging:
 					drag_ended.emit(self)
 					_is_dragging = false
 				else:
-					# Kısa tıklama → pressed sinyali emit et
 					pressed.emit()
 				accept_event()
 

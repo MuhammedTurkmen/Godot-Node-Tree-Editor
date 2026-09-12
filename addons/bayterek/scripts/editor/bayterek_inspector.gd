@@ -9,15 +9,12 @@ var editor: BayterekEditor
 
 var _current_node: BayterekNodeButton
 
-# UI referansları
 var _empty_label: Label
 var _content: VBoxContainer
 
-# Is Root
 var _root_panel: HBoxContainer
 var _root_check: CheckBox
 
-# Info
 var _info_panel: VBoxContainer
 var _id_input: LineEdit
 var _name_input: LineEdit
@@ -25,12 +22,10 @@ var _description_input: TextEdit
 var _max_alloc_panel: HBoxContainer
 var _max_alloc_input: SpinBox
 
-# Transform
 var _transform_panel: VBoxContainer
 var _pos_x_input: SpinBox
 var _pos_y_input: SpinBox
 
-# Visuals
 var _visuals_panel: VBoxContainer
 var _icon_input: BayterekInspectorTextureInput
 var _border_normal_input: BayterekInspectorTextureInput
@@ -95,7 +90,6 @@ func _build_ui() -> void:
 	_name_input = _add_line_row(_info_panel, "Name", "Node'un görünen adı", false)
 	_name_input.text_changed.connect(_on_name_changed)
 
-	# Description
 	var desc_row := HBoxContainer.new()
 	_info_panel.add_child(desc_row)
 	var desc_label := Label.new()
@@ -111,7 +105,6 @@ func _build_ui() -> void:
 	_description_input.text_changed.connect(_on_description_changed)
 	desc_row.add_child(_description_input)
 
-	# Max Allocations
 	_max_alloc_panel = HBoxContainer.new()
 	_info_panel.add_child(_max_alloc_panel)
 	var max_alloc_label := Label.new()
@@ -147,7 +140,6 @@ func _build_ui() -> void:
 	pos_vbox.add_theme_constant_override("separation", 2)
 	pos_row.add_child(pos_vbox)
 
-	# X
 	var x_row := HBoxContainer.new()
 	pos_vbox.add_child(x_row)
 	var x_label := Label.new()
@@ -163,7 +155,6 @@ func _build_ui() -> void:
 	_pos_x_input.value_changed.connect(_on_position_changed)
 	x_row.add_child(_pos_x_input)
 
-	# Y
 	var y_row := HBoxContainer.new()
 	pos_vbox.add_child(y_row)
 	var y_label := Label.new()
@@ -179,7 +170,7 @@ func _build_ui() -> void:
 	_pos_y_input.value_changed.connect(_on_position_changed)
 	y_row.add_child(_pos_y_input)
 
-	# --- Visuals (texture input'lar) ---
+	# --- Visuals ---
 	_visuals_panel = VBoxContainer.new()
 	_content.add_child(_visuals_panel)
 
@@ -249,7 +240,6 @@ func inspect(node: BayterekNodeButton) -> void:
 	_pos_x_input.set_value_no_signal(node.node_data.position.x)
 	_pos_y_input.set_value_no_signal(node.node_data.position.y)
 
-	# Texture input'lar
 	_icon_input.set_texture(node.node_data.icon)
 	_border_normal_input.set_texture(node.node_data.border_normal)
 	_border_intermediate_input.set_texture(node.node_data.border_intermediate)
@@ -320,6 +310,8 @@ func _on_icon_changed(path: String) -> void:
 		return
 	var tex: Texture2D = load(path) as Texture2D
 	_current_node.node_data.icon = tex
+	if _current_node.has_method("refresh_visuals"):
+		_current_node.refresh_visuals()
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -327,6 +319,8 @@ func _on_icon_cleared() -> void:
 	if _updating_ui or not _current_node:
 		return
 	_current_node.node_data.icon = null
+	if _current_node.has_method("refresh_visuals"):
+		_current_node.refresh_visuals()
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -334,6 +328,8 @@ func _on_border_normal_changed(path: String) -> void:
 	if _updating_ui or not _current_node:
 		return
 	_current_node.node_data.border_normal = load(path) as Texture2D
+	if _current_node.has_method("refresh_visuals"):
+		_current_node.refresh_visuals()
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -341,6 +337,8 @@ func _on_border_normal_cleared() -> void:
 	if _updating_ui or not _current_node:
 		return
 	_current_node.node_data.border_normal = null
+	if _current_node.has_method("refresh_visuals"):
+		_current_node.refresh_visuals()
 	changed.emit()
 	_notify_editor_dirty()
 

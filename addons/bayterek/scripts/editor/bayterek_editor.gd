@@ -224,9 +224,15 @@ func _on_settings_size_changed() -> void:
 func _on_settings_background_changed() -> void:
 	if not tree_view or not tree:
 		return
+
 	var color_rect: ColorRect = tree_view.background_container.get_node_or_null("BackgroundColor")
 	if color_rect:
 		color_rect.color = tree.bg_color
+
+	var tex_rect: TextureRect = tree_view.background_container.get_node_or_null("BackgroundTexture")
+	if tex_rect:
+		tex_rect.texture = tree.bg_texture
+		tex_rect.visible = tree.bg_texture != null
 
 func _on_settings_border_scale_changed() -> void:
 	# Node'ların border'ı henüz yok, ileride eklenecek

@@ -9,16 +9,11 @@ signal node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal node_drag_ended(node: BayterekNodeButton)
 
-var _nodes: Dictionary = {}   # id -> BayterekNodeButton
-
-# ============================================================
-# YÜKLEME
-# ============================================================
+var _nodes: Dictionary = {}
 
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
 
-	# Kayıtlı node'ları yükle
 	for node_data in _tree_data.nodes:
 		_create_node_from_data(node_data)
 
@@ -40,12 +35,10 @@ func _create_node_from_data(node_data: BayterekNode) -> BayterekNodeButton:
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
 
+	node.refresh_visuals()
+
 	node_created.emit(node)
 	return node
-
-# ============================================================
-# SORGULAR
-# ============================================================
 
 func get_node(node_id: int) -> BayterekNodeButton:
 	return _nodes.get(node_id, null)
@@ -84,6 +77,8 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
 
+	node.refresh_visuals()
+
 	node_created.emit(node)
 	return node
 
@@ -98,7 +93,6 @@ func delete_node(node: BayterekNodeButton) -> void:
 	_nodes.erase(node.node_data.id)
 	_tree_data.nodes.erase(node.node_data)
 	_tree_view.nodes_container.remove_child(node)
-	# queue_free YOK — undo için node sahnede saklı tutulur.
 
 func restore_node(node: BayterekNodeButton, node_data: BayterekNode, index: int = -1) -> void:
 	if not node or not node_data:
@@ -121,6 +115,7 @@ func restore_node(node: BayterekNodeButton, node_data: BayterekNode, index: int 
 	else:
 		_tree_data.nodes.append(node_data)
 
+	node.refresh_visuals()
 	node_created.emit(node)
 
 # ============================================================
@@ -145,13 +140,6 @@ func _build_node(node_type: BayterekNode.NodeType) -> BayterekNodeButton:
 	node.size = node_size
 	node.custom_minimum_size = node_size
 
-	var icon := ColorRect.new()
-	icon.name = "Icon"
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon.color = _get_type_color(node_type)
-	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	node.add_child(icon)
-
 	return node
 
 func _position_node(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
@@ -165,14 +153,6 @@ func _get_node_size(node_type: BayterekNode.NodeType) -> Vector2:
 		BayterekNode.NodeType.LARGE:  return Vector2(64, 64)
 		BayterekNode.NodeType.DECORATION: return Vector2(32, 32)
 	return Vector2(32, 32)
-
-func _get_type_color(node_type: BayterekNode.NodeType) -> Color:
-	match node_type:
-		BayterekNode.NodeType.SMALL:  return Color(0.4, 0.7, 1.0, 0.8)
-		BayterekNode.NodeType.MEDIUM: return Color(0.4, 1.0, 0.5, 0.8)
-		BayterekNode.NodeType.LARGE:  return Color(1.0, 0.7, 0.4, 0.8)
-		BayterekNode.NodeType.DECORATION: return Color(0.7, 0.5, 1.0, 0.8)
-	return Color.WHITE
 
 func _default_name(node_type: BayterekNode.NodeType) -> String:
 	match node_type:

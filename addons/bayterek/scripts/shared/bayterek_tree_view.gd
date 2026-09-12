@@ -235,7 +235,6 @@ func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> vo
 		nodes_service.update_position(n, new_pos)
 		connections_service.update_lines_of(n)
 
-	# Inspector'ı anlık güncelle
 	if not selected_nodes.is_empty():
 		if selected_nodes.size() == 1:
 			node_moved.emit(selected_nodes[0])
@@ -371,6 +370,7 @@ func _create_background() -> void:
 	texture_rect.stretch_mode = TextureRect.STRETCH_TILE
 	texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texture_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	texture_rect.visible = _tree_data.bg_texture != null
 	background_container.add_child(texture_rect)
 
 func _create_grid() -> void:
