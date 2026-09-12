@@ -132,6 +132,9 @@ func _create_tree_view() -> void:
 		settings_editor.editor = self
 		settings_editor.init()
 		settings_editor.load_tree(tree)
+		settings_editor.size_changed.connect(_on_settings_size_changed)
+		settings_editor.background_changed.connect(_on_settings_background_changed)
+		settings_editor.border_scale_changed.connect(_on_settings_border_scale_changed)
 
 func _create_context_menu() -> void:
 	context_menu = PopupMenu.new()
@@ -200,6 +203,34 @@ func _on_node_moved(node: BayterekNodeButton) -> void:
 	if inspector._current_node != node:
 		return
 	inspector.update_position_only(node.node_data.position)
+
+# ============================================================
+# SETTINGS HANDLER'LARI
+# ============================================================
+
+func _on_settings_size_changed() -> void:
+	if not tree_view or not tree:
+		return
+	var half: Vector2 = tree.size / 2.0
+	if tree_view.main_container:
+		tree_view.main_container.offset_left = -half.x
+		tree_view.main_container.offset_top = -half.y
+		tree_view.main_container.offset_right = half.x
+		tree_view.main_container.offset_bottom = half.y
+		tree_view.main_container.pivot_offset = half
+	if tree_view.camera:
+		tree_view.camera.set_bounds(Rect2(-half, tree.size))
+
+func _on_settings_background_changed() -> void:
+	if not tree_view or not tree:
+		return
+	var color_rect: ColorRect = tree_view.background_container.get_node_or_null("BackgroundColor")
+	if color_rect:
+		color_rect.color = tree.bg_color
+
+func _on_settings_border_scale_changed() -> void:
+	# Node'ların border'ı henüz yok, ileride eklenecek
+	pass
 
 # ============================================================
 # NODE OLUŞTURMA
