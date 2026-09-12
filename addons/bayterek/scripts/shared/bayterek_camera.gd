@@ -24,7 +24,6 @@ func set_viewport(viewport: Control) -> void:
 	_viewport.offset_transform_visual_only = false
 	_viewport.offset_transform_pivot_ratio = Vector2(0.5, 0.5)
 
-	# Parent resize olduğunda clamps'i yenile
 	var parent: Node = _viewport.get_parent()
 	if parent and parent is Control:
 		(parent as Control).resized.connect(_on_viewport_resized)
@@ -74,7 +73,6 @@ func set_zoom(new_zoom: float) -> void:
 	_zoom = clamped
 	_viewport.offset_transform_scale = Vector2(_zoom, _zoom)
 
-	# Zoom merkezini koru: pivot etrafında ölçekle
 	var factor: float = _zoom / previous
 	_viewport.offset_transform_position *= factor
 
@@ -84,6 +82,33 @@ func set_zoom(new_zoom: float) -> void:
 func _pan(delta: Vector2) -> void:
 	_viewport.offset_transform_position += delta
 	_clamp()
+
+# ============================================================
+# ODAKLANMA
+# ============================================================
+
+## Belirli bir tree noktasına kamerayı ortalar ve zoom yapar.
+## target_center: tree koordinatında (0,0 merkez) hedef
+## target_zoom: hedef zoom (0.4 - 1.0)
+func focus_on(target_center: Vector2, target_zoom: float = 1.0) -> void:
+	if not _viewport:
+		return
+
+	var clamped_zoom: float = clampf(target_zoom, MIN_ZOOM, MAX_ZOOM)
+	var previous: float = _zoom
+	_zoom = clamped_zoom
+	_viewport.offset_transform_scale = Vector2(_zoom, _zoom)
+
+	var tree_size: Vector2 = _viewport.size
+	var pivot: Vector2 = tree_size / 2.0
+	var target_local: Vector2 = target_center + tree_size / 2.0
+	var delta: Vector2 = target_local - pivot
+
+	# Doğrudan set et, clamp uygulama
+	_viewport.offset_transform_position = -delta * _zoom
+
+	# Bound'u gevşet: odaklanmada kullanıcı node'u görmek ister
+	zoom_changed.emit(_zoom, previous)
 
 # ============================================================
 # CLAMP
@@ -100,15 +125,12 @@ func _clamp() -> void:
 	var view_size: Vector2 = parent.size
 	var cam_pos: Vector2 = _viewport.offset_transform_position
 
-	# Bounds'un ekrandaki boyutu
 	var bounds_min: Vector2 = _bounds.position * _zoom
 	var bounds_max: Vector2 = (_bounds.position + _bounds.size) * _zoom
 
-	# İzin verilen merkez aralığı
 	var min_pos: Vector2 = bounds_min + view_size * 0.5
 	var max_pos: Vector2 = bounds_max - view_size * 0.5
 
-	# Bounds viewport'tan küçükse merkezle
 	if min_pos.x > max_pos.x:
 		cam_pos.x = (bounds_min.x + bounds_max.x) * 0.5
 	else:

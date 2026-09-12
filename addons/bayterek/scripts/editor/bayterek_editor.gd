@@ -8,6 +8,12 @@ signal dirty_changed(editor: BayterekEditor, dirty: bool)
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
+## Sol panel (hierarchy) genişliği + sağ panel (tab) genişliği + kenar boşlukları
+const LEFT_PANEL_WIDTH := 200.0
+const RIGHT_PANEL_WIDTH := 320.0
+const MENU_HEIGHT := 28.0
+const SAFETY_MARGIN := 40.0
+
 var tree: BayterekTree
 var tree_path: String
 var dirty: bool = false
@@ -28,10 +34,49 @@ var context_menu: PopupMenu
 
 var _last_click_pos: Vector2 = Vector2.ZERO
 var _last_save_time: int = 0
+var _resize_debounce: float = 0.0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_PASS
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		call_deferred("_on_editor_resized")
+
+func _process(delta: float) -> void:
+	if _resize_debounce > 0.0:
+		_resize_debounce -= delta
+		if _resize_debounce <= 0.0:
+			_resize_debounce = 0.0
+			_apply_min_size_to_tree()
+
+func _on_editor_resized() -> void:
+	# Debounce: kullanıcı pencereyi sürüklerken spam yapmasın
+	_resize_debounce = 0.2
+
+func _apply_min_size_to_tree() -> void:
+	if not tree or not tree_view:
+		return
+
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size
+
+	var canvas_w: float = max(400.0, vp_size.x - LEFT_PANEL_WIDTH - RIGHT_PANEL_WIDTH - SAFETY_MARGIN)
+	var canvas_h: float = max(300.0, vp_size.y - MENU_HEIGHT - SAFETY_MARGIN)
+
+	var changed: bool = false
+
+	# Sadece tree.size yetersizse büyüt (küçültme yok)
+	if tree.size.x < canvas_w:
+		tree.size.x = canvas_w
+		changed = true
+	if tree.size.y < canvas_h:
+		tree.size.y = canvas_h
+		changed = true
+
+	if changed:
+		_apply_size_to_view()
+		set_dirty(true)
 
 func load_tree(path: String) -> void:
 	tree_path = path
@@ -49,6 +94,9 @@ func load_tree(path: String) -> void:
 	_build_ui()
 	_create_tree_view()
 	_create_context_menu()
+
+	# İlk açılışta minimum boyutu uygula
+	call_deferred("_apply_min_size_to_tree")
 
 	set_dirty(false)
 
@@ -241,7 +289,6 @@ func _on_attr_changed(_attr_id: String) -> void:
 func _on_attr_removed(attr_id: String) -> void:
 	if inspector:
 		inspector.remove_attribute_from_node(attr_id)
-	# Tüm node'lardan temizle
 	if tree and tree.nodes:
 		for node_data in tree.nodes:
 			if node_data.attributes.has(attr_id):
@@ -260,6 +307,9 @@ func _on_attrs_list_changed() -> void:
 # ============================================================
 
 func _on_settings_size_changed() -> void:
+	_apply_size_to_view()
+
+func _apply_size_to_view() -> void:
 	if not tree_view or not tree:
 		return
 	var half: Vector2 = tree.size / 2.0
