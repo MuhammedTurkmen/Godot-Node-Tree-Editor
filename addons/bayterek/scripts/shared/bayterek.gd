@@ -16,6 +16,13 @@ const TREE_ICON := "KeyValue"
 
 const BlankIcon: Texture2D = null  # TODO: preload("res://addons/bayterek/blank_icon.png")
 
+# --- Faz 3: Editör görsel sabitleri ---
+const GRID_CELL_SIZE := Vector2(16, 16)
+const GRID_PRIMARY_STEP := 4
+const GRID_LINE_COLOR := Color(1, 1, 1, 0.12)
+const GRID_LINE_WIDTH := 1.0
+const DEFAULT_TREE_SIZE := Vector2(5000, 5000)
+
 enum AllocationState {
 	NORMAL,
 	INTERMEDIATE,

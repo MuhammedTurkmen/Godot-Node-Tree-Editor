@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://b1pewnd7kqtkb"]
+
+[ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_dlbxo"]
+[ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_8t7ab"]
+
+[resource]
+script = ExtResource("2_8t7ab")
+id = "tree_1"
+name = "Tree 1"
