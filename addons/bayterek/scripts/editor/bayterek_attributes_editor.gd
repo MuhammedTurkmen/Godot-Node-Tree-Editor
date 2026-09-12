@@ -6,6 +6,9 @@ extends VBoxContainer
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
 signal changed
+signal attribute_changed(attr_id: String)
+signal attribute_removed(attr_id: String)
+signal attributes_list_changed
 
 var editor: BayterekEditor
 
@@ -225,6 +228,7 @@ func _on_add_pressed() -> void:
 
 	editor.set_dirty(true)
 	changed.emit()
+	attributes_list_changed.emit()
 	_refresh()
 	_load_detail(new_id)
 
@@ -264,6 +268,7 @@ func _delete_attribute(attr_id: String) -> void:
 
 	editor.set_dirty(true)
 	changed.emit()
+	attribute_removed.emit(attr_id)
 	_refresh()
 
 # ============================================================
@@ -282,6 +287,7 @@ func _on_name_changed(new_text: String) -> void:
 	_refresh()
 	editor.set_dirty(true)
 	changed.emit()
+	attribute_changed.emit(_current_attr_id)
 
 func _on_effect_changed() -> void:
 	if _updating_ui or _current_attr_id.is_empty():
@@ -294,6 +300,7 @@ func _on_effect_changed() -> void:
 	attr.effect = _effect_input.text
 	editor.set_dirty(true)
 	changed.emit()
+	attribute_changed.emit(_current_attr_id)
 
 func _on_value_count_changed(value: float) -> void:
 	if _updating_ui or _current_attr_id.is_empty():
@@ -306,3 +313,4 @@ func _on_value_count_changed(value: float) -> void:
 	attr.value_count = int(value)
 	editor.set_dirty(true)
 	changed.emit()
+	attribute_changed.emit(_current_attr_id)

@@ -36,7 +36,8 @@ var _border_active_input: BayterekInspectorTextureInput
 var _attributes_panel: VBoxContainer
 var _attributes_empty: Label
 var _attributes_list: VBoxContainer
-var _attr_checkboxes: Dictionary = {}  # attr_id -> CheckBox
+var _attr_checkboxes: Dictionary = {}    # attr_id -> CheckBox
+var _attr_value_inputs: Dictionary = {}  # attr_id -> Dictionary (level -> Array[SpinBox])
 
 var _updating_ui: bool = false
 
@@ -230,11 +231,24 @@ func _build_ui() -> void:
 	_attributes_panel.add_child(_attributes_empty)
 
 	_attributes_list = VBoxContainer.new()
-	_attributes_list.add_theme_constant_override("separation", 2)
+	_attributes_list.add_theme_constant_override("separation", 4)
 	_attributes_panel.add_child(_attributes_list)
 
 func init(tree_view: BayterekTreeView) -> void:
 	pass
+
+# ============================================================
+# PUBLIC — dışarıdan çağrılır
+# ============================================================
+
+func refresh_attributes() -> void:
+	_rebuild_attributes_list()
+
+func remove_attribute_from_node(attr_id: String) -> void:
+	if _current_node:
+		if _current_node.node_data.attributes.has(attr_id):
+			_current_node.node_data.attributes.erase(attr_id)
+	_rebuild_attributes_list()
 
 # ============================================================
 # GÖRÜNÜM
@@ -276,7 +290,6 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_updating_ui = false
 
-	# Attributes listesini yenile
 	_rebuild_attributes_list()
 
 func update_position_only(pos: Vector2) -> void:
@@ -315,7 +328,36 @@ func _on_description_changed() -> void:
 func _on_max_alloc_changed(value: float) -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.max_allocations = int(value)
+
+	var new_max: int = int(value)
+	_current_node.node_data.max_allocations = new_max
+
+	# Multi-allocation'da seviye array'lerini boyutlandır
+	if editor and editor.tree and editor.tree.multiallocation:
+		for attr_id in _current_node.node_data.attributes.keys():
+			var data = _current_node.node_data.attributes[attr_id]
+			if not data is Array:
+				continue
+			if data.size() > 0 and not data[0] is Array:
+				# Eski format → önce multi'ye çevir
+				var single: Array = data.duplicate()
+				var new_data: Array = []
+				for l in new_max:
+					new_data.append(single.duplicate())
+				_current_node.node_data.attributes[attr_id] = new_data
+				continue
+			# Zaten multi format
+			var sample: Array = []
+			if data.size() > 0:
+				for v in data[0]:
+					sample.append(v)
+			while data.size() < new_max:
+				data.append(sample.duplicate())
+			while data.size() > new_max:
+				data.pop_back()
+
+	_rebuild_attributes_list()
+
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -408,6 +450,7 @@ func _rebuild_attributes_list() -> void:
 	for child in _attributes_list.get_children():
 		child.queue_free()
 	_attr_checkboxes.clear()
+	_attr_value_inputs.clear()
 
 	if not editor or not editor.tree:
 		_attributes_empty.visible = true
@@ -420,24 +463,130 @@ func _rebuild_attributes_list() -> void:
 
 	_attributes_empty.visible = false
 
+	var multi: bool = editor.tree.multiallocation
 	var ids: Array = tree_attrs.keys()
 	ids.sort()
 
 	for attr_id in ids:
 		var attr: BayterekAttribute = tree_attrs[attr_id]
 
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 4)
-		_attributes_list.add_child(row)
+		var block := VBoxContainer.new()
+		block.add_theme_constant_override("separation", 2)
+		_attributes_list.add_child(block)
 
+		# Checkbox
 		var check := CheckBox.new()
 		check.text = "%s (%s)" % [attr.name, attr_id]
-		check.size_flags_horizontal = SIZE_EXPAND_FILL
 		check.button_pressed = _current_node and _current_node.node_data.attributes.has(attr_id)
 		check.toggled.connect(_on_attr_toggled.bind(attr_id))
-		row.add_child(check)
+		block.add_child(check)
 
 		_attr_checkboxes[attr_id] = check
+
+		var has_attr: bool = _current_node and _current_node.node_data.attributes.has(attr_id)
+		var attr_inputs: Dictionary = {}   # level -> Array[SpinBox]  (-1 = tek seviye)
+
+		if multi and has_attr:
+			var max_alloc: int = _current_node.node_data.max_allocations
+			var raw_data = _current_node.node_data.attributes[attr_id]
+
+			# Data normalizasyonu
+			if not raw_data is Array:
+				raw_data = []
+				_current_node.node_data.attributes[attr_id] = raw_data
+			if raw_data.size() > 0 and not raw_data[0] is Array:
+				var single: Array = raw_data.duplicate()
+				var new_data: Array = []
+				for l in max_alloc:
+					new_data.append(single.duplicate())
+				raw_data = new_data
+				_current_node.node_data.attributes[attr_id] = raw_data
+
+			var levels_data: Array = raw_data
+
+			for level in max_alloc:
+				var level_box := VBoxContainer.new()
+				level_box.add_theme_constant_override("separation", 1)
+				block.add_child(level_box)
+
+				var level_label := Label.new()
+				level_label.text = "Level %d" % (level + 1)
+				level_label.add_theme_color_override("font_color", Color(0.8, 0.9, 0.6))
+				level_box.add_child(level_label)
+
+				var inputs: Array = []
+				var level_vals: Array = levels_data[level] if level < levels_data.size() else []
+
+				for i in attr.value_count:
+					var row := HBoxContainer.new()
+					level_box.add_child(row)
+
+					var vlabel := Label.new()
+					vlabel.text = "Value %d" % (i + 1)
+					vlabel.custom_minimum_size = Vector2(70, 0)
+					row.add_child(vlabel)
+
+					var spin := SpinBox.new()
+					spin.size_flags_horizontal = SIZE_EXPAND_FILL
+					spin.min_value = -999999999
+					spin.max_value = 999999999
+					spin.allow_greater = true
+					spin.allow_lesser = true
+					spin.rounded = true
+					spin.step = 1
+
+					if i < level_vals.size():
+						spin.set_value_no_signal(level_vals[i])
+					spin.editable = true
+
+					spin.value_changed.connect(_on_attr_value_changed.bind(attr_id, i, level))
+					row.add_child(spin)
+
+					inputs.append(spin)
+
+				attr_inputs[level] = inputs
+
+		else:
+			var values_row := VBoxContainer.new()
+			values_row.add_theme_constant_override("separation", 1)
+			block.add_child(values_row)
+
+			var inputs: Array = []
+			for i in attr.value_count:
+				var row := HBoxContainer.new()
+				values_row.add_child(row)
+
+				var vlabel := Label.new()
+				vlabel.text = "Value %d" % (i + 1)
+				vlabel.custom_minimum_size = Vector2(70, 0)
+				row.add_child(vlabel)
+
+				var spin := SpinBox.new()
+				spin.size_flags_horizontal = SIZE_EXPAND_FILL
+				spin.min_value = -999999999
+				spin.max_value = 999999999
+				spin.allow_greater = true
+				spin.allow_lesser = true
+				spin.rounded = true
+				spin.step = 1
+
+				if has_attr:
+					var vals = _current_node.node_data.attributes[attr_id]
+					if vals is Array and i < vals.size() and not vals[i] is Array:
+						spin.set_value_no_signal(vals[i])
+					spin.editable = true
+				else:
+					spin.set_value_no_signal(0)
+					spin.editable = false
+
+				spin.value_changed.connect(_on_attr_value_changed.bind(attr_id, i, -1))
+				row.add_child(spin)
+
+				inputs.append(spin)
+
+			attr_inputs[-1] = inputs
+
+		_attr_value_inputs[attr_id] = attr_inputs
 
 func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 	if _updating_ui or not _current_node:
@@ -448,14 +597,78 @@ func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 	if not editor.tree.attributes.has(attr_id):
 		return
 
+	var attr: BayterekAttribute = editor.tree.attributes[attr_id]
+	var multi: bool = editor.tree.multiallocation
+
 	if pressed:
-		var attr: BayterekAttribute = editor.tree.attributes[attr_id]
-		var values: Array = []
-		for i in attr.value_count:
-			values.append(0)
-		_current_node.node_data.attributes[attr_id] = values
+		if multi:
+			var levels: Array = []
+			for level in _current_node.node_data.max_allocations:
+				var values: Array = []
+				for i in attr.value_count:
+					values.append(0)
+				levels.append(values)
+			_current_node.node_data.attributes[attr_id] = levels
+		else:
+			var values: Array = []
+			for i in attr.value_count:
+				values.append(0)
+			_current_node.node_data.attributes[attr_id] = values
 	else:
 		_current_node.node_data.attributes.erase(attr_id)
+
+	if _attr_value_inputs.has(attr_id):
+		var attr_inputs: Dictionary = _attr_value_inputs[attr_id]
+		for level_key in attr_inputs.keys():
+			var inputs: Array = attr_inputs[level_key]
+			for spin in inputs:
+				if is_instance_valid(spin):
+					spin.editable = pressed
+
+	editor.set_dirty(true)
+	changed.emit()
+
+	if multi:
+		call_deferred("_rebuild_attributes_list")
+
+func _on_attr_value_changed(value: float, attr_id: String, index: int, level: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	if not _current_node.node_data.attributes.has(attr_id):
+		return
+
+	var v: Variant = value
+	if typeof(value) == TYPE_FLOAT and value == floor(value):
+		v = int(value)
+
+	if level >= 0:
+		# Multi-allocation
+		var levels = _current_node.node_data.attributes[attr_id]
+		if not levels is Array:
+			return
+		if level >= levels.size():
+			return
+		var level_vals = levels[level]
+		if not level_vals is Array:
+			return
+		if index < 0 or index >= level_vals.size():
+			return
+		level_vals[index] = v
+	else:
+		# Tek seviye
+		var vals = _current_node.node_data.attributes[attr_id]
+		if not vals is Array:
+			return
+		# Multi-format uyumsuzluğu kontrolü
+		if vals.size() > 0 and vals[0] is Array:
+			# Beklenmedik durum — multi format ama level=-1
+			if index < 0 or index >= vals[0].size():
+				return
+			vals[0][index] = v
+		else:
+			if index < 0 or index >= vals.size():
+				return
+			vals[index] = v
 
 	editor.set_dirty(true)
 	changed.emit()

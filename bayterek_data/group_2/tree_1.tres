@@ -1,7 +1,15 @@
 [gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://b1pewnd7kqtkb"]
 
+[ext_resource type="Script" uid="uid://hqjiiihenipg" path="res://addons/bayterek/scripts/resources/bayterek_attribute.gd" id="1_8t7ab"]
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_dlbxo"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_8t7ab"]
+
+[sub_resource type="Resource" id="Resource_dhcah"]
+script = ExtResource("1_8t7ab")
+id = "new_attribute"
+name = "New Attribute"
+effect = "Effect #"
+value_count = 4
 
 [sub_resource type="Resource" id="Resource_dlbxo"]
 script = ExtResource("1_dlbxo")
@@ -18,11 +26,15 @@ name = "Medium Node"
 type = 1
 position = Vector2(-560, -288)
 in_nodes = Array[int]([4])
+attributes = {
+"new_attribute": [[0, 0, 0, 0]]
+}
 
 [resource]
 script = ExtResource("2_8t7ab")
 id = "tree_1"
 name = "Tree 1"
+multiallocation = true
 bg_color = Color(0.09375, 0.09375, 0.09375, 1)
 id_counter = 7
 icon_sizes = {
@@ -41,3 +53,6 @@ node_size = {
 2: Vector2(64, 64)
 }
 nodes = Array[ExtResource("1_dlbxo")]([SubResource("Resource_dlbxo"), SubResource("Resource_8t7ab")])
+attributes = {
+"new_attribute": SubResource("Resource_dhcah")
+}

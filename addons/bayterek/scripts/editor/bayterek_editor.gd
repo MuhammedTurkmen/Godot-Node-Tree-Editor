@@ -158,6 +158,9 @@ func _create_tree_view() -> void:
 	if attributes_editor:
 		attributes_editor.editor = self
 		attributes_editor.init()
+		attributes_editor.attribute_changed.connect(_on_attr_changed)
+		attributes_editor.attribute_removed.connect(_on_attr_removed)
+		attributes_editor.attributes_list_changed.connect(_on_attrs_list_changed)
 
 func _create_context_menu() -> void:
 	context_menu = PopupMenu.new()
@@ -226,6 +229,31 @@ func _on_node_moved(node: BayterekNodeButton) -> void:
 	if inspector._current_node != node:
 		return
 	inspector.update_position_only(node.node_data.position)
+
+# ============================================================
+# ATTRIBUTES HANDLER'LARI
+# ============================================================
+
+func _on_attr_changed(_attr_id: String) -> void:
+	if inspector:
+		inspector.refresh_attributes()
+
+func _on_attr_removed(attr_id: String) -> void:
+	if inspector:
+		inspector.remove_attribute_from_node(attr_id)
+	# Tüm node'lardan temizle
+	if tree and tree.nodes:
+		for node_data in tree.nodes:
+			if node_data.attributes.has(attr_id):
+				node_data.attributes.erase(attr_id)
+	if tree_view and tree_view.nodes_service:
+		for node in tree_view.nodes_service.get_all_nodes():
+			if node.node_data.attributes.has(attr_id):
+				node.node_data.attributes.erase(attr_id)
+
+func _on_attrs_list_changed() -> void:
+	if inspector:
+		inspector.refresh_attributes()
 
 # ============================================================
 # SETTINGS HANDLER'LARI
