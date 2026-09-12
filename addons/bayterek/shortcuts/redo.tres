@@ -1,0 +1,15 @@
+[gd_resource type="Shortcut" format=3]
+
+[sub_resource type="InputEventKey" id="InputEventKey_redo1"]
+device = -1
+ctrl_pressed = true
+shift_pressed = true
+keycode = 90
+
+[sub_resource type="InputEventKey" id="InputEventKey_redo2"]
+device = -1
+ctrl_pressed = true
+keycode = 89
+
+[resource]
+events = [SubResource("InputEventKey_redo1"), SubResource("InputEventKey_redo2")]

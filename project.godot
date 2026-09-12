@@ -1,0 +1,46 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="TestProject"
+run/main_scene="uid://bn2s6i8ueepi0"
+config/features=PackedStringArray("4.7", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+BayterekLoader="*uid://nkd7mhbs2vhv"
+BayterekSerializer="*uid://bncb0tmve5k7w"
+
+[debug]
+
+file_logging/enable_file_logging=true
+
+[display]
+
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[dotnet]
+
+project/assembly_name="TestProject"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/bayterek/plugin.cfg", "res://addons/file_exporter/plugin.cfg")
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+rendering_device/driver.windows="d3d12"

@@ -1,0 +1,67 @@
+[gd_scene format=3 uid="uid://cfuw2h1mj011k"]
+
+[ext_resource type="Script" uid="uid://dg3y83nh3gkqb" path="res://addons/file_exporter/exporter_panel.gd" id="1_panel"]
+
+[node name="ProjectExporterPanel" type="PanelContainer" unique_id=318558535]
+offset_right = 800.0
+offset_bottom = 500.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1_panel")
+
+[node name="VBox" type="VBoxContainer" parent="." unique_id=1169179390]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 3
+
+[node name="FilterContainer" type="HBoxContainer" parent="VBox" unique_id=1621725504]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="SearchContainer" type="HBoxContainer" parent="VBox" unique_id=123456789]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 5
+
+[node name="Tree" type="Tree" parent="VBox" unique_id=1329307588]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+columns = 2
+
+[node name="HBox" type="HBoxContainer" parent="VBox" unique_id=816526011]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 0
+theme_override_constants/separation = 5
+
+[node name="SelectAll" type="Button" parent="VBox/HBox" unique_id=652146959]
+layout_mode = 2
+size_flags_horizontal = 0
+text = "✅ Tümünü Seç"
+
+[node name="DeselectAll" type="Button" parent="VBox/HBox" unique_id=1824422729]
+layout_mode = 2
+size_flags_horizontal = 0
+text = "❌ Tümünü Kaldır"
+
+[node name="CopyLogs" type="Button" parent="VBox/HBox" unique_id=420418476]
+layout_mode = 2
+size_flags_horizontal = 0
+text = "❌ Hataları Kopyala"
+
+[node name="Separator" type="Control" parent="VBox/HBox" unique_id=46548644]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Export" type="Button" parent="VBox/HBox" unique_id=644540767]
+layout_mode = 2
+size_flags_horizontal = 0
+text = "📄 Seçilenleri Dışa Aktar"
+
+[node name="Info" type="Label" parent="VBox/HBox" unique_id=1056668354]
+layout_mode = 2
+size_flags_horizontal = 0
+text = "✅ Hazır!"
