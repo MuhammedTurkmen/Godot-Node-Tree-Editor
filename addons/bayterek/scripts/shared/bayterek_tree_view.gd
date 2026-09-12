@@ -16,9 +16,9 @@ var nodes_container: Control
 
 var camera: BayterekCamera
 var nodes_service: BayterekNodesService
+var connections_service: BayterekConnectionsService
 var selection_box: BayterekSelectionBox
 
-## UndoRedo sağlayıcı (BayterekEditor tarafından set edilir)
 var undo_redo_provider: Object = null
 
 var selected_nodes: Array[BayterekNodeButton] = []
@@ -101,12 +101,14 @@ func delete_selected() -> void:
 	if selected_nodes.is_empty():
 		return
 
+	var to_delete := selected_nodes.duplicate()
+	clear_selection()
+
 	if not undo_redo_provider or not undo_redo_provider.undo_redo:
 		# Undo yoksa doğrudan sil
-		var to_delete := selected_nodes.duplicate()
-		clear_selection()
 		for node in to_delete:
 			if is_instance_valid(node):
+				connections_service.remove_all_connections_of(node)
 				nodes_service.delete_node(node)
 		changed.emit()
 		return
@@ -114,33 +116,87 @@ func delete_selected() -> void:
 	var undo_redo: UndoRedo = undo_redo_provider.undo_redo
 	undo_redo.create_action("Delete Nodes")
 
-	var nodes_to_delete: Array = []
-	var nodes_data_to_delete: Array = []
-	var nodes_indices: Array = []
+	# Silmeden önce bağlantıları topla
+	var connections_to_restore: Array = []   # [{from_id, to_id, from_data, to_data}]
+	for node in to_delete:
+		if not is_instance_valid(node) or not node.node_data:
+			continue
+		for to_id in node.node_data.out_nodes:
+			connections_to_restore.append({"from_id": node.id, "to_id": to_id})
+		for from_id in node.node_data.in_nodes:
+			connections_to_restore.append({"from_id": from_id, "to_id": node.id})
 
-	for node in selected_nodes:
+	var nodes_data: Array = []
+	var nodes_indices: Array = []
+	for node in to_delete:
 		if is_instance_valid(node):
-			nodes_to_delete.append(node)
-			nodes_data_to_delete.append(node.node_data)
+			nodes_data.append(node.node_data)
 			nodes_indices.append(_tree_data.nodes.find(node.node_data))
 
-	undo_redo.add_do_method(_do_delete_nodes.bind(nodes_to_delete))
-	undo_redo.add_undo_method(_undo_delete_nodes.bind(nodes_to_delete, nodes_data_to_delete, nodes_indices))
+	undo_redo.add_do_method(_do_delete_nodes.bind(to_delete))
+	undo_redo.add_undo_method(_undo_delete_nodes.bind(to_delete, nodes_data, nodes_indices, connections_to_restore))
 
 	undo_redo.commit_action()
-
-	clear_selection()
 	changed.emit()
 
 func _do_delete_nodes(nodes: Array) -> void:
 	for node in nodes:
 		if is_instance_valid(node):
+			connections_service.remove_all_connections_of(node)
 			nodes_service.delete_node(node)
 
-func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array) -> void:
+func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connections: Array) -> void:
 	for i in range(nodes.size()):
 		if i < nodes_data.size() and i < indices.size():
 			nodes_service.restore_node(nodes[i], nodes_data[i], indices[i])
+
+	# Bağlantıları geri kur
+	for conn in connections:
+		var from_node: BayterekNodeButton = nodes_service.get_node(conn["from_id"])
+		var to_node: BayterekNodeButton = nodes_service.get_node(conn["to_id"])
+		if from_node and to_node:
+			connections_service.create_connection(from_node, to_node)
+
+# ============================================================
+# BAĞLANTI OLUŞTURMA (Shift + Tık)
+# ============================================================
+
+func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void:
+	# Shift basılıysa bağlantı kur
+	var shift_pressed: bool = Input.is_key_pressed(KEY_SHIFT)
+
+	if shift_pressed and not selected_nodes.is_empty():
+		# Seçili tüm node'lardan bu node'a bağlantı kur
+		var created_connections: Array = []
+		for from_node in selected_nodes:
+			if from_node == node:
+				continue
+			if connections_service.has_line(from_node.id, node.id):
+				continue
+
+			if undo_redo_provider and undo_redo_provider.undo_redo:
+				var undo_redo: UndoRedo = undo_redo_provider.undo_redo
+				undo_redo.create_action("Create Connection")
+				undo_redo.add_do_method(_do_create_connection.bind(from_node, node))
+				undo_redo.add_undo_method(_do_remove_connection.bind(from_node.id, node.id))
+				undo_redo.commit_action()
+			else:
+				connections_service.create_connection(from_node, node)
+
+			created_connections.append([from_node.id, node.id])
+
+		if not created_connections.is_empty():
+			changed.emit()
+		return
+
+	# Normal seçim
+	select_node(node, additive)
+
+func _do_create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButton) -> void:
+	connections_service.create_connection(from_node, to_node)
+
+func _do_remove_connection(from_id: int, to_id: int) -> void:
+	connections_service.remove_connection(from_id, to_id)
 
 # ============================================================
 # TAŞIMA
@@ -182,6 +238,7 @@ func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> vo
 			)
 
 		nodes_service.update_position(n, new_pos)
+		connections_service.update_lines_of(n)
 
 func _on_node_drag_ended(node: BayterekNodeButton) -> void:
 	if not _dragging:
@@ -226,6 +283,7 @@ func _apply_positions(positions: Dictionary) -> void:
 	for n in positions.keys():
 		if is_instance_valid(n):
 			nodes_service.update_position(n, positions[n])
+			connections_service.update_lines_of(n)
 
 # ============================================================
 # SELECTION BOX
@@ -330,10 +388,13 @@ func _create_services() -> void:
 	nodes_service = BayterekNodesService.new(self)
 	nodes_service.load_tree(_tree_data)
 	nodes_service.node_created.connect(_on_nodes_service_node_created)
-	nodes_service.node_pressed.connect(_on_nodes_service_node_pressed)
+	nodes_service.node_pressed.connect(_on_node_pressed_internal)
 	nodes_service.node_drag_started.connect(_on_node_drag_started)
 	nodes_service.node_dragged.connect(_on_node_dragged)
 	nodes_service.node_drag_ended.connect(_on_node_drag_ended)
+
+	connections_service = BayterekConnectionsService.new(self)
+	connections_service.load_tree(_tree_data)
 
 func _create_selection_box() -> void:
 	selection_box = BayterekSelectionBox.new()
@@ -355,6 +416,3 @@ func screen_to_tree(screen_pos: Vector2) -> Vector2:
 
 func _on_nodes_service_node_created(node: BayterekNodeButton) -> void:
 	node_created.emit(node)
-
-func _on_nodes_service_node_pressed(node: BayterekNodeButton, additive: bool) -> void:
-	select_node(node, additive)

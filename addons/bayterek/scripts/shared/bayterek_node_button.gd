@@ -16,7 +16,6 @@ var prefab: BayterekPrefab
 var is_mouse_over: bool = false
 var selected: bool = false
 
-var _icon_rect: ColorRect
 var _select_border: Panel
 
 var _is_dragging: bool = false
@@ -52,7 +51,6 @@ func _ready() -> void:
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 
-	# Seçim border'ı
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -89,10 +87,14 @@ func _gui_input(event: InputEvent) -> void:
 			if event.pressed:
 				_press_pos = event.position
 				_is_dragging = false
+				accept_event()  # TreeView'a gitmesin (selection box başlamasın)
 			else:
 				if _is_dragging:
 					drag_ended.emit(self)
 					_is_dragging = false
+				else:
+					# Kısa tıklama → pressed sinyali emit et
+					pressed.emit()
 				accept_event()
 
 	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
