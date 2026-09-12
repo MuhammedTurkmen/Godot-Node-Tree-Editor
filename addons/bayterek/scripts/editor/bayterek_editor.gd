@@ -1,7 +1,7 @@
 @tool
 class_name BayterekEditor
 extends Control
-## Graph editörü + sağ panel (Inspector/Settings).
+## Graph editörü + sol hierarchy + sağ panel (Inspector/Settings).
 
 signal closed
 signal dirty_changed(editor: BayterekEditor, dirty: bool)
@@ -15,6 +15,7 @@ var dirty: bool = false
 var undo_redo: UndoRedo
 
 var h_split: HSplitContainer
+var hierarchy: BayterekTreeHierarchy
 var left_container: VBoxContainer
 var menu_bar: HBoxContainer
 var tree_view: BayterekTreeView
@@ -61,8 +62,16 @@ func _build_ui() -> void:
 	h_split.size_flags_vertical = SIZE_EXPAND_FILL
 	add_child(h_split)
 	h_split.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	h_split.split_offset = -350
+	h_split.split_offset = 200
 
+	# --- Sol: Hierarchy ---
+	hierarchy = BayterekTreeHierarchy.new()
+	hierarchy.name = "Hierarchy"
+	hierarchy.custom_minimum_size = Vector2(180, 0)
+	hierarchy.size_flags_vertical = SIZE_EXPAND_FILL
+	h_split.add_child(hierarchy)
+
+	# --- Orta: menu + canvas ---
 	left_container = VBoxContainer.new()
 	left_container.name = "LeftContainer"
 	left_container.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -91,6 +100,7 @@ func _build_ui() -> void:
 	edit_popup.id_pressed.connect(_on_edit_menu_pressed)
 	menu_bar.add_child(edit_btn)
 
+	# --- Sağ: TabContainer ---
 	tab_container = TabContainer.new()
 	tab_container.name = "TabContainer"
 	tab_container.custom_minimum_size = Vector2(320, 0)
@@ -123,6 +133,10 @@ func _create_tree_view() -> void:
 	tree_view.changed.connect(_on_tree_view_changed)
 	tree_view.selection_changed.connect(_on_selection_changed)
 	tree_view.node_moved.connect(_on_node_moved)
+
+	if hierarchy:
+		hierarchy.editor = self
+		hierarchy.init(tree_view)
 
 	if inspector:
 		inspector.editor = self
@@ -235,7 +249,6 @@ func _on_settings_background_changed() -> void:
 		tex_rect.visible = tree.bg_texture != null
 
 func _on_settings_border_scale_changed() -> void:
-	# Node'ların border'ı henüz yok, ileride eklenecek
 	pass
 
 # ============================================================

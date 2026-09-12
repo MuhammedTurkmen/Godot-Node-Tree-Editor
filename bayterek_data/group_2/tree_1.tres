@@ -8,7 +8,7 @@
 script = ExtResource("1_dlbxo")
 id = 1
 name = "Small Node"
-position = Vector2(478, -76)
+position = Vector2(458, -31)
 in_nodes = Array[int]([2])
 
 [sub_resource type="Resource" id="Resource_8t7ab"]
@@ -17,7 +17,7 @@ id = 2
 name = "Medium Node"
 type = 1
 icon = ExtResource("2_dhcah")
-position = Vector2(-366, -36.5)
+position = Vector2(-173, -32.5)
 out_nodes = Array[int]([1])
 
 [sub_resource type="Resource" id="Resource_dhcah"]
