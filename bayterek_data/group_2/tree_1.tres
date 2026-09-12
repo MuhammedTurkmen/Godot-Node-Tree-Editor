@@ -6,13 +6,14 @@
 
 [sub_resource type="Resource" id="Resource_xnnbm"]
 script = ExtResource("2_dhcah")
+line_type = 2
 reversed = true
 
 [sub_resource type="Resource" id="Resource_dlbxo"]
 script = ExtResource("1_dlbxo")
 id = 4
 name = "Small Node"
-position = Vector2(-221, -307)
+position = Vector2(-48, -288)
 line_data = {
 7: SubResource("Resource_xnnbm")
 }
