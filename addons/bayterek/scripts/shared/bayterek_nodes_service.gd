@@ -11,8 +11,41 @@ signal node_drag_ended(node: BayterekNodeButton)
 
 var _nodes: Dictionary = {}   # id -> BayterekNodeButton
 
+# ============================================================
+# YÜKLEME
+# ============================================================
+
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
+
+	# Kayıtlı node'ları yükle
+	for node_data in _tree_data.nodes:
+		_create_node_from_data(node_data)
+
+func _create_node_from_data(node_data: BayterekNode) -> BayterekNodeButton:
+	var node := _build_node(node_data.type)
+	if not node:
+		return null
+
+	node.node_data = node_data
+	node.name = "Node_%d" % node_data.id
+
+	_position_node(node, node_data.position)
+
+	_tree_view.nodes_container.add_child(node)
+	_nodes[node_data.id] = node
+
+	node.pressed.connect(_on_node_pressed.bind(node))
+	node.drag_started.connect(_on_node_drag_started)
+	node.dragged.connect(_on_node_dragged)
+	node.drag_ended.connect(_on_node_drag_ended)
+
+	node_created.emit(node)
+	return node
+
+# ============================================================
+# SORGULAR
+# ============================================================
 
 func get_node(node_id: int) -> BayterekNodeButton:
 	return _nodes.get(node_id, null)
@@ -55,7 +88,7 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 	return node
 
 # ============================================================
-# SİLME
+# SİLME / GERİ YÜKLEME
 # ============================================================
 
 func delete_node(node: BayterekNodeButton) -> void:
@@ -65,7 +98,30 @@ func delete_node(node: BayterekNodeButton) -> void:
 	_nodes.erase(node.node_data.id)
 	_tree_data.nodes.erase(node.node_data)
 	_tree_view.nodes_container.remove_child(node)
-	node.queue_free()
+	# queue_free YOK — undo için node sahnede saklı tutulur.
+
+func restore_node(node: BayterekNodeButton, node_data: BayterekNode, index: int = -1) -> void:
+	if not node or not node_data:
+		return
+	if not is_instance_valid(node):
+		return
+
+	node.node_data = node_data
+	_nodes[node_data.id] = node
+
+	_position_node(node, node_data.position)
+
+	if not node.is_inside_tree():
+		_tree_view.nodes_container.add_child(node)
+	else:
+		node.visible = true
+
+	if index >= 0 and index <= _tree_data.nodes.size():
+		_tree_data.nodes.insert(index, node_data)
+	else:
+		_tree_data.nodes.append(node_data)
+
+	node_created.emit(node)
 
 # ============================================================
 # POZİSYON

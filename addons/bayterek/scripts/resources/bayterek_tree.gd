@@ -30,6 +30,31 @@ extends Resource
 
 var tree_state: BayterekTreeState
 
+func _init() -> void:
+	nodes = []
+	decorations = []
+	prefabs = {}
+	attributes = {}
+	icon_sizes = {
+		BayterekNode.NodeType.SMALL: Vector2.ZERO,
+		BayterekNode.NodeType.MEDIUM: Vector2.ZERO,
+		BayterekNode.NodeType.LARGE: Vector2.ZERO
+	}
+	icons = {
+		BayterekNode.NodeType.SMALL: null,
+		BayterekNode.NodeType.MEDIUM: null,
+		BayterekNode.NodeType.LARGE: null
+	}
+	node_size = {
+		BayterekNode.NodeType.SMALL: Vector2(27, 27),
+		BayterekNode.NodeType.MEDIUM: Vector2(48, 48),
+		BayterekNode.NodeType.LARGE: Vector2(64, 64)
+	}
+	tree_state = BayterekTreeState.new()
+
 func get_next_id() -> int:
 	id_counter += 1
 	return id_counter
+
+func get_node_size(node_type: BayterekNode.NodeType) -> Vector2:
+	return node_size.get(node_type, Vector2.ZERO)

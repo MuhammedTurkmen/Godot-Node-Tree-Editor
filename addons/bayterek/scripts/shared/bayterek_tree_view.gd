@@ -5,6 +5,7 @@ extends Control
 
 signal node_created(node: BayterekNodeButton)
 signal selection_changed(selected: Array)
+signal changed
 
 var main_container: Control
 var background_container: Control
@@ -17,6 +18,9 @@ var camera: BayterekCamera
 var nodes_service: BayterekNodesService
 var selection_box: BayterekSelectionBox
 
+## UndoRedo sağlayıcı (BayterekEditor tarafından set edilir)
+var undo_redo_provider: Object = null
+
 var selected_nodes: Array[BayterekNodeButton] = []
 
 var _tree_data: BayterekTree
@@ -24,7 +28,7 @@ var _tree_data: BayterekTree
 # --- Drag state ---
 var _dragging: bool = false
 var _drag_start_mouse_tree: Vector2 = Vector2.ZERO
-var _drag_start_positions: Dictionary = {}   # node -> tree pos
+var _drag_start_positions: Dictionary = {}
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -97,19 +101,52 @@ func delete_selected() -> void:
 	if selected_nodes.is_empty():
 		return
 
-	var to_delete := selected_nodes.duplicate()
-	clear_selection()
+	if not undo_redo_provider or not undo_redo_provider.undo_redo:
+		# Undo yoksa doğrudan sil
+		var to_delete := selected_nodes.duplicate()
+		clear_selection()
+		for node in to_delete:
+			if is_instance_valid(node):
+				nodes_service.delete_node(node)
+		changed.emit()
+		return
 
-	for node in to_delete:
+	var undo_redo: UndoRedo = undo_redo_provider.undo_redo
+	undo_redo.create_action("Delete Nodes")
+
+	var nodes_to_delete: Array = []
+	var nodes_data_to_delete: Array = []
+	var nodes_indices: Array = []
+
+	for node in selected_nodes:
+		if is_instance_valid(node):
+			nodes_to_delete.append(node)
+			nodes_data_to_delete.append(node.node_data)
+			nodes_indices.append(_tree_data.nodes.find(node.node_data))
+
+	undo_redo.add_do_method(_do_delete_nodes.bind(nodes_to_delete))
+	undo_redo.add_undo_method(_undo_delete_nodes.bind(nodes_to_delete, nodes_data_to_delete, nodes_indices))
+
+	undo_redo.commit_action()
+
+	clear_selection()
+	changed.emit()
+
+func _do_delete_nodes(nodes: Array) -> void:
+	for node in nodes:
 		if is_instance_valid(node):
 			nodes_service.delete_node(node)
+
+func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array) -> void:
+	for i in range(nodes.size()):
+		if i < nodes_data.size() and i < indices.size():
+			nodes_service.restore_node(nodes[i], nodes_data[i], indices[i])
 
 # ============================================================
 # TAŞIMA
 # ============================================================
 
 func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> void:
-	# Seçili değilse seç
 	if not selected_nodes.has(node):
 		if not Input.is_key_pressed(KEY_CTRL):
 			select_node(node)
@@ -147,8 +184,48 @@ func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> vo
 		nodes_service.update_position(n, new_pos)
 
 func _on_node_drag_ended(node: BayterekNodeButton) -> void:
+	if not _dragging:
+		return
+
 	_dragging = false
+
+	var start_positions: Dictionary = {}
+	var end_positions: Dictionary = {}
+
+	for n in _drag_start_positions.keys():
+		if not is_instance_valid(n):
+			continue
+		start_positions[n] = _drag_start_positions[n]
+		end_positions[n] = n.node_data.position
+
 	_drag_start_positions.clear()
+
+	var any_moved := false
+	for n in start_positions.keys():
+		if start_positions[n] != end_positions[n]:
+			any_moved = true
+			break
+
+	if not any_moved:
+		return
+
+	if not undo_redo_provider or not undo_redo_provider.undo_redo:
+		changed.emit()
+		return
+
+	var undo_redo: UndoRedo = undo_redo_provider.undo_redo
+	undo_redo.create_action("Move Nodes")
+
+	undo_redo.add_do_method(_apply_positions.bind(end_positions))
+	undo_redo.add_undo_method(_apply_positions.bind(start_positions))
+
+	undo_redo.commit_action()
+	changed.emit()
+
+func _apply_positions(positions: Dictionary) -> void:
+	for n in positions.keys():
+		if is_instance_valid(n):
+			nodes_service.update_position(n, positions[n])
 
 # ============================================================
 # SELECTION BOX

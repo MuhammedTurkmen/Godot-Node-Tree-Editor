@@ -1,7 +1,7 @@
 @tool
 class_name BayterekMainScreen
 extends MarginContainer
-## Ana ekran. TabContainer + Browser + Editor sekmeleri.
+## Ana ekran.
 
 signal update_available(version: String)
 signal dirty_changed(editor: BayterekEditor, dirty: bool)
@@ -20,28 +20,20 @@ func _ready() -> void:
 	add_theme_constant_override("margin_top", 0)
 	add_theme_constant_override("margin_right", 0)
 	add_theme_constant_override("margin_bottom", 0)
-
 	size_flags_horizontal = SIZE_EXPAND_FILL
 	size_flags_vertical = SIZE_EXPAND_FILL
 
-# --- Görünürlük değişince layout'u yenile ---
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and visible:
-		# Görünür olduğumuz an layout pass atlanmış olabilir.
-		# Bir frame sonra tüm zinciri yeniden hesapla.
 		call_deferred("_force_layout_refresh")
 
 func _force_layout_refresh() -> void:
 	if not is_inside_tree():
 		return
-
-	# Parent'ın bize verdiği boyutu al ve iç zincire aktar
 	if tab_container:
 		tab_container.queue_sort()
-
 	if browser:
 		browser.queue_sort()
-		# Browser'ın kendi iç container'ını da zorla
 		var vbox := browser.get_node_or_null("Root")
 		if vbox:
 			vbox.queue_sort()
@@ -55,10 +47,8 @@ func init() -> void:
 	if browser:
 		browser.init()
 
-	# init sonrası layout'u tazele
 	_force_layout_refresh()
 	call_deferred("_force_layout_refresh")
-
 	print("Bayterek: MainScreen hazır.")
 
 func _build_ui() -> void:
@@ -74,8 +64,7 @@ func _build_ui() -> void:
 	var tab_bar: TabBar = tab_container.get_tab_bar()
 	if tab_bar:
 		tab_bar.tab_close_display_policy = TabBar.CLOSE_BUTTON_SHOW_ACTIVE_ONLY
-
-	tab_container.tab_button_pressed.connect(_on_tab_button_pressed)
+		tab_bar.tab_close_pressed.connect(_on_tab_close_pressed)
 
 	browser = BayterekBrowser.new()
 	browser.name = "Browser"
@@ -88,9 +77,10 @@ func _build_ui() -> void:
 	save_confirmation = ConfirmationDialog.new()
 	save_confirmation.name = "SaveConfirmation"
 	save_confirmation.ok_button_text = "Save & Close"
+	save_confirmation.add_button("Don't Save", true, "no_save")
+	save_confirmation.confirmed.connect(_on_save_confirmed)
+	save_confirmation.custom_action.connect(_on_save_custom_action)
 	add_child(save_confirmation)
-
-# --- Public API ---
 
 func open_tree(path: String) -> void:
 	if _open_editors.has(path):
@@ -110,17 +100,35 @@ func open_tree(path: String) -> void:
 	var idx: int = tab_container.get_tab_idx_from_control(editor)
 	tab_container.set_tab_title(idx, editor.name)
 	editor.closed.connect(_on_editor_closed.bind(editor))
+	editor.dirty_changed.connect(_on_editor_dirty_changed)
 	editor.load_tree(path)
 
 	_open_editors[path] = editor
 	tab_container.current_tab = idx
 
-# --- Signals ---
-
-func _on_tab_button_pressed(tab_index: int) -> void:
+func _on_tab_close_pressed(tab_index: int) -> void:
 	var child: Node = tab_container.get_child(tab_index)
 	if child is BayterekEditor:
-		(child as BayterekEditor).request_close()
+		var editor: BayterekEditor = child
+		if editor.dirty:
+			save_confirmation.dialog_text = "Tree \"%s\" has unsaved changes.\nLast saved: %s\n\nSave before closing?" % [editor.tree.name, editor.get_last_modified_time()]
+			save_confirmation.set_meta("editor", editor)
+			save_confirmation.popup_centered()
+		else:
+			editor.request_close()
+
+func _on_save_confirmed() -> void:
+	var editor: BayterekEditor = save_confirmation.get_meta("editor")
+	if editor:
+		editor.save_tree()
+		editor.request_close()
+
+func _on_save_custom_action(action: String) -> void:
+	if action == "no_save":
+		var editor: BayterekEditor = save_confirmation.get_meta("editor")
+		if editor:
+			editor.request_close()
+		save_confirmation.hide()
 
 func _on_editor_closed(editor: BayterekEditor) -> void:
 	var path: String = ""
@@ -134,3 +142,15 @@ func _on_editor_closed(editor: BayterekEditor) -> void:
 	tab_container.remove_child(editor)
 	editor.queue_free()
 	tree_closed.emit(editor)
+
+func _on_editor_dirty_changed(editor: BayterekEditor, dirty: bool) -> void:
+	var idx: int = tab_container.get_tab_idx_from_control(editor)
+	if idx < 0:
+		return
+
+	var title: String = editor.tree.name if editor.tree else editor.name
+	if dirty:
+		title = title + " (*)"
+	tab_container.set_tab_title(idx, title)
+
+	dirty_changed.emit(editor, dirty)
