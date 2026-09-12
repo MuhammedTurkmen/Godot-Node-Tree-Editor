@@ -5,6 +5,7 @@ extends Control
 
 signal node_created(node: BayterekNodeButton)
 signal selection_changed(selected: Array)
+signal node_moved(node: BayterekNodeButton)
 signal changed
 
 var main_container: Control
@@ -105,7 +106,6 @@ func delete_selected() -> void:
 	clear_selection()
 
 	if not undo_redo_provider or not undo_redo_provider.undo_redo:
-		# Undo yoksa doğrudan sil
 		for node in to_delete:
 			if is_instance_valid(node):
 				connections_service.remove_all_connections_of(node)
@@ -116,8 +116,7 @@ func delete_selected() -> void:
 	var undo_redo: UndoRedo = undo_redo_provider.undo_redo
 	undo_redo.create_action("Delete Nodes")
 
-	# Silmeden önce bağlantıları topla
-	var connections_to_restore: Array = []   # [{from_id, to_id, from_data, to_data}]
+	var connections_to_restore: Array = []
 	for node in to_delete:
 		if not is_instance_valid(node) or not node.node_data:
 			continue
@@ -150,7 +149,6 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 		if i < nodes_data.size() and i < indices.size():
 			nodes_service.restore_node(nodes[i], nodes_data[i], indices[i])
 
-	# Bağlantıları geri kur
 	for conn in connections:
 		var from_node: BayterekNodeButton = nodes_service.get_node(conn["from_id"])
 		var to_node: BayterekNodeButton = nodes_service.get_node(conn["to_id"])
@@ -162,11 +160,9 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 # ============================================================
 
 func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void:
-	# Shift basılıysa bağlantı kur
 	var shift_pressed: bool = Input.is_key_pressed(KEY_SHIFT)
 
 	if shift_pressed and not selected_nodes.is_empty():
-		# Seçili tüm node'lardan bu node'a bağlantı kur
 		var created_connections: Array = []
 		for from_node in selected_nodes:
 			if from_node == node:
@@ -189,7 +185,6 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 			changed.emit()
 		return
 
-	# Normal seçim
 	select_node(node, additive)
 
 func _do_create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButton) -> void:
@@ -240,6 +235,13 @@ func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> vo
 		nodes_service.update_position(n, new_pos)
 		connections_service.update_lines_of(n)
 
+	# Inspector'ı anlık güncelle
+	if not selected_nodes.is_empty():
+		if selected_nodes.size() == 1:
+			node_moved.emit(selected_nodes[0])
+		elif selected_nodes.has(node):
+			node_moved.emit(node)
+
 func _on_node_drag_ended(node: BayterekNodeButton) -> void:
 	if not _dragging:
 		return
@@ -284,6 +286,10 @@ func _apply_positions(positions: Dictionary) -> void:
 		if is_instance_valid(n):
 			nodes_service.update_position(n, positions[n])
 			connections_service.update_lines_of(n)
+
+	if not selected_nodes.is_empty():
+		if selected_nodes.size() == 1:
+			node_moved.emit(selected_nodes[0])
 
 # ============================================================
 # SELECTION BOX

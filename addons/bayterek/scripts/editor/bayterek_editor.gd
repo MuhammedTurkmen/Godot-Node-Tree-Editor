@@ -55,7 +55,6 @@ func load_tree(path: String) -> void:
 # ============================================================
 
 func _build_ui() -> void:
-	# Ana split: sol (canvas) | sağ (panel)
 	h_split = HSplitContainer.new()
 	h_split.name = "HSplit"
 	h_split.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -64,7 +63,6 @@ func _build_ui() -> void:
 	h_split.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	h_split.split_offset = -350
 
-	# --- Sol: menu bar + canvas ---
 	left_container = VBoxContainer.new()
 	left_container.name = "LeftContainer"
 	left_container.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -72,7 +70,6 @@ func _build_ui() -> void:
 	left_container.add_theme_constant_override("separation", 0)
 	h_split.add_child(left_container)
 
-	# MenuBar
 	menu_bar = HBoxContainer.new()
 	menu_bar.name = "MenuBar"
 	menu_bar.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -94,7 +91,6 @@ func _build_ui() -> void:
 	edit_popup.id_pressed.connect(_on_edit_menu_pressed)
 	menu_bar.add_child(edit_btn)
 
-	# --- Sağ: TabContainer (Inspector + Settings) ---
 	tab_container = TabContainer.new()
 	tab_container.name = "TabContainer"
 	tab_container.custom_minimum_size = Vector2(320, 0)
@@ -126,8 +122,8 @@ func _create_tree_view() -> void:
 	tree_view.undo_redo_provider = self
 	tree_view.changed.connect(_on_tree_view_changed)
 	tree_view.selection_changed.connect(_on_selection_changed)
+	tree_view.node_moved.connect(_on_node_moved)
 
-	# Inspector'a tree_view referansını ver
 	if inspector:
 		inspector.editor = self
 		inspector.init(tree_view)
@@ -191,11 +187,19 @@ func _input(event: InputEvent) -> void:
 # ============================================================
 
 func _on_selection_changed(selected: Array) -> void:
-	if inspector:
-		var node: BayterekNodeButton = null
-		if selected.size() == 1:
-			node = selected[0]
-		inspector.inspect(node)
+	if not inspector:
+		return
+	if selected.size() == 1:
+		inspector.inspect(selected[0])
+	else:
+		inspector.inspect(null)
+
+func _on_node_moved(node: BayterekNodeButton) -> void:
+	if not inspector or not node:
+		return
+	if inspector._current_node != node:
+		return
+	inspector.update_position_only(node.node_data.position)
 
 # ============================================================
 # NODE OLUŞTURMA
