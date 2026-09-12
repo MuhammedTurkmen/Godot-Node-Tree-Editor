@@ -31,6 +31,12 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_create_grid()
 	_create_camera()
 
+func _gui_input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+	if camera:
+		camera.input(event)
+
 func _create_containers() -> void:
 	main_container = Control.new()
 	main_container.name = "MainContainer"
