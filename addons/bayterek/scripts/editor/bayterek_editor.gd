@@ -1,7 +1,7 @@
 @tool
 class_name BayterekEditor
 extends Control
-## Graph editörü.
+## Graph editörü + sağ panel (Inspector/Settings).
 
 signal closed
 signal dirty_changed(editor: BayterekEditor, dirty: bool)
@@ -14,9 +14,15 @@ var dirty: bool = false
 
 var undo_redo: UndoRedo
 
-var tree_view: BayterekTreeView
-var context_menu: PopupMenu
+var h_split: HSplitContainer
+var left_container: VBoxContainer
 var menu_bar: HBoxContainer
+var tree_view: BayterekTreeView
+var tab_container: TabContainer
+var inspector: BayterekTreeEditorInspector
+var settings_editor: BayterekSettingsEditor
+
+var context_menu: PopupMenu
 
 var _last_click_pos: Vector2 = Vector2.ZERO
 var _last_save_time: int = 0
@@ -33,7 +39,6 @@ func load_tree(path: String) -> void:
 		push_error("Bayterek: Tree yüklenemedi: %s" % path)
 		return
 
-	# tree_state garanti altına al
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
 
@@ -45,11 +50,33 @@ func load_tree(path: String) -> void:
 
 	set_dirty(false)
 
+# ============================================================
+# UI KURULUM
+# ============================================================
+
 func _build_ui() -> void:
+	# Ana split: sol (canvas) | sağ (panel)
+	h_split = HSplitContainer.new()
+	h_split.name = "HSplit"
+	h_split.size_flags_horizontal = SIZE_EXPAND_FILL
+	h_split.size_flags_vertical = SIZE_EXPAND_FILL
+	add_child(h_split)
+	h_split.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	h_split.split_offset = -350
+
+	# --- Sol: menu bar + canvas ---
+	left_container = VBoxContainer.new()
+	left_container.name = "LeftContainer"
+	left_container.size_flags_horizontal = SIZE_EXPAND_FILL
+	left_container.size_flags_vertical = SIZE_EXPAND_FILL
+	left_container.add_theme_constant_override("separation", 0)
+	h_split.add_child(left_container)
+
+	# MenuBar
 	menu_bar = HBoxContainer.new()
 	menu_bar.name = "MenuBar"
 	menu_bar.size_flags_horizontal = SIZE_EXPAND_FILL
-	add_child(menu_bar)
+	left_container.add_child(menu_bar)
 
 	var file_btn := MenuButton.new()
 	file_btn.text = "File"
@@ -67,16 +94,48 @@ func _build_ui() -> void:
 	edit_popup.id_pressed.connect(_on_edit_menu_pressed)
 	menu_bar.add_child(edit_btn)
 
+	# --- Sağ: TabContainer (Inspector + Settings) ---
+	tab_container = TabContainer.new()
+	tab_container.name = "TabContainer"
+	tab_container.custom_minimum_size = Vector2(320, 0)
+	tab_container.size_flags_vertical = SIZE_EXPAND_FILL
+	h_split.add_child(tab_container)
+
+	inspector = BayterekTreeEditorInspector.new()
+	inspector.name = "Inspector"
+	inspector.size_flags_horizontal = SIZE_EXPAND_FILL
+	inspector.size_flags_vertical = SIZE_EXPAND_FILL
+	tab_container.add_child(inspector)
+	tab_container.set_tab_title(0, "Inspector")
+
+	settings_editor = BayterekSettingsEditor.new()
+	settings_editor.name = "Settings"
+	settings_editor.size_flags_horizontal = SIZE_EXPAND_FILL
+	settings_editor.size_flags_vertical = SIZE_EXPAND_FILL
+	tab_container.add_child(settings_editor)
+	tab_container.set_tab_title(1, "Settings")
+
 func _create_tree_view() -> void:
 	tree_view = BayterekTreeView.new()
 	tree_view.name = "TreeView"
-	add_child(tree_view)
-	tree_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	tree_view.offset_top = 28
+	tree_view.size_flags_horizontal = SIZE_EXPAND_FILL
+	tree_view.size_flags_vertical = SIZE_EXPAND_FILL
+	left_container.add_child(tree_view)
 	tree_view.load_tree(tree)
 	tree_view.gui_input.connect(_on_tree_view_input)
 	tree_view.undo_redo_provider = self
 	tree_view.changed.connect(_on_tree_view_changed)
+	tree_view.selection_changed.connect(_on_selection_changed)
+
+	# Inspector'a tree_view referansını ver
+	if inspector:
+		inspector.editor = self
+		inspector.init(tree_view)
+
+	if settings_editor:
+		settings_editor.editor = self
+		settings_editor.init()
+		settings_editor.load_tree(tree)
 
 func _create_context_menu() -> void:
 	context_menu = PopupMenu.new()
@@ -128,6 +187,17 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 # ============================================================
+# SEÇİM
+# ============================================================
+
+func _on_selection_changed(selected: Array) -> void:
+	if inspector:
+		var node: BayterekNodeButton = null
+		if selected.size() == 1:
+			node = selected[0]
+		inspector.inspect(node)
+
+# ============================================================
 # NODE OLUŞTURMA
 # ============================================================
 
@@ -162,17 +232,13 @@ func _undo_create_node() -> void:
 	set_dirty(true)
 
 # ============================================================
-# FILE MENU
+# MENU
 # ============================================================
 
 func _on_file_menu_pressed(id: int) -> void:
 	match id:
 		0: save_tree()
 		1: request_close()
-
-# ============================================================
-# EDIT MENU
-# ============================================================
 
 func _on_edit_menu_pressed(id: int) -> void:
 	match id:
@@ -190,14 +256,13 @@ func do_redo() -> void:
 		set_dirty(true)
 
 # ============================================================
-# KAYDETME
+# KAYDETME / DURUM
 # ============================================================
 
 func save_tree() -> void:
 	if not tree:
 		return
 
-	# tree_state null ise oluştur
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
 
@@ -211,10 +276,6 @@ func save_tree() -> void:
 	_last_save_time = Time.get_ticks_msec()
 	set_dirty(false)
 	print("Bayterek: Tree kaydedildi: ", tree_path)
-
-# ============================================================
-# DURUM
-# ============================================================
 
 func set_dirty(is_dirty: bool) -> void:
 	if dirty != is_dirty:
