@@ -30,6 +30,13 @@ var _transform_panel: VBoxContainer
 var _pos_x_input: SpinBox
 var _pos_y_input: SpinBox
 
+# Visuals
+var _visuals_panel: VBoxContainer
+var _icon_input: BayterekInspectorTextureInput
+var _border_normal_input: BayterekInspectorTextureInput
+var _border_intermediate_input: BayterekInspectorTextureInput
+var _border_active_input: BayterekInspectorTextureInput
+
 var _updating_ui: bool = false
 
 func _ready() -> void:
@@ -42,7 +49,6 @@ func _ready() -> void:
 # ============================================================
 
 func _build_ui() -> void:
-	# Boş durum
 	_empty_label = Label.new()
 	_empty_label.text = "Select a node to inspect"
 	_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -51,7 +57,6 @@ func _build_ui() -> void:
 	add_child(_empty_label)
 	_empty_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	# İçerik scroll
 	var scroll := ScrollContainer.new()
 	scroll.name = "Scroll"
 	scroll.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -86,47 +91,17 @@ func _build_ui() -> void:
 	_info_panel = VBoxContainer.new()
 	_content.add_child(_info_panel)
 
-	# ID
-	var id_row := HBoxContainer.new()
-	_info_panel.add_child(id_row)
-
-	var id_label := Label.new()
-	id_label.text = "ID"
-	id_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	id_label.tooltip_text = "Otomatik atanan ID (okunamaz)"
-	id_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	id_row.add_child(id_label)
-
-	_id_input = LineEdit.new()
-	_id_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	_id_input.editable = false
-	id_row.add_child(_id_input)
-
-	# Name
-	var name_row := HBoxContainer.new()
-	_info_panel.add_child(name_row)
-
-	var name_label := Label.new()
-	name_label.text = "Name"
-	name_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	name_label.tooltip_text = "Node'un görünen adı"
-	name_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	name_row.add_child(name_label)
-
-	_name_input = LineEdit.new()
-	_name_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	_id_input = _add_line_row(_info_panel, "ID", "Otomatik atanan ID", true)
+	_name_input = _add_line_row(_info_panel, "Name", "Node'un görünen adı", false)
 	_name_input.text_changed.connect(_on_name_changed)
-	name_row.add_child(_name_input)
 
 	# Description
 	var desc_row := HBoxContainer.new()
 	_info_panel.add_child(desc_row)
-
 	var desc_label := Label.new()
 	desc_label.text = "Description"
 	desc_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	desc_label.size_flags_vertical = 0
-	desc_label.tooltip_text = "Node açıklaması (tooltip'te gösterilir)"
+	desc_label.tooltip_text = "Node açıklaması"
 	desc_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	desc_row.add_child(desc_label)
 
@@ -139,11 +114,10 @@ func _build_ui() -> void:
 	# Max Allocations
 	_max_alloc_panel = HBoxContainer.new()
 	_info_panel.add_child(_max_alloc_panel)
-
 	var max_alloc_label := Label.new()
 	max_alloc_label.text = "Max Allocations"
 	max_alloc_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	max_alloc_label.tooltip_text = "Multi-allocation aktifse maksimum seviye"
+	max_alloc_label.tooltip_text = "Multi-allocation için maksimum seviye"
 	max_alloc_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	_max_alloc_panel.add_child(max_alloc_label)
 
@@ -162,11 +136,9 @@ func _build_ui() -> void:
 
 	var pos_row := HBoxContainer.new()
 	_transform_panel.add_child(pos_row)
-
 	var pos_label := Label.new()
 	pos_label.text = "Position"
 	pos_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	pos_label.tooltip_text = "Node pozisyonu (tree merkezine göre)"
 	pos_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	pos_row.add_child(pos_label)
 
@@ -178,40 +150,70 @@ func _build_ui() -> void:
 	# X
 	var x_row := HBoxContainer.new()
 	pos_vbox.add_child(x_row)
-
 	var x_label := Label.new()
 	x_label.text = "X"
 	x_label.custom_minimum_size = Vector2(20, 0)
 	x_label.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
 	x_row.add_child(x_label)
-
 	_pos_x_input = SpinBox.new()
 	_pos_x_input.size_flags_horizontal = SIZE_EXPAND_FILL
 	_pos_x_input.rounded = true
 	_pos_x_input.allow_greater = true
 	_pos_x_input.allow_lesser = true
-	_pos_x_input.step = 1
 	_pos_x_input.value_changed.connect(_on_position_changed)
 	x_row.add_child(_pos_x_input)
 
 	# Y
 	var y_row := HBoxContainer.new()
 	pos_vbox.add_child(y_row)
-
 	var y_label := Label.new()
 	y_label.text = "Y"
 	y_label.custom_minimum_size = Vector2(20, 0)
 	y_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.4))
 	y_row.add_child(y_label)
-
 	_pos_y_input = SpinBox.new()
 	_pos_y_input.size_flags_horizontal = SIZE_EXPAND_FILL
 	_pos_y_input.rounded = true
 	_pos_y_input.allow_greater = true
 	_pos_y_input.allow_lesser = true
-	_pos_y_input.step = 1
 	_pos_y_input.value_changed.connect(_on_position_changed)
 	y_row.add_child(_pos_y_input)
+
+	# --- Visuals (texture input'lar) ---
+	_visuals_panel = VBoxContainer.new()
+	_content.add_child(_visuals_panel)
+
+	var vis_sep := HSeparator.new()
+	_visuals_panel.add_child(vis_sep)
+
+	var vis_title := Label.new()
+	vis_title.text = "Visuals"
+	vis_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	_visuals_panel.add_child(vis_title)
+
+	_icon_input = BayterekInspectorTextureInput.new()
+	_icon_input.title = "Icon"
+	_icon_input.texture_dropped.connect(_on_icon_changed)
+	_icon_input.cleared.connect(_on_icon_cleared)
+	_visuals_panel.add_child(_icon_input)
+
+	_border_normal_input = BayterekInspectorTextureInput.new()
+	_border_normal_input.title = "Border Normal"
+	_border_normal_input.texture_dropped.connect(_on_border_normal_changed)
+	_border_normal_input.cleared.connect(_on_border_normal_cleared)
+	_visuals_panel.add_child(_border_normal_input)
+
+	_border_intermediate_input = BayterekInspectorTextureInput.new()
+	_border_intermediate_input.title = "Border Intermediate"
+	_border_intermediate_input.texture_dropped.connect(_on_border_intermediate_changed)
+	_border_intermediate_input.cleared.connect(_on_border_intermediate_cleared)
+	_visuals_panel.add_child(_border_intermediate_input)
+
+	_border_active_input = BayterekInspectorTextureInput.new()
+	_border_active_input.title = "Border Active"
+	_border_active_input.texture_dropped.connect(_on_border_active_changed)
+	_border_active_input.cleared.connect(_on_border_active_cleared)
+	_visuals_panel.add_child(_border_active_input)
 
 func init(tree_view: BayterekTreeView) -> void:
 	pass
@@ -247,13 +249,15 @@ func inspect(node: BayterekNodeButton) -> void:
 	_pos_x_input.set_value_no_signal(node.node_data.position.x)
 	_pos_y_input.set_value_no_signal(node.node_data.position.y)
 
+	# Texture input'lar
+	_icon_input.set_texture(node.node_data.icon)
+	_border_normal_input.set_texture(node.node_data.border_normal)
+	_border_intermediate_input.set_texture(node.node_data.border_intermediate)
+	_border_active_input.set_texture(node.node_data.border_active)
+
 	_max_alloc_panel.visible = editor and editor.tree and editor.tree.multiallocation
 
 	_updating_ui = false
-
-# ============================================================
-# POZİSYON GÜNCELLEME (dışarıdan çağrılır)
-# ============================================================
 
 func update_position_only(pos: Vector2) -> void:
 	if _updating_ui:
@@ -309,9 +313,87 @@ func _on_position_changed(_value: float) -> void:
 	changed.emit()
 	_notify_editor_dirty()
 
+# --- Texture handlers ---
+
+func _on_icon_changed(path: String) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var tex: Texture2D = load(path) as Texture2D
+	_current_node.node_data.icon = tex
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_icon_cleared() -> void:
+	if _updating_ui or not _current_node:
+		return
+	_current_node.node_data.icon = null
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_border_normal_changed(path: String) -> void:
+	if _updating_ui or not _current_node:
+		return
+	_current_node.node_data.border_normal = load(path) as Texture2D
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_border_normal_cleared() -> void:
+	if _updating_ui or not _current_node:
+		return
+	_current_node.node_data.border_normal = null
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_border_intermediate_changed(path: String) -> void:
+	if _updating_ui or not _current_node:
+		return
+	_current_node.node_data.border_intermediate = load(path) as Texture2D
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_border_intermediate_cleared() -> void:
+	if _updating_ui or not _current_node:
+		return
+	_current_node.node_data.border_intermediate = null
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_border_active_changed(path: String) -> void:
+	if _updating_ui or not _current_node:
+		return
+	_current_node.node_data.border_active = load(path) as Texture2D
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_border_active_cleared() -> void:
+	if _updating_ui or not _current_node:
+		return
+	_current_node.node_data.border_active = null
+	changed.emit()
+	_notify_editor_dirty()
+
 # ============================================================
 # YARDIMCI
 # ============================================================
+
+func _add_line_row(parent: Control, label_text: String, tooltip: String, readonly: bool) -> LineEdit:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+
+	var label := Label.new()
+	label.text = label_text
+	label.size_flags_horizontal = SIZE_EXPAND_FILL
+	if not tooltip.is_empty():
+		label.tooltip_text = tooltip
+	label.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(label)
+
+	var edit := LineEdit.new()
+	edit.size_flags_horizontal = SIZE_EXPAND_FILL
+	edit.editable = not readonly
+	row.add_child(edit)
+
+	return edit
 
 func _notify_editor_dirty() -> void:
 	if editor and editor.has_method("set_dirty"):

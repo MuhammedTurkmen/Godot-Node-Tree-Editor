@@ -33,6 +33,7 @@ var _border_scale_input: SpinBox
 
 # Background
 var _bg_color_picker: ColorPickerButton
+var _bg_texture_input: BayterekInspectorTextureInput
 
 # Icon Sizes
 var _small_icon_x: SpinBox
@@ -50,6 +51,11 @@ var _medium_size_y: SpinBox
 var _large_size_x: SpinBox
 var _large_size_y: SpinBox
 
+# Line Textures
+var _line_normal_input: BayterekInspectorTextureInput
+var _line_intermediate_input: BayterekInspectorTextureInput
+var _line_active_input: BayterekInspectorTextureInput
+
 # Interaction
 var _revealed_check: CheckBox
 var _allocation_check: CheckBox
@@ -61,7 +67,6 @@ func _ready() -> void:
 	_build_ui()
 
 func init() -> void:
-	# load_tree() öncesi gerekli bir şey yok
 	pass
 
 # ============================================================
@@ -83,27 +88,27 @@ func _build_ui() -> void:
 	scroll.add_child(_content)
 
 	# --- Version ---
-	_version_input = _make_int_row(_content, "Version", "Tree versiyonu (runtime uyumluluk için)")
+	_version_input = _make_int_row(_content, "Version", "Tree versiyonu")
 	_version_input.min_value = 1
 	_version_input.value = 1
 	_version_input.allow_greater = true
 	_version_input.value_changed.connect(_on_version_changed)
 
 	# --- Size ---
-	_size_x_input = _make_int_row(_content, "Size X", "Tree alanı genişliği (px)")
+	_size_x_input = _make_int_row(_content, "Size X", "Tree genişliği")
 	_size_x_input.min_value = 100
 	_size_x_input.value = 5000
 	_size_x_input.allow_greater = true
 	_size_x_input.value_changed.connect(_on_size_changed)
 
-	_size_y_input = _make_int_row(_content, "Size Y", "Tree alanı yüksekliği (px)")
+	_size_y_input = _make_int_row(_content, "Size Y", "Tree yüksekliği")
 	_size_y_input.min_value = 100
 	_size_y_input.value = 5000
 	_size_y_input.allow_greater = true
 	_size_y_input.value_changed.connect(_on_size_changed)
 
 	# --- Border Scale ---
-	_border_scale_input = _make_float_row(_content, "Border Scale", "Node border ölçek çarpanı")
+	_border_scale_input = _make_float_row(_content, "Border Scale", "Border ölçek")
 	_border_scale_input.min_value = 0.1
 	_border_scale_input.max_value = 10.0
 	_border_scale_input.step = 0.1
@@ -112,13 +117,19 @@ func _build_ui() -> void:
 	_border_scale_input.value_changed.connect(_on_border_scale_changed)
 
 	# --- Background ---
-	_bg_color_picker = _make_color_row(_content, "Background Color", "Tree arka plan rengi")
+	_bg_color_picker = _make_color_row(_content, "Background Color", "Arka plan rengi")
 	_bg_color_picker.color = Color(0.1, 0.1, 0.1)
 	_bg_color_picker.color_changed.connect(_on_bg_color_changed)
 
+	_bg_texture_input = BayterekInspectorTextureInput.new()
+	_bg_texture_input.title = "Background Texture"
+	_bg_texture_input.texture_dropped.connect(_on_bg_texture_changed)
+	_bg_texture_input.cleared.connect(_on_bg_texture_cleared)
+	_content.add_child(_bg_texture_input)
+
 	# --- Icon Sizes ---
 	_add_separator(_content)
-	_add_section_label(_content, "Icon Sizes (S/M/L)")
+	_add_section_label(_content, "Icon Sizes")
 
 	_small_icon_x = _make_int_pair_row(_content, "Small", "X")
 	_small_icon_x.value_changed.connect(_on_small_icon_changed)
@@ -137,7 +148,7 @@ func _build_ui() -> void:
 
 	# --- Node Sizes ---
 	_add_separator(_content)
-	_add_section_label(_content, "Node Sizes (S/M/L)")
+	_add_section_label(_content, "Node Sizes")
 
 	_small_size_x = _make_int_pair_row(_content, "Small", "X")
 	_small_size_x.value = 27
@@ -160,23 +171,45 @@ func _build_ui() -> void:
 	_large_size_y.value = 64
 	_large_size_y.value_changed.connect(_on_large_size_changed)
 
+	# --- Line Textures ---
+	_add_separator(_content)
+	_add_section_label(_content, "Line Textures")
+
+	_line_normal_input = BayterekInspectorTextureInput.new()
+	_line_normal_input.title = "Normal"
+	_line_normal_input.texture_dropped.connect(_on_line_normal_changed)
+	_line_normal_input.cleared.connect(_on_line_normal_cleared)
+	_content.add_child(_line_normal_input)
+
+	_line_intermediate_input = BayterekInspectorTextureInput.new()
+	_line_intermediate_input.title = "Intermediate"
+	_line_intermediate_input.texture_dropped.connect(_on_line_intermediate_changed)
+	_line_intermediate_input.cleared.connect(_on_line_intermediate_cleared)
+	_content.add_child(_line_intermediate_input)
+
+	_line_active_input = BayterekInspectorTextureInput.new()
+	_line_active_input.title = "Active"
+	_line_active_input.texture_dropped.connect(_on_line_active_changed)
+	_line_active_input.cleared.connect(_on_line_active_cleared)
+	_content.add_child(_line_active_input)
+
 	# --- Interaction ---
 	_add_separator(_content)
 	_add_section_label(_content, "Interaction")
 
-	_revealed_check = _make_check_row(_content, "Revealed", "Tüm ağaç görünür mü")
+	_revealed_check = _make_check_row(_content, "Revealed", "Tüm ağaç görünür")
 	_revealed_check.button_pressed = true
 	_revealed_check.toggled.connect(_on_revealed_changed)
 
-	_allocation_check = _make_check_row(_content, "Allocation", "Node'lara tıklanabilir mi")
+	_allocation_check = _make_check_row(_content, "Allocation", "Etkileşim")
 	_allocation_check.button_pressed = true
 	_allocation_check.toggled.connect(_on_allocation_changed)
 
-	_preallocation_check = _make_check_row(_content, "Preallocation", "Ön onay akışı")
+	_preallocation_check = _make_check_row(_content, "Preallocation", "Ön onay")
 	_preallocation_check.button_pressed = true
 	_preallocation_check.toggled.connect(_on_preallocation_changed)
 
-	_multiallocation_check = _make_check_row(_content, "Multi-allocation", "Seviyeli allocation")
+	_multiallocation_check = _make_check_row(_content, "Multi-allocation", "Seviyeli")
 	_multiallocation_check.toggled.connect(_on_multiallocation_changed)
 
 # ============================================================
@@ -196,6 +229,9 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_size_y_input.set_value_no_signal(tree_data.size.y)
 	_border_scale_input.set_value_no_signal(tree_data.border_scale)
 	_bg_color_picker.color = tree_data.bg_color
+
+	# Background Texture
+	_bg_texture_input.set_texture(tree_data.bg_texture)
 
 	# Icon Sizes
 	var small_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.SMALL, Vector2.ZERO)
@@ -218,6 +254,11 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_medium_size_y.set_value_no_signal(medium_size.y)
 	_large_size_x.set_value_no_signal(large_size.x)
 	_large_size_y.set_value_no_signal(large_size.y)
+
+	# Line Textures
+	_line_normal_input.set_texture(tree_data.line_texture_normal)
+	_line_intermediate_input.set_texture(tree_data.line_texture_intermediate)
+	_line_active_input.set_texture(tree_data.line_texture_active)
 
 	# Interaction
 	_revealed_check.button_pressed = tree_data.revealed
@@ -258,6 +299,22 @@ func _on_bg_color_changed(color: Color) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
 	editor.tree.bg_color = color
+	background_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_bg_texture_changed(path: String) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.bg_texture = load(path) as Texture2D
+	background_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_bg_texture_cleared() -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.bg_texture = null
 	background_changed.emit()
 	changed.emit()
 	_notify_dirty()
@@ -307,6 +364,54 @@ func _on_large_size_changed(_value: float) -> void:
 		return
 	editor.tree.node_size[BayterekNode.NodeType.LARGE] = Vector2(_large_size_x.value, _large_size_y.value)
 	node_size_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_line_normal_changed(path: String) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.line_texture_normal = load(path) as Texture2D
+	line_texture_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_line_normal_cleared() -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.line_texture_normal = null
+	line_texture_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_line_intermediate_changed(path: String) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.line_texture_intermediate = load(path) as Texture2D
+	line_texture_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_line_intermediate_cleared() -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.line_texture_intermediate = null
+	line_texture_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_line_active_changed(path: String) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.line_texture_active = load(path) as Texture2D
+	line_texture_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_line_active_cleared() -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.line_texture_active = null
+	line_texture_changed.emit()
 	changed.emit()
 	_notify_dirty()
 
@@ -443,13 +548,6 @@ func _add_section_label(parent: Control, text: String) -> void:
 	label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
 	parent.add_child(label)
 
-# ============================================================
-# ICON/NODE SIZE ÇİFT SATIRLARI
-# ============================================================
-# Bu iki fonksiyon, "Small Node" satırı ile X/Y satırlarını
-# ayrı ayrı oluşturmak yerine tek satırlık bir HBox içine
-# iki spinbox (X ve Y) yerleştirir.
-
 func _make_int_pair_row(parent: Control, label_text: String, axis: String) -> SpinBox:
 	var row := HBoxContainer.new()
 	parent.add_child(row)
@@ -478,9 +576,6 @@ func _make_int_pair_row(parent: Control, label_text: String, axis: String) -> Sp
 	return spin
 
 func _make_int_pair_row_end(axis: String) -> SpinBox:
-	# Bu fonksiyon, bir önceki satıra Y spinbox'ı eklemek için
-	# aslında parent'ı kullanır. Basitlik için ayrı bir satıra
-	# yerleştiriyoruz.
 	var parent := _content
 	var row := HBoxContainer.new()
 	parent.add_child(row)
