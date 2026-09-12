@@ -7,14 +7,24 @@
 script = ExtResource("1_dlbxo")
 id = 4
 name = "Small Node"
-position = Vector2(-481.5, -212)
+position = Vector2(-480, -208)
+out_nodes = Array[int]([7])
+locked = true
+
+[sub_resource type="Resource" id="Resource_8t7ab"]
+script = ExtResource("1_dlbxo")
+id = 7
+name = "Medium Node"
+type = 1
+position = Vector2(-560, -288)
+in_nodes = Array[int]([4])
 
 [resource]
 script = ExtResource("2_8t7ab")
 id = "tree_1"
 name = "Tree 1"
 bg_color = Color(0.09375, 0.09375, 0.09375, 1)
-id_counter = 6
+id_counter = 7
 icon_sizes = {
 0: Vector2(0, 0),
 1: Vector2(0, 0),
@@ -30,4 +40,4 @@ node_size = {
 1: Vector2(48, 48),
 2: Vector2(64, 64)
 }
-nodes = Array[ExtResource("1_dlbxo")]([SubResource("Resource_dlbxo")])
+nodes = Array[ExtResource("1_dlbxo")]([SubResource("Resource_dlbxo"), SubResource("Resource_8t7ab")])

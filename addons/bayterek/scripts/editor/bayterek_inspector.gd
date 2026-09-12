@@ -32,6 +32,12 @@ var _border_normal_input: BayterekInspectorTextureInput
 var _border_intermediate_input: BayterekInspectorTextureInput
 var _border_active_input: BayterekInspectorTextureInput
 
+# Attributes
+var _attributes_panel: VBoxContainer
+var _attributes_empty: Label
+var _attributes_list: VBoxContainer
+var _attr_checkboxes: Dictionary = {}  # attr_id -> CheckBox
+
 var _updating_ui: bool = false
 
 func _ready() -> void:
@@ -206,6 +212,27 @@ func _build_ui() -> void:
 	_border_active_input.cleared.connect(_on_border_active_cleared)
 	_visuals_panel.add_child(_border_active_input)
 
+	# --- Attributes ---
+	_attributes_panel = VBoxContainer.new()
+	_content.add_child(_attributes_panel)
+
+	var attr_sep := HSeparator.new()
+	_attributes_panel.add_child(attr_sep)
+
+	var attr_title := Label.new()
+	attr_title.text = "Attributes"
+	attr_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	_attributes_panel.add_child(attr_title)
+
+	_attributes_empty = Label.new()
+	_attributes_empty.text = "(Tree'de attribute tanımlı değil)"
+	_attributes_empty.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	_attributes_panel.add_child(_attributes_empty)
+
+	_attributes_list = VBoxContainer.new()
+	_attributes_list.add_theme_constant_override("separation", 2)
+	_attributes_panel.add_child(_attributes_list)
+
 func init(tree_view: BayterekTreeView) -> void:
 	pass
 
@@ -248,6 +275,9 @@ func inspect(node: BayterekNodeButton) -> void:
 	_max_alloc_panel.visible = editor and editor.tree and editor.tree.multiallocation
 
 	_updating_ui = false
+
+	# Attributes listesini yenile
+	_rebuild_attributes_list()
 
 func update_position_only(pos: Vector2) -> void:
 	if _updating_ui:
@@ -369,6 +399,66 @@ func _on_border_active_cleared() -> void:
 	_current_node.node_data.border_active = null
 	changed.emit()
 	_notify_editor_dirty()
+
+# ============================================================
+# ATTRIBUTES
+# ============================================================
+
+func _rebuild_attributes_list() -> void:
+	for child in _attributes_list.get_children():
+		child.queue_free()
+	_attr_checkboxes.clear()
+
+	if not editor or not editor.tree:
+		_attributes_empty.visible = true
+		return
+
+	var tree_attrs: Dictionary = editor.tree.attributes
+	if tree_attrs.is_empty():
+		_attributes_empty.visible = true
+		return
+
+	_attributes_empty.visible = false
+
+	var ids: Array = tree_attrs.keys()
+	ids.sort()
+
+	for attr_id in ids:
+		var attr: BayterekAttribute = tree_attrs[attr_id]
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		_attributes_list.add_child(row)
+
+		var check := CheckBox.new()
+		check.text = "%s (%s)" % [attr.name, attr_id]
+		check.size_flags_horizontal = SIZE_EXPAND_FILL
+		check.button_pressed = _current_node and _current_node.node_data.attributes.has(attr_id)
+		check.toggled.connect(_on_attr_toggled.bind(attr_id))
+		row.add_child(check)
+
+		_attr_checkboxes[attr_id] = check
+
+func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
+	if _updating_ui or not _current_node:
+		return
+	if not editor or not editor.tree:
+		return
+
+	if not editor.tree.attributes.has(attr_id):
+		return
+
+	if pressed:
+		var attr: BayterekAttribute = editor.tree.attributes[attr_id]
+		var values: Array = []
+		for i in attr.value_count:
+			values.append(0)
+		_current_node.node_data.attributes[attr_id] = values
+	else:
+		_current_node.node_data.attributes.erase(attr_id)
+
+	editor.set_dirty(true)
+	changed.emit()
 
 # ============================================================
 # YARDIMCI

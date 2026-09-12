@@ -1,7 +1,7 @@
 @tool
 class_name BayterekEditor
 extends Control
-## Graph editörü + sol hierarchy + sağ panel (Inspector/Settings).
+## Graph editörü + sol hierarchy + sağ panel (Inspector/Settings/Attributes).
 
 signal closed
 signal dirty_changed(editor: BayterekEditor, dirty: bool)
@@ -22,6 +22,7 @@ var tree_view: BayterekTreeView
 var tab_container: TabContainer
 var inspector: BayterekTreeEditorInspector
 var settings_editor: BayterekSettingsEditor
+var attributes_editor: BayterekAttributesEditor
 
 var context_menu: PopupMenu
 
@@ -64,14 +65,12 @@ func _build_ui() -> void:
 	h_split.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	h_split.split_offset = 200
 
-	# --- Sol: Hierarchy ---
 	hierarchy = BayterekTreeHierarchy.new()
 	hierarchy.name = "Hierarchy"
 	hierarchy.custom_minimum_size = Vector2(180, 0)
 	hierarchy.size_flags_vertical = SIZE_EXPAND_FILL
 	h_split.add_child(hierarchy)
 
-	# --- Orta: menu + canvas ---
 	left_container = VBoxContainer.new()
 	left_container.name = "LeftContainer"
 	left_container.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -100,7 +99,6 @@ func _build_ui() -> void:
 	edit_popup.id_pressed.connect(_on_edit_menu_pressed)
 	menu_bar.add_child(edit_btn)
 
-	# --- Sağ: TabContainer ---
 	tab_container = TabContainer.new()
 	tab_container.name = "TabContainer"
 	tab_container.custom_minimum_size = Vector2(320, 0)
@@ -120,6 +118,13 @@ func _build_ui() -> void:
 	settings_editor.size_flags_vertical = SIZE_EXPAND_FILL
 	tab_container.add_child(settings_editor)
 	tab_container.set_tab_title(1, "Settings")
+
+	attributes_editor = BayterekAttributesEditor.new()
+	attributes_editor.name = "Attributes"
+	attributes_editor.size_flags_horizontal = SIZE_EXPAND_FILL
+	attributes_editor.size_flags_vertical = SIZE_EXPAND_FILL
+	tab_container.add_child(attributes_editor)
+	tab_container.set_tab_title(2, "Attributes")
 
 func _create_tree_view() -> void:
 	tree_view = BayterekTreeView.new()
@@ -149,6 +154,10 @@ func _create_tree_view() -> void:
 		settings_editor.size_changed.connect(_on_settings_size_changed)
 		settings_editor.background_changed.connect(_on_settings_background_changed)
 		settings_editor.border_scale_changed.connect(_on_settings_border_scale_changed)
+
+	if attributes_editor:
+		attributes_editor.editor = self
+		attributes_editor.init()
 
 func _create_context_menu() -> void:
 	context_menu = PopupMenu.new()
