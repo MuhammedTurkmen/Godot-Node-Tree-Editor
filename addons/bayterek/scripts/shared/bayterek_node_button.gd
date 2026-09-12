@@ -121,14 +121,19 @@ func refresh_visuals() -> void:
 		_icon_fallback.visible = true
 		_icon_fallback.color = _get_type_color(node_data.type)
 
-	# Border (state'e göre ileride değişecek, şu an normal)
+	# Border
 	_update_border()
+
+	# Locked ise yarı saydam göster
+	if node_data.locked:
+		modulate = Color(1, 1, 1, 0.5)
+	else:
+		modulate = Color.WHITE
 
 func _update_border() -> void:
 	if not node_data:
 		return
 
-	# Şimdilik normal border kullanılıyor (state yönetimi 5+'ta)
 	var tex: Texture2D = node_data.border_normal
 
 	if tex:

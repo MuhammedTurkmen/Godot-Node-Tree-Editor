@@ -2,37 +2,19 @@
 
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_dlbxo"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_8t7ab"]
-[ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://icon.svg" id="2_dhcah"]
 
 [sub_resource type="Resource" id="Resource_dlbxo"]
 script = ExtResource("1_dlbxo")
-id = 1
+id = 4
 name = "Small Node"
-position = Vector2(458, -31)
-in_nodes = Array[int]([2])
-
-[sub_resource type="Resource" id="Resource_8t7ab"]
-script = ExtResource("1_dlbxo")
-id = 2
-name = "Medium Node"
-type = 1
-icon = ExtResource("2_dhcah")
-position = Vector2(-173, -32.5)
-out_nodes = Array[int]([1])
-
-[sub_resource type="Resource" id="Resource_dhcah"]
-script = ExtResource("1_dlbxo")
-id = 3
-name = "Large Node"
-type = 2
-position = Vector2(603, -158)
+position = Vector2(-481.5, -212)
 
 [resource]
 script = ExtResource("2_8t7ab")
 id = "tree_1"
 name = "Tree 1"
 bg_color = Color(0.09375, 0.09375, 0.09375, 1)
-id_counter = 3
+id_counter = 6
 icon_sizes = {
 0: Vector2(0, 0),
 1: Vector2(0, 0),
@@ -48,4 +30,4 @@ node_size = {
 1: Vector2(48, 48),
 2: Vector2(64, 64)
 }
-nodes = Array[ExtResource("1_dlbxo")]([SubResource("Resource_dlbxo"), SubResource("Resource_8t7ab"), SubResource("Resource_dhcah")])
+nodes = Array[ExtResource("1_dlbxo")]([SubResource("Resource_dlbxo")])

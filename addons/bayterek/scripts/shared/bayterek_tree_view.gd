@@ -76,6 +76,8 @@ func _input(event: InputEvent) -> void:
 func select_node(node: BayterekNodeButton, additive: bool = false) -> void:
 	if not node:
 		return
+	if node.node_data and node.node_data.locked:
+		return
 
 	if additive:
 		if selected_nodes.has(node):
@@ -102,7 +104,15 @@ func delete_selected() -> void:
 	if selected_nodes.is_empty():
 		return
 
-	var to_delete := selected_nodes.duplicate()
+	# Locked olanları ayıkla
+	var to_delete: Array = []
+	for n in selected_nodes:
+		if is_instance_valid(n) and not n.node_data.locked:
+			to_delete.append(n)
+
+	if to_delete.is_empty():
+		return
+
 	clear_selection()
 
 	if not undo_redo_provider or not undo_redo_provider.undo_redo:
@@ -160,12 +170,20 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 # ============================================================
 
 func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void:
+	if not node or not node.node_data:
+		return
+	# Locked node'a tıklanırsa hiçbir şey yapma
+	if node.node_data.locked:
+		return
+
 	var shift_pressed: bool = Input.is_key_pressed(KEY_SHIFT)
 
 	if shift_pressed and not selected_nodes.is_empty():
 		var created_connections: Array = []
 		for from_node in selected_nodes:
 			if from_node == node:
+				continue
+			if from_node.node_data.locked:
 				continue
 			if connections_service.has_line(from_node.id, node.id):
 				continue
@@ -198,6 +216,11 @@ func _do_remove_connection(from_id: int, to_id: int) -> void:
 # ============================================================
 
 func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> void:
+	if not node or not node.node_data:
+		return
+	if node.node_data.locked:
+		return
+
 	if not selected_nodes.has(node):
 		if not Input.is_key_pressed(KEY_CTRL):
 			select_node(node)
@@ -305,6 +328,8 @@ func _on_selection_box_selected(rect: Rect2) -> void:
 
 	for node in nodes_service.get_all_nodes():
 		if not is_instance_valid(node):
+			continue
+		if node.node_data and node.node_data.locked:
 			continue
 		var node_rect := Rect2(node.node_data.position - (node.size * 0.5), node.size)
 		if rect.intersects(node_rect):

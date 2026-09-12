@@ -160,7 +160,6 @@ func _on_item_selected() -> void:
 	tree_view.select_node(node, ctrl)
 
 func _on_item_activated() -> void:
-	# Çift tıkla → seçim (şimdilik)
 	_on_item_selected()
 
 func _on_selection_changed(selected: Array) -> void:
@@ -200,6 +199,18 @@ func _on_item_button_clicked(item: TreeItem, column: int, id: int, mouse_button_
 		node.node_data.locked = not node.node_data.locked
 		var icon_name: String = "Lock" if node.node_data.locked else "Unlock"
 		item.set_button(0, 0, EditorInterface.get_editor_theme().get_icon(icon_name, Bayterek.ICON_THEME))
+
+		# Görsel efekt uygula
+		if node.has_method("refresh_visuals"):
+			node.refresh_visuals()
+
+		# Locked ise canvas'tan seçimi kaldır
+		if node.node_data.locked and tree_view:
+			if tree_view.selected_nodes.has(node):
+				tree_view.selected_nodes.erase(node)
+				node.set_selected(false)
+				tree_view.selection_changed.emit(tree_view.selected_nodes)
+
 		changed.emit()
 	elif id == 1:
 		# Delete
@@ -207,6 +218,10 @@ func _on_item_button_clicked(item: TreeItem, column: int, id: int, mouse_button_
 
 func _do_delete_node(node: BayterekNodeButton) -> void:
 	if not tree_view or not node:
+		return
+
+	# Locked node'u silme
+	if node.node_data and node.node_data.locked:
 		return
 
 	# Undo varsa oradan geçir
