@@ -15,10 +15,16 @@ var nodes_container: Control
 
 var camera: BayterekCamera
 var nodes_service: BayterekNodesService
+var selection_box: BayterekSelectionBox
 
 var selected_nodes: Array[BayterekNodeButton] = []
 
 var _tree_data: BayterekTree
+
+# --- Drag state ---
+var _dragging: bool = false
+var _drag_start_mouse_tree: Vector2 = Vector2.ZERO
+var _drag_start_positions: Dictionary = {}   # node -> tree pos
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -33,6 +39,11 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_create_grid()
 	_create_camera()
 	_create_services()
+	_create_selection_box()
+
+# ============================================================
+# INPUT
+# ============================================================
 
 func _gui_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
@@ -41,13 +52,17 @@ func _gui_input(event: InputEvent) -> void:
 	if camera:
 		camera.input(event)
 
-	# Sol tık → boş alana tıklandıysa seçimi temizle
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			# Eğer tıklanan yerde node yoksa (node kendi input'unu yakalar)
-			# ve bu event bize ulaştıysa → boş alan tıklaması
-			if not Input.is_key_pressed(KEY_CTRL) and not Input.is_key_pressed(KEY_META):
-				clear_selection()
+	if selection_box:
+		selection_box.handle_input(event)
+
+func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_DELETE:
+			if not selected_nodes.is_empty():
+				delete_selected()
+				get_viewport().set_input_as_handled()
 
 # ============================================================
 # SEÇİM
@@ -59,14 +74,12 @@ func select_node(node: BayterekNodeButton, additive: bool = false) -> void:
 
 	if additive:
 		if selected_nodes.has(node):
-			# Çıkar
 			selected_nodes.erase(node)
 			node.set_selected(false)
 		else:
 			selected_nodes.append(node)
 			node.set_selected(true)
 	else:
-		# Tek seçim
 		clear_selection()
 		selected_nodes.append(node)
 		node.set_selected(true)
@@ -92,17 +105,70 @@ func delete_selected() -> void:
 			nodes_service.delete_node(node)
 
 # ============================================================
-# INPUT KISAYOLLARI
+# TAŞIMA
 # ============================================================
 
-func _input(event: InputEvent) -> void:
-	if not is_visible_in_tree():
+func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> void:
+	# Seçili değilse seç
+	if not selected_nodes.has(node):
+		if not Input.is_key_pressed(KEY_CTRL):
+			select_node(node)
+
+	_dragging = true
+	_drag_start_mouse_tree = screen_to_tree(mouse_screen_pos)
+	_drag_start_positions.clear()
+
+	for n in selected_nodes:
+		if is_instance_valid(n):
+			_drag_start_positions[n] = n.node_data.position
+
+func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> void:
+	if not _dragging:
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_DELETE:
-			if not selected_nodes.is_empty():
-				delete_selected()
-				get_viewport().set_input_as_handled()
+
+	var current_mouse_tree: Vector2 = screen_to_tree(mouse_screen_pos)
+	var delta: Vector2 = current_mouse_tree - _drag_start_mouse_tree
+
+	var snap_enabled: bool = Input.is_key_pressed(KEY_SHIFT)
+	var grid_size: Vector2 = Bayterek.GRID_CELL_SIZE
+
+	for n in _drag_start_positions.keys():
+		if not is_instance_valid(n):
+			continue
+		var start_pos: Vector2 = _drag_start_positions[n]
+		var new_pos: Vector2 = start_pos + delta
+
+		if snap_enabled:
+			new_pos = Vector2(
+				round(new_pos.x / grid_size.x) * grid_size.x,
+				round(new_pos.y / grid_size.y) * grid_size.y
+			)
+
+		nodes_service.update_position(n, new_pos)
+
+func _on_node_drag_ended(node: BayterekNodeButton) -> void:
+	_dragging = false
+	_drag_start_positions.clear()
+
+# ============================================================
+# SELECTION BOX
+# ============================================================
+
+func _on_selection_box_selected(rect: Rect2) -> void:
+	if rect.size.x < 1.0 and rect.size.y < 1.0:
+		clear_selection()
+		return
+
+	var additive: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
+	if not additive:
+		clear_selection()
+
+	for node in nodes_service.get_all_nodes():
+		if not is_instance_valid(node):
+			continue
+		var node_rect := Rect2(node.node_data.position - (node.size * 0.5), node.size)
+		if rect.intersects(node_rect):
+			select_node(node, true)
 
 # ============================================================
 # CONTAINERS
@@ -188,9 +254,18 @@ func _create_services() -> void:
 	nodes_service.load_tree(_tree_data)
 	nodes_service.node_created.connect(_on_nodes_service_node_created)
 	nodes_service.node_pressed.connect(_on_nodes_service_node_pressed)
+	nodes_service.node_drag_started.connect(_on_node_drag_started)
+	nodes_service.node_dragged.connect(_on_node_dragged)
+	nodes_service.node_drag_ended.connect(_on_node_drag_ended)
+
+func _create_selection_box() -> void:
+	selection_box = BayterekSelectionBox.new()
+	selection_box.set_view(self)
+	selection_box.selected.connect(_on_selection_box_selected)
+	add_child(selection_box)
 
 # ============================================================
-# KOORDİNAT DÖNÜŞÜMLERİ
+# KOORDİNAT
 # ============================================================
 
 func screen_to_tree(screen_pos: Vector2) -> Vector2:

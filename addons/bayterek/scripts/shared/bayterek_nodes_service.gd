@@ -5,6 +5,9 @@ extends BayterekBaseService
 
 signal node_created(node: BayterekNodeButton)
 signal node_pressed(node: BayterekNodeButton, additive: bool)
+signal node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2)
+signal node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
+signal node_drag_ended(node: BayterekNodeButton)
 
 var _nodes: Dictionary = {}   # id -> BayterekNodeButton
 
@@ -44,6 +47,9 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 	_tree_data.nodes.append(node_data)
 
 	node.pressed.connect(_on_node_pressed.bind(node))
+	node.drag_started.connect(_on_node_drag_started)
+	node.dragged.connect(_on_node_dragged)
+	node.drag_ended.connect(_on_node_drag_ended)
 
 	node_created.emit(node)
 	return node
@@ -83,7 +89,6 @@ func _build_node(node_type: BayterekNode.NodeType) -> BayterekNodeButton:
 	node.size = node_size
 	node.custom_minimum_size = node_size
 
-	# Arka plan (renkli kutu)
 	var icon := ColorRect.new()
 	icon.name = "Icon"
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -121,6 +126,19 @@ func _default_name(node_type: BayterekNode.NodeType) -> String:
 		BayterekNode.NodeType.DECORATION: return "Decoration"
 	return "Node"
 
+# ============================================================
+# SIGNAL HANDLERS
+# ============================================================
+
 func _on_node_pressed(node: BayterekNodeButton) -> void:
 	var additive: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
 	node_pressed.emit(node, additive)
+
+func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> void:
+	node_drag_started.emit(node, mouse_screen_pos)
+
+func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> void:
+	node_dragged.emit(node, mouse_screen_pos)
+
+func _on_node_drag_ended(node: BayterekNodeButton) -> void:
+	node_drag_ended.emit(node)

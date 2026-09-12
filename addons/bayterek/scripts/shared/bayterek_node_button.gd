@@ -6,6 +6,9 @@ extends BaseButton
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
 signal node_hovered(node: BayterekNodeButton, is_hovered: bool)
+signal drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2)
+signal dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
+signal drag_ended(node: BayterekNodeButton)
 
 var node_data: BayterekNode
 var prefab: BayterekPrefab
@@ -15,6 +18,9 @@ var selected: bool = false
 
 var _icon_rect: ColorRect
 var _select_border: Panel
+
+var _is_dragging: bool = false
+var _press_pos: Vector2 = Vector2.ZERO
 
 var id: int:
 	get: return node_data.id if node_data else -1
@@ -42,11 +48,11 @@ var position_data: Vector2:
 
 func _ready() -> void:
 	button_mask = MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT
-	mouse_filter = Control.MOUSE_FILTER_PASS
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 
-	# Seçim border'ı (en üstte görünsün)
+	# Seçim border'ı
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -69,6 +75,36 @@ func set_selected(value: bool) -> void:
 	selected = value
 	if _select_border:
 		_select_border.visible = value
+
+# ============================================================
+# INPUT / DRAG
+# ============================================================
+
+func _gui_input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				_press_pos = event.position
+				_is_dragging = false
+			else:
+				if _is_dragging:
+					drag_ended.emit(self)
+					_is_dragging = false
+				accept_event()
+
+	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		if not _is_dragging:
+			if event.position.distance_to(_press_pos) > 4.0:
+				_is_dragging = true
+				var screen_pos: Vector2 = get_global_transform() * event.position
+				drag_started.emit(self, screen_pos)
+		if _is_dragging:
+			var screen_pos: Vector2 = get_global_transform() * event.position
+			dragged.emit(self, screen_pos)
+			accept_event()
 
 func _on_mouse_entered() -> void:
 	is_mouse_over = true
