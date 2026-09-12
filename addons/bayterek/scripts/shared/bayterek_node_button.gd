@@ -11,6 +11,10 @@ var node_data: BayterekNode
 var prefab: BayterekPrefab
 
 var is_mouse_over: bool = false
+var selected: bool = false
+
+var _icon_rect: ColorRect
+var _select_border: Panel
 
 var id: int:
 	get: return node_data.id if node_data else -1
@@ -41,6 +45,30 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
+
+	# Seçim border'ı (en üstte görünsün)
+	_select_border = Panel.new()
+	_select_border.name = "SelectBorder"
+	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_select_border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_select_border.offset_left = -3
+	_select_border.offset_top = -3
+	_select_border.offset_right = 3
+	_select_border.offset_bottom = 3
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0, 0, 0, 0)
+	style.border_color = Color(1, 0.6, 0.1, 1)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(2)
+	_select_border.add_theme_stylebox_override("panel", style)
+	_select_border.visible = false
+	add_child(_select_border)
+
+func set_selected(value: bool) -> void:
+	selected = value
+	if _select_border:
+		_select_border.visible = value
 
 func _on_mouse_entered() -> void:
 	is_mouse_over = true

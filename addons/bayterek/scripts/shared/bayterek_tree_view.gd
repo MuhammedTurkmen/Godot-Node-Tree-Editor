@@ -4,7 +4,7 @@ extends Control
 ## Editör canvas'ı.
 
 signal node_created(node: BayterekNodeButton)
-signal node_pressed(node: BayterekNodeButton)
+signal selection_changed(selected: Array)
 
 var main_container: Control
 var background_container: Control
@@ -15,6 +15,8 @@ var nodes_container: Control
 
 var camera: BayterekCamera
 var nodes_service: BayterekNodesService
+
+var selected_nodes: Array[BayterekNodeButton] = []
 
 var _tree_data: BayterekTree
 
@@ -35,8 +37,76 @@ func load_tree(tree_data: BayterekTree) -> void:
 func _gui_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
+
 	if camera:
 		camera.input(event)
+
+	# Sol tık → boş alana tıklandıysa seçimi temizle
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			# Eğer tıklanan yerde node yoksa (node kendi input'unu yakalar)
+			# ve bu event bize ulaştıysa → boş alan tıklaması
+			if not Input.is_key_pressed(KEY_CTRL) and not Input.is_key_pressed(KEY_META):
+				clear_selection()
+
+# ============================================================
+# SEÇİM
+# ============================================================
+
+func select_node(node: BayterekNodeButton, additive: bool = false) -> void:
+	if not node:
+		return
+
+	if additive:
+		if selected_nodes.has(node):
+			# Çıkar
+			selected_nodes.erase(node)
+			node.set_selected(false)
+		else:
+			selected_nodes.append(node)
+			node.set_selected(true)
+	else:
+		# Tek seçim
+		clear_selection()
+		selected_nodes.append(node)
+		node.set_selected(true)
+
+	selection_changed.emit(selected_nodes)
+
+func clear_selection() -> void:
+	for node in selected_nodes:
+		if is_instance_valid(node):
+			node.set_selected(false)
+	selected_nodes.clear()
+	selection_changed.emit(selected_nodes)
+
+func delete_selected() -> void:
+	if selected_nodes.is_empty():
+		return
+
+	var to_delete := selected_nodes.duplicate()
+	clear_selection()
+
+	for node in to_delete:
+		if is_instance_valid(node):
+			nodes_service.delete_node(node)
+
+# ============================================================
+# INPUT KISAYOLLARI
+# ============================================================
+
+func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_DELETE:
+			if not selected_nodes.is_empty():
+				delete_selected()
+				get_viewport().set_input_as_handled()
+
+# ============================================================
+# CONTAINERS
+# ============================================================
 
 func _create_containers() -> void:
 	main_container = Control.new()
@@ -119,12 +189,20 @@ func _create_services() -> void:
 	nodes_service.node_created.connect(_on_nodes_service_node_created)
 	nodes_service.node_pressed.connect(_on_nodes_service_node_pressed)
 
+# ============================================================
+# KOORDİNAT DÖNÜŞÜMLERİ
+# ============================================================
+
 func screen_to_tree(screen_pos: Vector2) -> Vector2:
 	var local: Vector2 = main_container.get_global_transform().affine_inverse() * (get_global_transform() * screen_pos)
 	return local - (_tree_data.size * 0.5)
 
+# ============================================================
+# SIGNAL FORWARDING
+# ============================================================
+
 func _on_nodes_service_node_created(node: BayterekNodeButton) -> void:
 	node_created.emit(node)
 
-func _on_nodes_service_node_pressed(node: BayterekNodeButton) -> void:
-	node_pressed.emit(node)
+func _on_nodes_service_node_pressed(node: BayterekNodeButton, additive: bool) -> void:
+	select_node(node, additive)

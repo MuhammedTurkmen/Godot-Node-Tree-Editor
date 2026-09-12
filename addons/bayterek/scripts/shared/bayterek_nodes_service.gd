@@ -4,7 +4,7 @@ extends BayterekBaseService
 ## Node oluşturma / silme / yönetme.
 
 signal node_created(node: BayterekNodeButton)
-signal node_pressed(node: BayterekNodeButton)
+signal node_pressed(node: BayterekNodeButton, additive: bool)
 
 var _nodes: Dictionary = {}   # id -> BayterekNodeButton
 
@@ -83,6 +83,7 @@ func _build_node(node_type: BayterekNode.NodeType) -> BayterekNodeButton:
 	node.size = node_size
 	node.custom_minimum_size = node_size
 
+	# Arka plan (renkli kutu)
 	var icon := ColorRect.new()
 	icon.name = "Icon"
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -121,4 +122,5 @@ func _default_name(node_type: BayterekNode.NodeType) -> String:
 	return "Node"
 
 func _on_node_pressed(node: BayterekNodeButton) -> void:
-	node_pressed.emit(node)
+	var additive: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
+	node_pressed.emit(node, additive)
