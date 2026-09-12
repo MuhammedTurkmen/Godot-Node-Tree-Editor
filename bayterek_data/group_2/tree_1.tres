@@ -1,23 +1,22 @@
 [gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://b1pewnd7kqtkb"]
 
-[ext_resource type="Script" uid="uid://hqjiiihenipg" path="res://addons/bayterek/scripts/resources/bayterek_attribute.gd" id="1_8t7ab"]
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_dlbxo"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_8t7ab"]
+[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="2_dhcah"]
 
-[sub_resource type="Resource" id="Resource_dhcah"]
-script = ExtResource("1_8t7ab")
-id = "new_attribute"
-name = "New Attribute"
-effect = "Effect #"
-value_count = 4
+[sub_resource type="Resource" id="Resource_xnnbm"]
+script = ExtResource("2_dhcah")
+reversed = true
 
 [sub_resource type="Resource" id="Resource_dlbxo"]
 script = ExtResource("1_dlbxo")
 id = 4
 name = "Small Node"
-position = Vector2(-480, -208)
+position = Vector2(-221, -307)
+line_data = {
+7: SubResource("Resource_xnnbm")
+}
 out_nodes = Array[int]([7])
-locked = true
 
 [sub_resource type="Resource" id="Resource_8t7ab"]
 script = ExtResource("1_dlbxo")
@@ -26,9 +25,7 @@ name = "Medium Node"
 type = 1
 position = Vector2(-560, -288)
 in_nodes = Array[int]([4])
-attributes = {
-"new_attribute": [[0, 0, 0, 0]]
-}
+max_allocations = 3
 
 [resource]
 script = ExtResource("2_8t7ab")
@@ -53,6 +50,3 @@ node_size = {
 2: Vector2(64, 64)
 }
 nodes = Array[ExtResource("1_dlbxo")]([SubResource("Resource_dlbxo"), SubResource("Resource_8t7ab")])
-attributes = {
-"new_attribute": SubResource("Resource_dhcah")
-}

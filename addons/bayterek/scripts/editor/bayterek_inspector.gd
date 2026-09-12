@@ -36,8 +36,13 @@ var _border_active_input: BayterekInspectorTextureInput
 var _attributes_panel: VBoxContainer
 var _attributes_empty: Label
 var _attributes_list: VBoxContainer
-var _attr_checkboxes: Dictionary = {}    # attr_id -> CheckBox
-var _attr_value_inputs: Dictionary = {}  # attr_id -> Dictionary (level -> Array[SpinBox])
+var _attr_checkboxes: Dictionary = {}
+var _attr_value_inputs: Dictionary = {}
+
+# Connections
+var _connections_panel: VBoxContainer
+var _connections_empty: Label
+var _connections_list: VBoxContainer
 
 var _updating_ui: bool = false
 
@@ -234,11 +239,32 @@ func _build_ui() -> void:
 	_attributes_list.add_theme_constant_override("separation", 4)
 	_attributes_panel.add_child(_attributes_list)
 
+	# --- Connections ---
+	_connections_panel = VBoxContainer.new()
+	_content.add_child(_connections_panel)
+
+	var conn_sep := HSeparator.new()
+	_connections_panel.add_child(conn_sep)
+
+	var conn_title := Label.new()
+	conn_title.text = "Connections"
+	conn_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	_connections_panel.add_child(conn_title)
+
+	_connections_empty = Label.new()
+	_connections_empty.text = "(Bu node'dan çıkan bağlantı yok)"
+	_connections_empty.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	_connections_panel.add_child(_connections_empty)
+
+	_connections_list = VBoxContainer.new()
+	_connections_list.add_theme_constant_override("separation", 4)
+	_connections_panel.add_child(_connections_list)
+
 func init(tree_view: BayterekTreeView) -> void:
 	pass
 
 # ============================================================
-# PUBLIC — dışarıdan çağrılır
+# PUBLIC
 # ============================================================
 
 func refresh_attributes() -> void:
@@ -291,6 +317,7 @@ func inspect(node: BayterekNodeButton) -> void:
 	_updating_ui = false
 
 	_rebuild_attributes_list()
+	_rebuild_connections_list()
 
 func update_position_only(pos: Vector2) -> void:
 	if _updating_ui:
@@ -332,21 +359,18 @@ func _on_max_alloc_changed(value: float) -> void:
 	var new_max: int = int(value)
 	_current_node.node_data.max_allocations = new_max
 
-	# Multi-allocation'da seviye array'lerini boyutlandır
 	if editor and editor.tree and editor.tree.multiallocation:
 		for attr_id in _current_node.node_data.attributes.keys():
 			var data = _current_node.node_data.attributes[attr_id]
 			if not data is Array:
 				continue
 			if data.size() > 0 and not data[0] is Array:
-				# Eski format → önce multi'ye çevir
 				var single: Array = data.duplicate()
 				var new_data: Array = []
 				for l in new_max:
 					new_data.append(single.duplicate())
 				_current_node.node_data.attributes[attr_id] = new_data
 				continue
-			# Zaten multi format
 			var sample: Array = []
 			if data.size() > 0:
 				for v in data[0]:
@@ -474,7 +498,6 @@ func _rebuild_attributes_list() -> void:
 		block.add_theme_constant_override("separation", 2)
 		_attributes_list.add_child(block)
 
-		# Checkbox
 		var check := CheckBox.new()
 		check.text = "%s (%s)" % [attr.name, attr_id]
 		check.button_pressed = _current_node and _current_node.node_data.attributes.has(attr_id)
@@ -484,13 +507,12 @@ func _rebuild_attributes_list() -> void:
 		_attr_checkboxes[attr_id] = check
 
 		var has_attr: bool = _current_node and _current_node.node_data.attributes.has(attr_id)
-		var attr_inputs: Dictionary = {}   # level -> Array[SpinBox]  (-1 = tek seviye)
+		var attr_inputs: Dictionary = {}
 
 		if multi and has_attr:
 			var max_alloc: int = _current_node.node_data.max_allocations
 			var raw_data = _current_node.node_data.attributes[attr_id]
 
-			# Data normalizasyonu
 			if not raw_data is Array:
 				raw_data = []
 				_current_node.node_data.attributes[attr_id] = raw_data
@@ -642,7 +664,6 @@ func _on_attr_value_changed(value: float, attr_id: String, index: int, level: in
 		v = int(value)
 
 	if level >= 0:
-		# Multi-allocation
 		var levels = _current_node.node_data.attributes[attr_id]
 		if not levels is Array:
 			return
@@ -655,13 +676,10 @@ func _on_attr_value_changed(value: float, attr_id: String, index: int, level: in
 			return
 		level_vals[index] = v
 	else:
-		# Tek seviye
 		var vals = _current_node.node_data.attributes[attr_id]
 		if not vals is Array:
 			return
-		# Multi-format uyumsuzluğu kontrolü
 		if vals.size() > 0 and vals[0] is Array:
-			# Beklenmedik durum — multi format ama level=-1
 			if index < 0 or index >= vals[0].size():
 				return
 			vals[0][index] = v
@@ -670,6 +688,214 @@ func _on_attr_value_changed(value: float, attr_id: String, index: int, level: in
 				return
 			vals[index] = v
 
+	editor.set_dirty(true)
+	changed.emit()
+
+# ============================================================
+# CONNECTIONS
+# ============================================================
+
+func _rebuild_connections_list() -> void:
+	for child in _connections_list.get_children():
+		child.queue_free()
+
+	if not _current_node:
+		_connections_empty.visible = true
+		return
+
+	var out_ids: Array = _current_node.node_data.out_nodes
+	if out_ids.is_empty():
+		_connections_empty.visible = true
+		return
+
+	_connections_empty.visible = false
+
+	for to_id in out_ids:
+		_create_connection_entry(to_id)
+
+func _create_connection_entry(to_id: int) -> void:
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		line_data = BayterekLineData.new()
+		_current_node.node_data.line_data[to_id] = line_data
+
+	# --- Kapsayıcı ---
+	var block := VBoxContainer.new()
+	block.add_theme_constant_override("separation", 2)
+	_connections_list.add_child(block)
+
+	# --- Başlık butonu (aç/kapa) ---
+	var header_btn := Button.new()
+	header_btn.text = "▶ Node %d" % to_id
+	header_btn.toggle_mode = true
+	header_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header_btn.custom_minimum_size = Vector2(0, 24)
+	block.add_child(header_btn)
+
+	# --- İçerik paneli (başta gizli) ---
+	var content_box := VBoxContainer.new()
+	content_box.visible = false
+	content_box.add_theme_constant_override("separation", 2)
+	block.add_child(content_box)
+
+	var tid_capture: int = to_id
+	var header_capture: Button = header_btn
+	var content_capture: VBoxContainer = content_box
+	header_btn.toggled.connect(func(pressed: bool):
+		content_capture.visible = pressed
+		header_capture.text = ("▼ Node %d" % tid_capture) if pressed else ("▶ Node %d" % tid_capture)
+	)
+
+	# --- Line Type ---
+	var type_row := HBoxContainer.new()
+	content_box.add_child(type_row)
+	var type_label := Label.new()
+	type_label.text = "Line Type"
+	type_label.custom_minimum_size = Vector2(90, 0)
+	type_row.add_child(type_label)
+
+	var type_dropdown := OptionButton.new()
+	type_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	type_dropdown.add_item("Straight", 0)
+	type_dropdown.add_item("Bezier", 1)
+	type_dropdown.add_item("Arc", 2)
+	type_dropdown.select(int(line_data.line_type))
+	type_dropdown.item_selected.connect(_on_line_type_changed.bind(to_id))
+	type_row.add_child(type_dropdown)
+
+	# --- Curve Height ---
+	var curve_row := HBoxContainer.new()
+	content_box.add_child(curve_row)
+	var curve_label := Label.new()
+	curve_label.text = "Curve"
+	curve_label.custom_minimum_size = Vector2(90, 0)
+	curve_row.add_child(curve_label)
+
+	var curve_input := SpinBox.new()
+	curve_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	curve_input.min_value = 0
+	curve_input.max_value = 500
+	curve_input.step = 1
+	curve_input.value = line_data.curve_height
+	curve_input.value_changed.connect(_on_curve_height_changed.bind(to_id))
+	curve_row.add_child(curve_input)
+
+	curve_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER)
+
+	# --- Segments ---
+	var seg_row := HBoxContainer.new()
+	content_box.add_child(seg_row)
+	var seg_label := Label.new()
+	seg_label.text = "Segments"
+	seg_label.custom_minimum_size = Vector2(90, 0)
+	seg_row.add_child(seg_label)
+
+	var seg_input := SpinBox.new()
+	seg_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	seg_input.min_value = 2
+	seg_input.max_value = 64
+	seg_input.step = 1
+	seg_input.value = line_data.segments
+	seg_input.value_changed.connect(_on_segments_changed.bind(to_id))
+	seg_row.add_child(seg_input)
+
+	seg_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT)
+
+	# --- Reversed ---
+	var rev_row := HBoxContainer.new()
+	content_box.add_child(rev_row)
+	var rev_label := Label.new()
+	rev_label.text = "Reversed"
+	rev_label.custom_minimum_size = Vector2(90, 0)
+	rev_row.add_child(rev_label)
+
+	var rev_check := CheckBox.new()
+	rev_check.text = "On"
+	rev_check.button_pressed = line_data.reversed
+	rev_check.toggled.connect(_on_reversed_changed.bind(to_id))
+	rev_row.add_child(rev_check)
+
+	rev_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT)
+
+	# --- Delete butonu ---
+	var del_row := HBoxContainer.new()
+	content_box.add_child(del_row)
+	var del_spacer := Control.new()
+	del_spacer.size_flags_horizontal = SIZE_EXPAND_FILL
+	del_row.add_child(del_spacer)
+
+	var del_btn := Button.new()
+	del_btn.text = "Delete Connection"
+	del_btn.pressed.connect(_on_delete_connection.bind(to_id))
+	del_row.add_child(del_btn)
+
+func _on_line_type_changed(index: int, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+
+	line_data.line_type = index as BayterekLineData.LineType
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	_rebuild_connections_list()
+
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_curve_height_changed(value: float, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+	line_data.curve_height = value
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_segments_changed(value: float, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+	line_data.segments = int(value)
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_reversed_changed(pressed: bool, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+	line_data.reversed = pressed
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_delete_connection(to_id: int) -> void:
+	if not _current_node:
+		return
+	if not editor or not editor.tree_view:
+		return
+
+	editor.tree_view.connections_service.remove_connection(_current_node.id, to_id)
+	_rebuild_connections_list()
 	editor.set_dirty(true)
 	changed.emit()
 
