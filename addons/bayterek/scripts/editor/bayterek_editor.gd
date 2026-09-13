@@ -339,13 +339,14 @@ func _on_prefab_name_changed(prefab: BayterekPrefab) -> void:
 	for node in affected:
 		node.node_data.name = prefab.node_name
 		node.node_data.external_id = prefab.id
-	_refresh_prefabs_panels()
+	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
 func _on_prefab_description_changed(prefab: BayterekPrefab) -> void:
 	var affected: Array = _get_nodes_of_prefab(prefab)
 	for node in affected:
 		node.node_data.description = prefab.description
+	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
 func _on_prefab_icon_changed(prefab: BayterekPrefab) -> void:
@@ -354,6 +355,7 @@ func _on_prefab_icon_changed(prefab: BayterekPrefab) -> void:
 		node.node_data.icon = prefab.icon
 		if node.has_method("refresh_visuals"):
 			node.refresh_visuals()
+	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
 func _on_prefab_border_changed(prefab: BayterekPrefab) -> void:
@@ -364,6 +366,7 @@ func _on_prefab_border_changed(prefab: BayterekPrefab) -> void:
 		node.node_data.border_active = prefab.border_active
 		if node.has_method("refresh_visuals"):
 			node.refresh_visuals()
+	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
 func _on_prefab_attribute_changed(prefab: BayterekPrefab, attribute_id: String, removed: bool) -> void:
@@ -375,6 +378,7 @@ func _on_prefab_attribute_changed(prefab: BayterekPrefab, attribute_id: String, 
 			node.node_data.attributes[attribute_id] = prefab.attributes[attribute_id].duplicate(true)
 		if inspector and inspector._current_node == node:
 			inspector.refresh_attributes()
+	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
 func _on_prefab_max_allocations_changed(prefab: BayterekPrefab) -> void:
@@ -383,6 +387,7 @@ func _on_prefab_max_allocations_changed(prefab: BayterekPrefab) -> void:
 		node.node_data.max_allocations = prefab.max_allocations
 		if inspector and inspector._current_node == node:
 			inspector.refresh_attributes()
+	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
 func _refresh_prefabs_panels() -> void:

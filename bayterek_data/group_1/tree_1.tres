@@ -4,31 +4,38 @@
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_y2ort"]
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_p7r5a"]
 [ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://icon.svg" id="3_tyv6k"]
-[ext_resource type="Texture2D" uid="uid://gav81dwwrp2f" path="res://addons/file_exporter/export_icon.svg" id="4_32bmc"]
+
+[sub_resource type="Resource" id="Resource_p7r5a"]
+script = ExtResource("1_d7nu5")
+reference_id = "ca70ac46-10db-430e-88d9-1bd8fd460837"
+id = 15
+name = "Small Node"
+icon = ExtResource("3_tyv6k")
+position = Vector2(-665.75, 216.75)
 
 [sub_resource type="Resource" id="Resource_tyv6k"]
 script = ExtResource("1_d7nu5")
 reference_id = "ca70ac46-10db-430e-88d9-1bd8fd460837"
-id = 12
+id = 16
 name = "Small Node"
-icon = ExtResource("4_32bmc")
-position = Vector2(-584, 249)
+icon = ExtResource("3_tyv6k")
+position = Vector2(-295.75, 336.75)
 
 [sub_resource type="Resource" id="Resource_s5f85"]
 script = ExtResource("1_d7nu5")
 reference_id = "ca70ac46-10db-430e-88d9-1bd8fd460837"
-id = 13
+id = 17
 name = "Small Node"
-icon = ExtResource("4_32bmc")
-position = Vector2(-319, 2)
+icon = ExtResource("3_tyv6k")
+position = Vector2(-519.75, 72.75)
 
 [sub_resource type="Resource" id="Resource_32bmc"]
 script = ExtResource("1_d7nu5")
 reference_id = "ca70ac46-10db-430e-88d9-1bd8fd460837"
-id = 14
+id = 18
 name = "Small Node"
-icon = ExtResource("4_32bmc")
-position = Vector2(-205, 334)
+icon = ExtResource("3_tyv6k")
+position = Vector2(-574.75, 289.75)
 
 [sub_resource type="Resource" id="Resource_8xuuo"]
 script = ExtResource("3_p7r5a")
@@ -40,7 +47,7 @@ icon = ExtResource("3_tyv6k")
 script = ExtResource("2_y2ort")
 id = "tree_1"
 name = "Tree 1"
-id_counter = 14
+id_counter = 18
 icon_sizes = {
 0: Vector2(0, 0),
 1: Vector2(0, 0),
@@ -56,7 +63,7 @@ node_size = {
 1: Vector2(48, 48),
 2: Vector2(64, 64)
 }
-nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_tyv6k"), SubResource("Resource_s5f85"), SubResource("Resource_32bmc")])
+nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_p7r5a"), SubResource("Resource_tyv6k"), SubResource("Resource_s5f85"), SubResource("Resource_32bmc")])
 prefabs = {
 0: [SubResource("Resource_8xuuo")]
 }

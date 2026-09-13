@@ -36,16 +36,11 @@ func init() -> void:
 	_list.item_activated.connect(_on_item_activated)
 	add_child(_list)
 
-func refresh() -> void:
-	print("[PrefabPanel] refresh() index=", get_index(),
-		" | editor=", editor,
-		" | tree=", (editor.tree if editor else null),
-		" | self.visible=", visible,
-		" | list_size=", _list.size,
-		" | item_count_before=", _list.item_count)
+	# Refresh when panel becomes visible
+	visibility_changed.connect(_on_visibility_changed)
 
+func refresh() -> void:
 	if not editor or not editor.tree:
-		print("    → SKIP: editor or tree is null")
 		return
 
 	_list.clear()
@@ -54,14 +49,10 @@ func refresh() -> void:
 	var node_type: BayterekNode.NodeType = _index_to_type(panel_index)
 
 	var prefabs_dict: Dictionary = editor.tree.prefabs
-	print("    → prefabs_dict keys=", prefabs_dict.keys())
 	if not prefabs_dict.has(node_type):
-		print("    → no prefabs for node_type=", node_type)
 		return
 
 	var prefabs_list: Array = prefabs_dict[node_type]
-	print("    → prefabs_list.size=", prefabs_list.size())
-
 	var filter_text: String = _filter.text.strip_edges().to_lower()
 
 	for prefab in prefabs_list:
@@ -72,9 +63,10 @@ func refresh() -> void:
 		_list.add_item(prefab.node_name, _make_icon(prefab), true)
 		var idx: int = _list.item_count - 1
 		_list.set_item_metadata(idx, prefab)
-		print("    → added: ", prefab.node_name, " (items now=", _list.item_count, ")")
 
-	print("    → refresh DONE, item_count_after=", _list.item_count)
+func _on_visibility_changed() -> void:
+	if visible:
+		refresh()
 
 # ============================================================
 # ICON
