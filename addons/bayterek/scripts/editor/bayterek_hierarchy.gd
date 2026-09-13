@@ -17,6 +17,9 @@ var _nodes_item: TreeItem
 # node_id -> TreeItem
 var _id_to_item: Dictionary = {}
 
+## Canvas'tan seçim yankısını önlemek için flag
+var _updating_selection_from_canvas: bool = false
+
 func _ready() -> void:
 	size_flags_horizontal = SIZE_EXPAND_FILL
 	size_flags_vertical = SIZE_EXPAND_FILL
@@ -126,6 +129,10 @@ func _remove_item_for_node(node_id: int) -> void:
 # ============================================================
 
 func _on_item_selected() -> void:
+	# Canvas'tan gelen seçim yankısıysa atla — döngüyü önle
+	if _updating_selection_from_canvas:
+		return
+
 	if not tree_view:
 		return
 	var selected := _tree.get_selected()
@@ -172,18 +179,21 @@ func _on_item_activated() -> void:
 		tree_view.camera.focus_on(node.node_data.position, 1.0)
 
 func _on_selection_changed(selected: Array) -> void:
+	# Canvas'tan geldi — yankıyı bastır
+	_updating_selection_from_canvas = true
+
 	_tree.deselect_all()
 
-	if selected.is_empty():
-		return
+	if not selected.is_empty():
+		for node in selected:
+			if not is_instance_valid(node):
+				continue
+			if _id_to_item.has(node.id):
+				var item: TreeItem = _id_to_item[node.id]
+				if item:
+					item.select(0)
 
-	for node in selected:
-		if not is_instance_valid(node):
-			continue
-		if _id_to_item.has(node.id):
-			var item: TreeItem = _id_to_item[node.id]
-			if item:
-				item.select(0)
+	_updating_selection_from_canvas = false
 
 # ============================================================
 # BUTON AKSİYONLARI

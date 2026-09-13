@@ -26,7 +26,6 @@ var selected_nodes: Array[BayterekNodeButton] = []
 
 var _tree_data: BayterekTree
 
-# --- Drag state ---
 var _dragging: bool = false
 var _drag_start_mouse_tree: Vector2 = Vector2.ZERO
 var _drag_start_positions: Dictionary = {}
@@ -104,7 +103,6 @@ func delete_selected() -> void:
 	if selected_nodes.is_empty():
 		return
 
-	# Locked olanları ayıkla
 	var to_delete: Array = []
 	for n in selected_nodes:
 		if is_instance_valid(n) and not n.node_data.locked:
@@ -172,7 +170,6 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void:
 	if not node or not node.node_data:
 		return
-	# Locked node'a tıklanırsa hiçbir şey yapma
 	if node.node_data.locked:
 		return
 
@@ -318,6 +315,10 @@ func _apply_positions(positions: Dictionary) -> void:
 # ============================================================
 
 func _on_selection_box_selected(rect: Rect2) -> void:
+	# --- DEBUG ---
+	print("=== SELECTION RECT ===")
+	print("    pos=", rect.position, " size=", rect.size)
+
 	if rect.size.x < 1.0 and rect.size.y < 1.0:
 		clear_selection()
 		return
@@ -332,7 +333,9 @@ func _on_selection_box_selected(rect: Rect2) -> void:
 		if node.node_data and node.node_data.locked:
 			continue
 		var node_rect := Rect2(node.node_data.position - (node.size * 0.5), node.size)
-		if rect.intersects(node_rect):
+		var hit: bool = rect.intersects(node_rect)
+		print("  node %d: pos=%s rect=%s hit=%s" % [node.id, node.node_data.position, node_rect, hit])
+		if hit:
 			select_node(node, true)
 
 # ============================================================
@@ -434,12 +437,19 @@ func _create_selection_box() -> void:
 	add_child(selection_box)
 
 # ============================================================
-# KOORDİNAT
+# KOORDİNAT DÖNÜŞÜMLERİ
 # ============================================================
 
+## View (TreeView) local koordinatından tree koordinatına (0,0 merkez)
 func screen_to_tree(screen_pos: Vector2) -> Vector2:
 	var local: Vector2 = main_container.get_global_transform().affine_inverse() * (get_global_transform() * screen_pos)
 	return local - (_tree_data.size * 0.5)
+
+## Tree koordinatından view (TreeView) local koordinatına
+func tree_to_view_local(tree_pos: Vector2) -> Vector2:
+	var local_in_mc: Vector2 = tree_pos + (_tree_data.size * 0.5)
+	var global_pos: Vector2 = main_container.get_global_transform() * local_in_mc
+	return get_global_transform().affine_inverse() * global_pos
 
 # ============================================================
 # SIGNAL FORWARDING
