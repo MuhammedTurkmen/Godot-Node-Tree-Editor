@@ -36,6 +36,13 @@ var prefabs_panel: Control
 
 var context_menu: PopupMenu
 
+# Prefab delete dialog (editor seviyesinde — ContextMenu gibi)
+var delete_confirmation: ConfirmationDialog
+var delete_option: OptionButton
+var delete_title_label: Label
+var delete_desc_label: Label
+var _pending_delete_prefab: BayterekPrefab = null
+
 var _last_click_pos: Vector2 = Vector2.ZERO
 var _last_save_time: int = 0
 var _resize_debounce: float = 0.0
@@ -96,6 +103,7 @@ func load_tree(path: String) -> void:
 	_create_tree_view()
 	_create_prefabs_bar()
 	_create_context_menu()
+	_create_delete_dialog()
 
 	_restore_split_offsets()
 	_connect_split_signals()
@@ -213,15 +221,11 @@ func _create_tree_view() -> void:
 	tree_view.size_flags_vertical = SIZE_EXPAND_FILL
 	left_container.add_child(tree_view)
 
-	# Load tree (creates services, loads nodes, connections, prefabs)
 	tree_view.load_tree(tree)
 
-	# === FIX A: Connect prefab_created AFTER load_tree,
-	# then manually trigger for already-loaded prefabs ===
 	if tree_view.prefabs_service:
 		tree_view.prefabs_service.prefab_created.connect(_on_prefab_created)
 
-		# Handle prefabs loaded before signal connection
 		for node_type in tree.prefabs.keys():
 			if node_type == BayterekNode.NodeType.DECORATION:
 				continue
@@ -284,41 +288,135 @@ func _create_prefabs_bar() -> void:
 
 	prefabs_bar.init(null, bottom_container, prefabs_panel)
 
-	# NOTE: prefab_created signal is already connected in _create_tree_view()
-	# (Fix A) - do NOT connect it again here.
-
-	# Initial refresh of prefab panels
 	call_deferred("_refresh_prefabs_panels")
 
 # ============================================================
-# PREFAB SIGNAL HANDLERS (with fallback - Fix B)
+# DELETE DIALOG (editor seviyesinde)
 # ============================================================
 
-## Helper: Get all nodes that belong to this prefab.
-## Primary: prefab.nodes list.
-## Fallback: scan nodes_service for nodes with matching prefab reference.
+func _create_delete_dialog() -> void:
+	delete_confirmation = ConfirmationDialog.new()
+	delete_confirmation.name = "DeletePrefabDialog"
+	delete_confirmation.title = "Delete Prefab"
+	delete_confirmation.ok_button_text = "Delete"
+	delete_confirmation.cancel_button_text = "Cancel"
+	delete_confirmation.dialog_text = ""
+
+	# ⚠️ KRİTİK: min_size'ı SIFIRLA — Godot'un kendi boyut hesabını ez
+	delete_confirmation.min_size = Vector2i.ZERO
+
+	# ⚠️ KRİTİK: unresizable false YAPMA, true kalsın
+	delete_confirmation.unresizable = true
+
+	# İçeriği VBox olarak ekle — Margin YOK
+	var vbox := VBoxContainer.new()
+	vbox.name = "ContentVBox"
+	vbox.custom_minimum_size = Vector2(460, 0)
+	vbox.add_theme_constant_override("separation", 12)
+	delete_confirmation.add_child(vbox)
+
+	delete_title_label = Label.new()
+	delete_title_label.custom_minimum_size = Vector2(440, 0)
+	delete_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	delete_title_label.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(delete_title_label)
+
+	vbox.add_child(HSeparator.new())
+
+	var action_label := Label.new()
+	action_label.text = "Action:"
+	action_label.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	vbox.add_child(action_label)
+
+	delete_option = OptionButton.new()
+	delete_option.custom_minimum_size = Vector2(440, 0)
+	delete_option.add_item("Orphan nodes (keep them, break reference)", 0)
+	delete_option.add_item("Delete nodes too", 1)
+	delete_option.add_item("Make nodes unique (keep values)", 2)
+	delete_option.select(0)
+	delete_option.item_selected.connect(_on_delete_option_changed)
+	vbox.add_child(delete_option)
+
+	delete_desc_label = Label.new()
+	delete_desc_label.custom_minimum_size = Vector2(440, 36)
+	delete_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	delete_desc_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+	delete_desc_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(delete_desc_label)
+
+	_update_delete_description(0)
+
+	delete_confirmation.confirmed.connect(_on_delete_confirmed)
+	delete_confirmation.canceled.connect(_on_delete_canceled)
+	delete_confirmation.close_requested.connect(_on_delete_canceled)
+
+	add_child(delete_confirmation)
+
+func request_delete_prefab(prefab: BayterekPrefab) -> void:
+	_pending_delete_prefab = prefab
+
+	delete_title_label.text = "Delete prefab \"%s\"?\nNodes using this prefab: %d" % [
+		prefab.node_name,
+		prefab.get_nodes().size()
+	]
+
+	# Dialog'u manuel boyutlandır
+	delete_confirmation.reset_size()
+	delete_confirmation.size = Vector2i(500, 280)
+	delete_confirmation.popup_centered()
+
+func _on_delete_canceled() -> void:
+	_pending_delete_prefab = null
+
+func _on_delete_confirmed() -> void:
+	if not _pending_delete_prefab:
+		return
+	if not tree_view or not tree_view.prefabs_service:
+		return
+
+	var mode: int = delete_option.selected
+	var prefab_to_delete = _pending_delete_prefab
+	_pending_delete_prefab = null
+
+	tree_view.prefabs_service.delete_prefab(prefab_to_delete, mode)
+
+	set_dirty(true)
+	_refresh_prefabs_panels()
+
+func _on_delete_option_changed(index: int) -> void:
+	_update_delete_description(index)
+
+func _update_delete_description(index: int) -> void:
+	if not delete_desc_label or not is_instance_valid(delete_desc_label):
+		return
+	match index:
+		0:
+			delete_desc_label.text = "Nodes will stay on the canvas but lose their connection to this prefab."
+		1:
+			delete_desc_label.text = "⚠ All nodes using this prefab will be deleted from the canvas."
+		2:
+			delete_desc_label.text = "Nodes will stay on the canvas and keep their current values as independent copies."
+
+# ============================================================
+# PREFAB SIGNAL HANDLERS
+# ============================================================
+
 func _get_nodes_of_prefab(prefab: BayterekPrefab) -> Array:
 	var result: Array = []
-
 	for node in prefab.nodes:
 		if is_instance_valid(node):
 			result.append(node)
-
-	# Fallback: scan all nodes if prefab.nodes is empty
 	if result.is_empty() and tree_view and tree_view.nodes_service:
 		for node in tree_view.nodes_service.get_all_nodes():
 			if not is_instance_valid(node):
 				continue
 			if node.prefab == prefab:
 				result.append(node)
-
 	return result
 
 func _on_prefab_created(prefab: BayterekPrefab) -> void:
 	if not prefab:
 		return
-
-	# Connect this prefab's signals so we can sync linked nodes
 	if not prefab.name_changed.is_connected(_on_prefab_name_changed):
 		prefab.name_changed.connect(_on_prefab_name_changed)
 	if not prefab.description_changed.is_connected(_on_prefab_description_changed):
@@ -331,7 +429,6 @@ func _on_prefab_created(prefab: BayterekPrefab) -> void:
 		prefab.attribute_changed.connect(_on_prefab_attribute_changed)
 	if not prefab.max_allocations_changed.is_connected(_on_prefab_max_allocations_changed):
 		prefab.max_allocations_changed.connect(_on_prefab_max_allocations_changed)
-
 	call_deferred("_refresh_prefabs_panels")
 
 func _on_prefab_name_changed(prefab: BayterekPrefab) -> void:
@@ -418,6 +515,8 @@ func _create_context_menu() -> void:
 	context_menu.add_item("Make Unique", 102)
 	context_menu.add_separator()
 	context_menu.add_item("Delete", 103)
+	context_menu.add_separator()
+	context_menu.add_item("Cleanup Orphan Prefabs", 200)
 
 	context_menu.id_pressed.connect(_on_context_menu_pressed)
 
@@ -466,21 +565,28 @@ func _on_context_menu_pressed(id: int) -> void:
 		101: _save_selected_as_prefab(true)
 		102: _make_selected_unique()
 		103: _delete_selected()
+		200: _cleanup_orphan_prefabs()
+
+func _cleanup_orphan_prefabs() -> void:
+	if not tree_view or not tree_view.prefabs_service:
+		return
+	var count: int = tree_view.prefabs_service.cleanup_orphan_prefabs()
+	if count > 0:
+		_refresh_prefabs_panels()
+		set_dirty(true)
+		print("Bayterek: %d orphan prefab temizlendi." % count)
 
 func _save_selected_as_prefab(is_copy: bool) -> void:
 	if not tree_view or not tree_view.prefabs_service:
 		return
 	if tree_view.selected_nodes.is_empty():
 		return
-
 	for node in tree_view.selected_nodes:
 		if not is_instance_valid(node):
 			continue
 		tree_view.prefabs_service.create_prefab(node, is_copy)
-
 	_refresh_prefabs_panels()
 	set_dirty(true)
-
 	if prefabs_bar and not tree_view.selected_nodes.is_empty():
 		var node = tree_view.selected_nodes[0]
 		var tab_idx: int = _node_type_to_panel_index(node.node_data.type)
@@ -607,11 +713,9 @@ func _apply_size_to_view() -> void:
 func _on_settings_background_changed() -> void:
 	if not tree_view or not tree:
 		return
-
 	var color_rect: ColorRect = tree_view.background_container.get_node_or_null("BackgroundColor")
 	if color_rect:
 		color_rect.color = tree.bg_color
-
 	var tex_rect: TextureRect = tree_view.background_container.get_node_or_null("BackgroundTexture")
 	if tex_rect:
 		tex_rect.texture = tree.bg_texture
@@ -657,7 +761,6 @@ func _undo_create_node() -> void:
 func _on_prefab_dropped_from_canvas(prefab: BayterekPrefab, tree_pos: Vector2) -> void:
 	if not tree_view or not tree_view.nodes_service:
 		return
-
 	undo_redo.create_action("Create Node From Prefab")
 	undo_redo.add_do_method(_do_create_node_from_prefab.bind(prefab, tree_pos))
 	undo_redo.add_undo_method(_undo_create_node)
@@ -700,17 +803,13 @@ func do_redo() -> void:
 func save_tree() -> void:
 	if not tree:
 		return
-
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
-
 	tree.tree_state.version = tree.version
-
 	var err: Error = ResourceSaver.save(tree, tree_path)
 	if err != OK:
 		push_error("Bayterek: Tree save failed (%d)" % err)
 		return
-
 	_last_save_time = Time.get_ticks_msec()
 	set_dirty(false)
 	print("Bayterek: Tree saved: ", tree_path)
@@ -723,12 +822,10 @@ func set_dirty(is_dirty: bool) -> void:
 func get_last_modified_time() -> String:
 	if _last_save_time == 0:
 		return "never saved"
-
 	var elapsed: int = Time.get_ticks_msec() - _last_save_time
 	var seconds: int = elapsed / 1000
 	var minutes: int = seconds / 60
 	var hours: int = minutes / 60
-
 	if hours > 0:
 		return "%d hours ago" % hours
 	elif minutes > 0:

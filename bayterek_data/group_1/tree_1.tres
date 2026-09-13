@@ -1,53 +1,57 @@
 [gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://b6yb5nyvedfkp"]
 
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_d7nu5"]
+[ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://icon.svg" id="2_p7r5a"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_y2ort"]
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_p7r5a"]
-[ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://icon.svg" id="3_tyv6k"]
-
-[sub_resource type="Resource" id="Resource_p7r5a"]
-script = ExtResource("1_d7nu5")
-reference_id = "ca70ac46-10db-430e-88d9-1bd8fd460837"
-id = 15
-name = "Small Node"
-icon = ExtResource("3_tyv6k")
-position = Vector2(-665.75, 216.75)
-
-[sub_resource type="Resource" id="Resource_tyv6k"]
-script = ExtResource("1_d7nu5")
-reference_id = "ca70ac46-10db-430e-88d9-1bd8fd460837"
-id = 16
-name = "Small Node"
-icon = ExtResource("3_tyv6k")
-position = Vector2(-295.75, 336.75)
 
 [sub_resource type="Resource" id="Resource_s5f85"]
 script = ExtResource("1_d7nu5")
-reference_id = "ca70ac46-10db-430e-88d9-1bd8fd460837"
-id = 17
-name = "Small Node"
-icon = ExtResource("3_tyv6k")
-position = Vector2(-519.75, 72.75)
+reference_id = "ba418da0-4c96-414c-9f28-ddd820ef8910"
+id = 23
+name = "Yeni"
+icon = ExtResource("2_p7r5a")
+position = Vector2(-368, -96)
+
+[sub_resource type="Resource" id="Resource_p7r5a"]
+script = ExtResource("1_d7nu5")
+id = 24
+name = "Yeni"
+icon = ExtResource("2_p7r5a")
+position = Vector2(-832, -80)
+
+[sub_resource type="Resource" id="Resource_tyv6k"]
+script = ExtResource("1_d7nu5")
+id = 25
+name = "Yeni"
+icon = ExtResource("2_p7r5a")
+position = Vector2(-736, -256)
+
+[sub_resource type="Resource" id="Resource_gmi7d"]
+script = ExtResource("1_d7nu5")
+id = 26
+name = "Yeni"
+icon = ExtResource("2_p7r5a")
+position = Vector2(-704, -16)
+
+[sub_resource type="Resource" id="Resource_4kaxi"]
+script = ExtResource("1_d7nu5")
+id = 27
+name = "Yeni"
+icon = ExtResource("2_p7r5a")
+position = Vector2(-912.4319, 7.067871)
 
 [sub_resource type="Resource" id="Resource_32bmc"]
-script = ExtResource("1_d7nu5")
-reference_id = "ca70ac46-10db-430e-88d9-1bd8fd460837"
-id = 18
-name = "Small Node"
-icon = ExtResource("3_tyv6k")
-position = Vector2(-574.75, 289.75)
-
-[sub_resource type="Resource" id="Resource_8xuuo"]
 script = ExtResource("3_p7r5a")
-reference_id = "ca70ac46-10db-430e-88d9-1bd8fd460837"
-node_name = "Small Node"
-icon = ExtResource("3_tyv6k")
+reference_id = "ba418da0-4c96-414c-9f28-ddd820ef8910"
+node_name = "Yeni"
+icon = ExtResource("2_p7r5a")
 
 [resource]
 script = ExtResource("2_y2ort")
 id = "tree_1"
 name = "Tree 1"
-id_counter = 18
+id_counter = 27
 icon_sizes = {
 0: Vector2(0, 0),
 1: Vector2(0, 0),
@@ -63,9 +67,9 @@ node_size = {
 1: Vector2(48, 48),
 2: Vector2(64, 64)
 }
-nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_p7r5a"), SubResource("Resource_tyv6k"), SubResource("Resource_s5f85"), SubResource("Resource_32bmc")])
+nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_s5f85"), SubResource("Resource_p7r5a"), SubResource("Resource_tyv6k"), SubResource("Resource_gmi7d"), SubResource("Resource_4kaxi")])
 prefabs = {
-0: [SubResource("Resource_8xuuo")]
+0: [SubResource("Resource_32bmc")]
 }
-hierarchy_split_offset = -397
+hierarchy_split_offset = -462
 prefabs_split_offset = 259

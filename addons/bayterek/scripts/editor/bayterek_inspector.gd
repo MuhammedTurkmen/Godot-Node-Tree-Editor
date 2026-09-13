@@ -17,6 +17,9 @@ var _content: VBoxContainer
 var _mode_banner: PanelContainer
 var _mode_banner_label: Label
 
+# Faz 8e — Reset All butonu
+var _reset_all_btn: Button = null
+
 var _root_panel: HBoxContainer
 var _root_check: CheckBox
 
@@ -341,6 +344,9 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_show_content()
 
+	# Faz 8e — Reset All butonu
+	_update_reset_all_button(node)
+
 	# Show node-only fields
 	_root_panel.visible = true
 	_transform_panel.visible = true
@@ -381,6 +387,9 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_current_prefab = prefab
 
 	_show_content()
+
+	# Faz 8e — Reset All butonu (prefab modunda gizle)
+	_update_reset_all_button(null)
 
 	# Show banner
 	_mode_banner.visible = true
@@ -752,13 +761,28 @@ func _rebuild_attributes_list() -> void:
 		block.add_theme_constant_override("separation", 2)
 		_attributes_list.add_child(block)
 
+		# Header row: checkbox + (optional) reset button
+		var header_row := HBoxContainer.new()
+		header_row.add_theme_constant_override("separation", 2)
+		block.add_child(header_row)
+
 		var check := CheckBox.new()
 		check.text = "%s (%s)" % [attr.name, attr_id]
+		check.size_flags_horizontal = SIZE_EXPAND_FILL
 		check.button_pressed = _current_node and _current_node.node_data.attributes.has(attr_id)
 		check.toggled.connect(_on_attr_toggled.bind(attr_id))
-		block.add_child(check)
+		header_row.add_child(check)
 
 		_attr_checkboxes[attr_id] = check
+
+		# Faz 8e — Reset to Prefab butonu
+		if _current_node and _current_node.prefab and _current_node.node_data.has_attribute_override(attr_id):
+			var reset_btn := Button.new()
+			reset_btn.text = "↺"
+			reset_btn.tooltip_text = "Reset to prefab default"
+			reset_btn.custom_minimum_size = Vector2(28, 0)
+			reset_btn.pressed.connect(_on_reset_attr_pressed.bind(attr_id))
+			header_row.add_child(reset_btn)
 
 		var has_attr: bool = _current_node and _current_node.node_data.attributes.has(attr_id)
 		var attr_inputs: Dictionary = {}
@@ -966,7 +990,6 @@ func _on_attr_value_changed(value: float, attr_id: String, index: int, level: in
 	if typeof(value) == TYPE_FLOAT and value == floor(value):
 		v = int(value)
 
-	# Attribute values are ALWAYS per-node (override)
 	if level >= 0:
 		var levels = _current_node.node_data.attributes[attr_id]
 		if not levels is Array:
@@ -991,6 +1014,10 @@ func _on_attr_value_changed(value: float, attr_id: String, index: int, level: in
 			if index < 0 or index >= vals.size():
 				return
 			vals[index] = v
+
+	# Faz 8e — Node'da prefab referansı varsa override işaretle
+	if _current_node.prefab:
+		_current_node.node_data.mark_attribute_override(attr_id)
 
 	editor.set_dirty(true)
 	changed.emit()
@@ -1226,3 +1253,44 @@ func _add_line_row(parent: Control, label_text: String, tooltip: String, readonl
 func _notify_editor_dirty() -> void:
 	if editor and editor.has_method("set_dirty"):
 		editor.set_dirty(true)
+
+# ============================================================
+# FAZ 8e — RESET TO PREFAB
+# ============================================================
+
+func _update_reset_all_button(node: BayterekNodeButton) -> void:
+	if _reset_all_btn and is_instance_valid(_reset_all_btn):
+		_reset_all_btn.queue_free()
+		_reset_all_btn = null
+
+	if not node or not node.prefab:
+		return
+
+	_reset_all_btn = Button.new()
+	_reset_all_btn.text = "↺ Reset All to Prefab Defaults"
+	_reset_all_btn.tooltip_text = "Clear all overrides, restore prefab defaults"
+	_reset_all_btn.pressed.connect(_on_reset_all_pressed)
+	_content.add_child(_reset_all_btn)
+	_content.move_child(_reset_all_btn, 1)
+
+func _on_reset_all_pressed() -> void:
+	if not _current_node or not _current_node.prefab:
+		return
+	if not editor or not editor.tree_view or not editor.tree_view.prefabs_service:
+		return
+
+	editor.tree_view.prefabs_service.reset_node_to_prefab_defaults(_current_node)
+	inspect(_current_node)
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_reset_attr_pressed(attr_id: String) -> void:
+	if not _current_node or not _current_node.prefab:
+		return
+	if not editor or not editor.tree_view or not editor.tree_view.prefabs_service:
+		return
+
+	editor.tree_view.prefabs_service.reset_attribute_to_prefab_default(_current_node, attr_id)
+	_rebuild_attributes_list()
+	editor.set_dirty(true)
+	changed.emit()

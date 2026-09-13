@@ -6,7 +6,7 @@ extends RefCounted
 signal zoom_changed(zoom: float, previous_zoom: float)
 
 const MIN_ZOOM := 0.4
-const MAX_ZOOM := 1.0
+const MAX_ZOOM := 3.0
 const ZOOM_STEP := 0.1
 
 var _viewport: Control

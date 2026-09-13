@@ -30,3 +30,20 @@ enum NodeType {
 @export_storage var attributes: Dictionary = {}
 @export_storage var max_allocations: int = 1
 @export_storage var locked: bool = false
+
+## Faz 8e — Prefab'dan override edilmiş attribute'ların listesi.
+## Boşsa → tüm değerler prefab default'u (veya bağımsız node için hepsi override).
+## Doluysa → sadece listedeki attribute'lar override.
+@export_storage var overridden_attributes: Dictionary = {}
+
+func has_attribute_override(attr_id: String) -> bool:
+	return overridden_attributes.has(attr_id)
+
+func mark_attribute_override(attr_id: String) -> void:
+	overridden_attributes[attr_id] = true
+
+func clear_attribute_override(attr_id: String) -> void:
+	overridden_attributes.erase(attr_id)
+
+func clear_all_attribute_overrides() -> void:
+	overridden_attributes.clear()

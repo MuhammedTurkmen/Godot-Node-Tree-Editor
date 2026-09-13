@@ -22,15 +22,26 @@ signal max_allocations_changed(prefab: BayterekPrefab)
 @export_storage var attributes: Dictionary = {}
 @export_storage var max_allocations: int = 1
 
+## Prefab'a bağlı runtime node'lar (kaydedilmez, runtime'da doldurulur)
 var nodes: Array = []
 
 func add_node(node: BayterekNodeButton) -> void:
+	if not is_instance_valid(node):
+		return
 	if node in nodes:
 		return
 	nodes.append(node)
 
 func remove_node(node: BayterekNodeButton) -> void:
 	nodes.erase(node)
+
+func get_nodes() -> Array:
+	var valid: Array = []
+	for n in nodes:
+		if is_instance_valid(n):
+			valid.append(n)
+	nodes = valid
+	return nodes
 
 # ============================================================
 # SETTERS (emit signals)
@@ -81,7 +92,6 @@ func remove_attribute(attribute_id: String) -> void:
 	attributes.erase(attribute_id)
 	attribute_changed.emit(self, attribute_id, true)
 
-## Helper to update a single attribute value
 func set_attribute_value(attribute_id: String, index: int, value: Variant, level: int = -1) -> void:
 	if not attributes.has(attribute_id):
 		return
@@ -89,7 +99,6 @@ func set_attribute_value(attribute_id: String, index: int, value: Variant, level
 	var values = attributes[attribute_id]
 
 	if level >= 0:
-		# Multi-allocation: values is Array[Array]
 		if not values is Array or values.size() <= level:
 			return
 		var level_values: Array = values[level]
@@ -97,7 +106,6 @@ func set_attribute_value(attribute_id: String, index: int, value: Variant, level
 			return
 		level_values[index] = value
 	else:
-		# Single level
 		if not values is Array:
 			return
 		if index < 0 or index >= values.size():
@@ -106,14 +114,12 @@ func set_attribute_value(attribute_id: String, index: int, value: Variant, level
 
 	attribute_changed.emit(self, attribute_id, false)
 
-## Resize attribute value counts across all levels
 func set_attribute_value_count(attribute_id: String, new_count: int) -> void:
 	if not attributes.has(attribute_id):
 		return
 
 	var values = attributes[attribute_id]
 	if values is Array and values.size() > 0 and values[0] is Array:
-		# Multi-allocation format
 		for level in values.size():
 			var level_values: Array = values[level]
 			while level_values.size() < new_count:
@@ -121,10 +127,31 @@ func set_attribute_value_count(attribute_id: String, new_count: int) -> void:
 			while level_values.size() > new_count:
 				level_values.pop_back()
 	else:
-		# Single level
 		while values.size() < new_count:
 			values.append(0)
 		while values.size() > new_count:
 			values.pop_back()
 
 	attribute_changed.emit(self, attribute_id, false)
+
+# ============================================================
+# ORPHAN / SILME (Faz 8f)
+# ============================================================
+
+## Bu prefab'ı kullanan tüm node'lardan referansı kopar (orphan bırak)
+func orphan_all_nodes() -> void:
+	for node in get_nodes():
+		if not is_instance_valid(node):
+			continue
+		if node.prefab == self:
+			node.prefab = null
+		if node.node_data:
+			node.node_data.reference_id = ""
+			node.node_data.clear_all_attribute_overrides()
+	nodes.clear()
+
+## Bu prefab'ı kullanan tüm node'lar için callback çağır
+func for_each_node(callback: Callable) -> void:
+	for node in get_nodes():
+		if is_instance_valid(node):
+			callback.call(node)
