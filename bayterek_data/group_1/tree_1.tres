@@ -1,43 +1,38 @@
 [gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://dpct2yoh4f760"]
 
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_d7nu5"]
-[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="2_p7r5a"]
+[ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://icon.svg" id="2_p7r5a"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_y2ort"]
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_p7r5a"]
 
-[sub_resource type="Resource" id="Resource_p7r5a"]
-script = ExtResource("2_p7r5a")
-
 [sub_resource type="Resource" id="Resource_tyv6k"]
 script = ExtResource("1_d7nu5")
-id = 1
-name = "Small Node"
-position = Vector2(-253.5, -7.5)
-line_data = {
-2: SubResource("Resource_p7r5a")
-}
-out_nodes = Array[int]([2])
+reference_id = "ed90e019-9002-4fa8-a18e-65224bab8a85"
+id = 40
+name = "Medium Node"
+type = 1
+position = Vector2(-249, -80)
 
 [sub_resource type="Resource" id="Resource_s5f85"]
 script = ExtResource("1_d7nu5")
 reference_id = "ed90e019-9002-4fa8-a18e-65224bab8a85"
-id = 2
+id = 41
 name = "Medium Node"
 type = 1
-position = Vector2(-121.5, -28.5)
-in_nodes = Array[int]([1])
+position = Vector2(121, -111)
 
 [sub_resource type="Resource" id="Resource_32bmc"]
 script = ExtResource("3_p7r5a")
 reference_id = "ed90e019-9002-4fa8-a18e-65224bab8a85"
 node_name = "Medium Node"
 type = 1
+icon = ExtResource("2_p7r5a")
 
 [resource]
 script = ExtResource("2_y2ort")
 id = "tree_1"
 name = "Tree 1"
-id_counter = 38
+id_counter = 41
 icon_sizes = {
 0: Vector2(0, 0),
 1: Vector2(0, 0),
@@ -57,5 +52,5 @@ nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_tyv6k"), SubResourc
 prefabs = {
 1: [SubResource("Resource_32bmc")]
 }
-hierarchy_split_offset = -488
-prefabs_split_offset = 131
+hierarchy_split_offset = -453
+prefabs_split_offset = 259

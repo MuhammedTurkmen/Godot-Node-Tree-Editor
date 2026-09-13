@@ -269,8 +269,83 @@ func _create_prefabs_bar() -> void:
 	if tree_view and tree_view.prefabs_service:
 		tree_view.prefabs_service.prefab_created.connect(_on_prefab_created)
 
-func _on_prefab_created(_prefab: BayterekPrefab) -> void:
+# ============================================================
+# PREFAB SIGNAL HANDLERS (SYNC)
+# ============================================================
+
+func _on_prefab_created(prefab: BayterekPrefab) -> void:
+	# Connect this prefab's signals so we can sync linked nodes
+	if not prefab.name_changed.is_connected(_on_prefab_name_changed):
+		prefab.name_changed.connect(_on_prefab_name_changed)
+	if not prefab.description_changed.is_connected(_on_prefab_description_changed):
+		prefab.description_changed.connect(_on_prefab_description_changed)
+	if not prefab.icon_changed.is_connected(_on_prefab_icon_changed):
+		prefab.icon_changed.connect(_on_prefab_icon_changed)
+	if not prefab.border_changed.is_connected(_on_prefab_border_changed):
+		prefab.border_changed.connect(_on_prefab_border_changed)
+	if not prefab.attribute_changed.is_connected(_on_prefab_attribute_changed):
+		prefab.attribute_changed.connect(_on_prefab_attribute_changed)
+	if not prefab.max_allocations_changed.is_connected(_on_prefab_max_allocations_changed):
+		prefab.max_allocations_changed.connect(_on_prefab_max_allocations_changed)
+
 	call_deferred("_refresh_prefabs_panels")
+
+func _on_prefab_name_changed(prefab: BayterekPrefab) -> void:
+	for node in prefab.nodes:
+		if not is_instance_valid(node):
+			continue
+		node.node_data.name = prefab.node_name
+		node.node_data.external_id = prefab.id
+	_refresh_prefabs_panels()
+	set_dirty(true)
+
+func _on_prefab_description_changed(prefab: BayterekPrefab) -> void:
+	for node in prefab.nodes:
+		if not is_instance_valid(node):
+			continue
+		node.node_data.description = prefab.description
+	set_dirty(true)
+
+func _on_prefab_icon_changed(prefab: BayterekPrefab) -> void:
+	for node in prefab.nodes:
+		if not is_instance_valid(node):
+			continue
+		node.node_data.icon = prefab.icon
+		if node.has_method("refresh_visuals"):
+			node.refresh_visuals()
+	set_dirty(true)
+
+func _on_prefab_border_changed(prefab: BayterekPrefab) -> void:
+	for node in prefab.nodes:
+		if not is_instance_valid(node):
+			continue
+		node.node_data.border_normal = prefab.border_normal
+		node.node_data.border_intermediate = prefab.border_intermediate
+		node.node_data.border_active = prefab.border_active
+		if node.has_method("refresh_visuals"):
+			node.refresh_visuals()
+	set_dirty(true)
+
+func _on_prefab_attribute_changed(prefab: BayterekPrefab, attribute_id: String, removed: bool) -> void:
+	for node in prefab.nodes:
+		if not is_instance_valid(node):
+			continue
+		if removed:
+			node.node_data.attributes.erase(attribute_id)
+		else:
+			node.node_data.attributes[attribute_id] = prefab.attributes[attribute_id].duplicate(true)
+		if inspector and inspector._current_node == node:
+			inspector.refresh_attributes()
+	set_dirty(true)
+
+func _on_prefab_max_allocations_changed(prefab: BayterekPrefab) -> void:
+	for node in prefab.nodes:
+		if not is_instance_valid(node):
+			continue
+		node.node_data.max_allocations = prefab.max_allocations
+		if inspector and inspector._current_node == node:
+			inspector.refresh_attributes()
+	set_dirty(true)
 
 func _refresh_prefabs_panels() -> void:
 	if not prefabs_panel:

@@ -52,7 +52,7 @@ func _ready() -> void:
 	_show_empty()
 
 # ============================================================
-# UI KURULUM
+# UI SETUP
 # ============================================================
 
 func _build_ui() -> void:
@@ -84,7 +84,7 @@ func _build_ui() -> void:
 	var root_label := Label.new()
 	root_label.text = "Is Root"
 	root_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	root_label.tooltip_text = "Bu node 'başlangıç node'u mu?"
+	root_label.tooltip_text = "Is this node a starting node?"
 	root_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	_root_panel.add_child(root_label)
 
@@ -98,8 +98,8 @@ func _build_ui() -> void:
 	_info_panel = VBoxContainer.new()
 	_content.add_child(_info_panel)
 
-	_id_input = _add_line_row(_info_panel, "ID", "Otomatik atanan ID", true)
-	_name_input = _add_line_row(_info_panel, "Name", "Node'un görünen adı", false)
+	_id_input = _add_line_row(_info_panel, "ID", "Auto-generated ID", true)
+	_name_input = _add_line_row(_info_panel, "Name", "Node display name", false)
 	_name_input.text_changed.connect(_on_name_changed)
 
 	var desc_row := HBoxContainer.new()
@@ -107,7 +107,7 @@ func _build_ui() -> void:
 	var desc_label := Label.new()
 	desc_label.text = "Description"
 	desc_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	desc_label.tooltip_text = "Node açıklaması"
+	desc_label.tooltip_text = "Node description"
 	desc_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	desc_row.add_child(desc_label)
 
@@ -122,7 +122,7 @@ func _build_ui() -> void:
 	var max_alloc_label := Label.new()
 	max_alloc_label.text = "Max Allocations"
 	max_alloc_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	max_alloc_label.tooltip_text = "Multi-allocation için maksimum seviye"
+	max_alloc_label.tooltip_text = "Max level for multi-allocation"
 	max_alloc_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	_max_alloc_panel.add_child(max_alloc_label)
 
@@ -231,7 +231,7 @@ func _build_ui() -> void:
 	_attributes_panel.add_child(attr_title)
 
 	_attributes_empty = Label.new()
-	_attributes_empty.text = "(Tree'de attribute tanımlı değil)"
+	_attributes_empty.text = "(No attributes defined in tree)"
 	_attributes_empty.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
 	_attributes_panel.add_child(_attributes_empty)
 
@@ -252,7 +252,7 @@ func _build_ui() -> void:
 	_connections_panel.add_child(conn_title)
 
 	_connections_empty = Label.new()
-	_connections_empty.text = "(Bu node'dan çıkan bağlantı yok)"
+	_connections_empty.text = "(No outgoing connections)"
 	_connections_empty.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
 	_connections_panel.add_child(_connections_empty)
 
@@ -277,7 +277,7 @@ func remove_attribute_from_node(attr_id: String) -> void:
 	_rebuild_attributes_list()
 
 # ============================================================
-# GÖRÜNÜM
+# VISIBILITY
 # ============================================================
 
 func _show_empty() -> void:
@@ -328,7 +328,7 @@ func update_position_only(pos: Vector2) -> void:
 	_updating_ui = false
 
 # ============================================================
-# DEĞİŞİKLİK HANDLER'LARI
+# CHANGE HANDLERS
 # ============================================================
 
 func _on_root_toggled(pressed: bool) -> void:
@@ -341,14 +341,24 @@ func _on_root_toggled(pressed: bool) -> void:
 func _on_name_changed(new_text: String) -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.name = new_text
+
+	if _current_node.prefab:
+		_current_node.prefab.set_node_name(new_text)
+	else:
+		_current_node.node_data.name = new_text
+
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_description_changed() -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.description = _description_input.text
+
+	if _current_node.prefab:
+		_current_node.prefab.set_description(_description_input.text)
+	else:
+		_current_node.node_data.description = _description_input.text
+
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -357,31 +367,33 @@ func _on_max_alloc_changed(value: float) -> void:
 		return
 
 	var new_max: int = int(value)
-	_current_node.node_data.max_allocations = new_max
 
-	if editor and editor.tree and editor.tree.multiallocation:
-		for attr_id in _current_node.node_data.attributes.keys():
-			var data = _current_node.node_data.attributes[attr_id]
-			if not data is Array:
-				continue
-			if data.size() > 0 and not data[0] is Array:
-				var single: Array = data.duplicate()
-				var new_data: Array = []
-				for l in new_max:
-					new_data.append(single.duplicate())
-				_current_node.node_data.attributes[attr_id] = new_data
-				continue
-			var sample: Array = []
-			if data.size() > 0:
-				for v in data[0]:
-					sample.append(v)
-			while data.size() < new_max:
-				data.append(sample.duplicate())
-			while data.size() > new_max:
-				data.pop_back()
+	if _current_node.prefab:
+		_current_node.prefab.set_max_allocations(new_max)
+	else:
+		_current_node.node_data.max_allocations = new_max
+		if editor and editor.tree and editor.tree.multiallocation:
+			for attr_id in _current_node.node_data.attributes.keys():
+				var data = _current_node.node_data.attributes[attr_id]
+				if not data is Array:
+					continue
+				if data.size() > 0 and not data[0] is Array:
+					var single: Array = data.duplicate()
+					var new_data: Array = []
+					for l in new_max:
+						new_data.append(single.duplicate())
+					_current_node.node_data.attributes[attr_id] = new_data
+					continue
+				var sample: Array = []
+				if data.size() > 0:
+					for v in data[0]:
+						sample.append(v)
+				while data.size() < new_max:
+					data.append(sample.duplicate())
+				while data.size() > new_max:
+					data.pop_back()
 
 	_rebuild_attributes_list()
-
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -405,64 +417,91 @@ func _on_icon_changed(path: String) -> void:
 	if _updating_ui or not _current_node:
 		return
 	var tex: Texture2D = load(path) as Texture2D
-	_current_node.node_data.icon = tex
-	if _current_node.has_method("refresh_visuals"):
-		_current_node.refresh_visuals()
+	if _current_node.prefab:
+		_current_node.prefab.set_icon(tex)
+	else:
+		_current_node.node_data.icon = tex
+		if _current_node.has_method("refresh_visuals"):
+			_current_node.refresh_visuals()
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_icon_cleared() -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.icon = null
-	if _current_node.has_method("refresh_visuals"):
-		_current_node.refresh_visuals()
+	if _current_node.prefab:
+		_current_node.prefab.set_icon(null)
+	else:
+		_current_node.node_data.icon = null
+		if _current_node.has_method("refresh_visuals"):
+			_current_node.refresh_visuals()
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_border_normal_changed(path: String) -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.border_normal = load(path) as Texture2D
-	if _current_node.has_method("refresh_visuals"):
-		_current_node.refresh_visuals()
+	var tex: Texture2D = load(path) as Texture2D
+	if _current_node.prefab:
+		_current_node.prefab.set_border_normal(tex)
+	else:
+		_current_node.node_data.border_normal = tex
+		if _current_node.has_method("refresh_visuals"):
+			_current_node.refresh_visuals()
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_border_normal_cleared() -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.border_normal = null
-	if _current_node.has_method("refresh_visuals"):
-		_current_node.refresh_visuals()
+	if _current_node.prefab:
+		_current_node.prefab.set_border_normal(null)
+	else:
+		_current_node.node_data.border_normal = null
+		if _current_node.has_method("refresh_visuals"):
+			_current_node.refresh_visuals()
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_border_intermediate_changed(path: String) -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.border_intermediate = load(path) as Texture2D
+	var tex: Texture2D = load(path) as Texture2D
+	if _current_node.prefab:
+		_current_node.prefab.set_border_intermediate(tex)
+	else:
+		_current_node.node_data.border_intermediate = tex
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_border_intermediate_cleared() -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.border_intermediate = null
+	if _current_node.prefab:
+		_current_node.prefab.set_border_intermediate(null)
+	else:
+		_current_node.node_data.border_intermediate = null
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_border_active_changed(path: String) -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.border_active = load(path) as Texture2D
+	var tex: Texture2D = load(path) as Texture2D
+	if _current_node.prefab:
+		_current_node.prefab.set_border_active(tex)
+	else:
+		_current_node.node_data.border_active = tex
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_border_active_cleared() -> void:
 	if _updating_ui or not _current_node:
 		return
-	_current_node.node_data.border_active = null
+	if _current_node.prefab:
+		_current_node.prefab.set_border_active(null)
+	else:
+		_current_node.node_data.border_active = null
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -622,6 +661,8 @@ func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 	var attr: BayterekAttribute = editor.tree.attributes[attr_id]
 	var multi: bool = editor.tree.multiallocation
 
+	var new_values: Variant
+
 	if pressed:
 		if multi:
 			var levels: Array = []
@@ -630,14 +671,22 @@ func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 				for i in attr.value_count:
 					values.append(0)
 				levels.append(values)
-			_current_node.node_data.attributes[attr_id] = levels
+			new_values = levels
 		else:
 			var values: Array = []
 			for i in attr.value_count:
 				values.append(0)
-			_current_node.node_data.attributes[attr_id] = values
+			new_values = values
+
+		if _current_node.prefab:
+			_current_node.prefab.set_attribute(attr_id, new_values)
+		else:
+			_current_node.node_data.attributes[attr_id] = new_values
 	else:
-		_current_node.node_data.attributes.erase(attr_id)
+		if _current_node.prefab:
+			_current_node.prefab.remove_attribute(attr_id)
+		else:
+			_current_node.node_data.attributes.erase(attr_id)
 
 	if _attr_value_inputs.has(attr_id):
 		var attr_inputs: Dictionary = _attr_value_inputs[attr_id]
@@ -663,30 +712,33 @@ func _on_attr_value_changed(value: float, attr_id: String, index: int, level: in
 	if typeof(value) == TYPE_FLOAT and value == floor(value):
 		v = int(value)
 
-	if level >= 0:
-		var levels = _current_node.node_data.attributes[attr_id]
-		if not levels is Array:
-			return
-		if level >= levels.size():
-			return
-		var level_vals = levels[level]
-		if not level_vals is Array:
-			return
-		if index < 0 or index >= level_vals.size():
-			return
-		level_vals[index] = v
+	if _current_node.prefab:
+		_current_node.prefab.set_attribute_value(attr_id, index, v, level)
 	else:
-		var vals = _current_node.node_data.attributes[attr_id]
-		if not vals is Array:
-			return
-		if vals.size() > 0 and vals[0] is Array:
-			if index < 0 or index >= vals[0].size():
+		if level >= 0:
+			var levels = _current_node.node_data.attributes[attr_id]
+			if not levels is Array:
 				return
-			vals[0][index] = v
+			if level >= levels.size():
+				return
+			var level_vals = levels[level]
+			if not level_vals is Array:
+				return
+			if index < 0 or index >= level_vals.size():
+				return
+			level_vals[index] = v
 		else:
-			if index < 0 or index >= vals.size():
+			var vals = _current_node.node_data.attributes[attr_id]
+			if not vals is Array:
 				return
-			vals[index] = v
+			if vals.size() > 0 and vals[0] is Array:
+				if index < 0 or index >= vals[0].size():
+					return
+				vals[0][index] = v
+			else:
+				if index < 0 or index >= vals.size():
+					return
+				vals[index] = v
 
 	editor.set_dirty(true)
 	changed.emit()
@@ -719,12 +771,10 @@ func _create_connection_entry(to_id: int) -> void:
 		line_data = BayterekLineData.new()
 		_current_node.node_data.line_data[to_id] = line_data
 
-	# --- Kapsayıcı ---
 	var block := VBoxContainer.new()
 	block.add_theme_constant_override("separation", 2)
 	_connections_list.add_child(block)
 
-	# --- Başlık butonu (aç/kapa) ---
 	var header_btn := Button.new()
 	header_btn.text = "▶ Node %d" % to_id
 	header_btn.toggle_mode = true
@@ -732,7 +782,6 @@ func _create_connection_entry(to_id: int) -> void:
 	header_btn.custom_minimum_size = Vector2(0, 24)
 	block.add_child(header_btn)
 
-	# --- İçerik paneli (başta gizli) ---
 	var content_box := VBoxContainer.new()
 	content_box.visible = false
 	content_box.add_theme_constant_override("separation", 2)
@@ -746,7 +795,7 @@ func _create_connection_entry(to_id: int) -> void:
 		header_capture.text = ("▼ Node %d" % tid_capture) if pressed else ("▶ Node %d" % tid_capture)
 	)
 
-	# --- Line Type ---
+	# Line Type
 	var type_row := HBoxContainer.new()
 	content_box.add_child(type_row)
 	var type_label := Label.new()
@@ -763,7 +812,7 @@ func _create_connection_entry(to_id: int) -> void:
 	type_dropdown.item_selected.connect(_on_line_type_changed.bind(to_id))
 	type_row.add_child(type_dropdown)
 
-	# --- Curve Height ---
+	# Curve Height
 	var curve_row := HBoxContainer.new()
 	content_box.add_child(curve_row)
 	var curve_label := Label.new()
@@ -782,7 +831,7 @@ func _create_connection_entry(to_id: int) -> void:
 
 	curve_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER)
 
-	# --- Segments ---
+	# Segments
 	var seg_row := HBoxContainer.new()
 	content_box.add_child(seg_row)
 	var seg_label := Label.new()
@@ -801,7 +850,7 @@ func _create_connection_entry(to_id: int) -> void:
 
 	seg_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT)
 
-	# --- Reversed ---
+	# Reversed
 	var rev_row := HBoxContainer.new()
 	content_box.add_child(rev_row)
 	var rev_label := Label.new()
@@ -817,7 +866,7 @@ func _create_connection_entry(to_id: int) -> void:
 
 	rev_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT)
 
-	# --- Delete butonu ---
+	# Delete
 	var del_row := HBoxContainer.new()
 	content_box.add_child(del_row)
 	var del_spacer := Control.new()
@@ -900,7 +949,7 @@ func _on_delete_connection(to_id: int) -> void:
 	changed.emit()
 
 # ============================================================
-# YARDIMCI
+# HELPERS
 # ============================================================
 
 func _add_line_row(parent: Control, label_text: String, tooltip: String, readonly: bool) -> LineEdit:
