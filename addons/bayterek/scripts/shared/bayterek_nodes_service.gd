@@ -1,7 +1,7 @@
 @tool
 class_name BayterekNodesService
 extends BayterekBaseService
-## Node oluşturma / silme / yönetme.
+## Node creation / deletion / management.
 
 signal node_created(node: BayterekNodeButton)
 signal node_pressed(node: BayterekNodeButton, additive: bool)
@@ -47,7 +47,7 @@ func get_all_nodes() -> Array:
 	return _nodes.values()
 
 # ============================================================
-# OLUŞTURMA
+# CREATION
 # ============================================================
 
 func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> BayterekNodeButton:
@@ -82,8 +82,55 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 	node_created.emit(node)
 	return node
 
+func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNodeButton:
+	if not prefab:
+		return null
+
+	var node := _build_node(prefab.type)
+	if not node:
+		return null
+
+	var node_data := BayterekNode.new()
+	node_data.id = _tree_data.get_next_id()
+	node_data.name = prefab.node_name
+	node_data.description = prefab.description
+	node_data.type = prefab.type
+	node_data.icon = prefab.icon
+	node_data.border_normal = prefab.border_normal
+	node_data.border_intermediate = prefab.border_intermediate
+	node_data.border_active = prefab.border_active
+	node_data.position = position
+	node_data.max_allocations = prefab.max_allocations
+	node_data.attributes = prefab.attributes.duplicate(true)
+
+	# Link to prefab if it's a reference prefab
+	if not prefab.reference_id.is_empty():
+		node_data.reference_id = prefab.reference_id
+		node.prefab = prefab
+		prefab.add_node(node)
+
+	node.node_data = node_data
+	node.name = "Node_%d" % node_data.id
+
+	_position_node(node, position)
+
+	_tree_view.nodes_container.add_child(node)
+	_nodes[node_data.id] = node
+
+	_tree_data.nodes.append(node_data)
+
+	node.pressed.connect(_on_node_pressed.bind(node))
+	node.drag_started.connect(_on_node_drag_started)
+	node.dragged.connect(_on_node_dragged)
+	node.drag_ended.connect(_on_node_drag_ended)
+
+	node.refresh_visuals()
+
+	node_created.emit(node)
+	return node
+
 # ============================================================
-# SİLME / GERİ YÜKLEME
+# DELETE / RESTORE
 # ============================================================
 
 func delete_node(node: BayterekNodeButton) -> void:
@@ -119,7 +166,7 @@ func restore_node(node: BayterekNodeButton, node_data: BayterekNode, index: int 
 	node_created.emit(node)
 
 # ============================================================
-# POZİSYON
+# POSITION
 # ============================================================
 
 func update_position(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:

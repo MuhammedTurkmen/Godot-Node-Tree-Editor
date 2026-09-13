@@ -1,7 +1,7 @@
 @tool
 class_name BayterekEditor
 extends Control
-## Graph editörü + sol hierarchy + sağ panel + alt prefabs bar.
+## Graph editor + left hierarchy + right panel + bottom prefabs bar.
 
 signal closed
 signal dirty_changed(editor: BayterekEditor, dirty: bool)
@@ -30,7 +30,7 @@ var inspector: BayterekTreeEditorInspector
 var settings_editor: BayterekSettingsEditor
 var attributes_editor: BayterekAttributesEditor
 
-var bottom_v_split: VSplitContainer
+var bottom_container: VBoxContainer
 var prefabs_bar: BayterekPrefabsBar
 var prefabs_panel: Control
 
@@ -84,7 +84,7 @@ func load_tree(path: String) -> void:
 	tree = Bayterek.get_editor_registry().get_tree_by_path(path)
 
 	if not tree:
-		push_error("Bayterek: Tree yüklenemedi: %s" % path)
+		push_error("Bayterek: Tree load failed: %s" % path)
 		return
 
 	if not tree.tree_state:
@@ -112,21 +112,21 @@ func _restore_split_offsets() -> void:
 			tree.set("hierarchy_split_offset", 200)
 		h_split.split_offset = int(v)
 
-	if bottom_v_split and tree:
+	if center_v_split and tree:
 		var v2 = tree.get("prefabs_split_offset")
 		if v2 == null or typeof(v2) != TYPE_INT:
 			v2 = -180
 			tree.set("prefabs_split_offset", -180)
-		bottom_v_split.split_offset = int(v2)
+		center_v_split.split_offset = int(v2)
 
 func _connect_split_signals() -> void:
 	if h_split:
 		h_split.dragged.connect(_on_h_split_dragged)
-	if bottom_v_split:
-		bottom_v_split.dragged.connect(_on_bottom_split_dragged)
+	if center_v_split:
+		center_v_split.dragged.connect(_on_bottom_split_dragged)
 
 # ============================================================
-# UI KURULUM
+# UI SETUP
 # ============================================================
 
 func _build_ui() -> void:
@@ -148,6 +148,7 @@ func _build_ui() -> void:
 	center_v_split.name = "CenterVSplit"
 	center_v_split.size_flags_horizontal = SIZE_EXPAND_FILL
 	center_v_split.size_flags_vertical = SIZE_EXPAND_FILL
+	center_v_split.split_offset = -180
 	h_split.add_child(center_v_split)
 
 	left_container = VBoxContainer.new()
@@ -217,6 +218,7 @@ func _create_tree_view() -> void:
 	tree_view.changed.connect(_on_tree_view_changed)
 	tree_view.selection_changed.connect(_on_selection_changed)
 	tree_view.node_moved.connect(_on_node_moved)
+	tree_view.prefab_dropped.connect(_on_prefab_dropped_from_canvas)
 
 	if hierarchy:
 		hierarchy.editor = self
@@ -242,27 +244,41 @@ func _create_tree_view() -> void:
 		attributes_editor.attributes_list_changed.connect(_on_attrs_list_changed)
 
 func _create_prefabs_bar() -> void:
-	bottom_v_split = VSplitContainer.new()
-	bottom_v_split.name = "BottomVSplit"
-	bottom_v_split.custom_minimum_size = Vector2(0, 180)
-	bottom_v_split.size_flags_horizontal = SIZE_EXPAND_FILL
-	bottom_v_split.size_flags_vertical = SIZE_EXPAND_FILL
-	bottom_v_split.collapsed = true
-	center_v_split.add_child(bottom_v_split)
+	bottom_container = VBoxContainer.new()
+	bottom_container.name = "BottomContainer"
+	bottom_container.custom_minimum_size = Vector2(0, 180)
+	bottom_container.size_flags_horizontal = SIZE_EXPAND_FILL
+	bottom_container.size_flags_vertical = SIZE_EXPAND_FILL
+	bottom_container.add_theme_constant_override("separation", 0)
+	center_v_split.add_child(bottom_container)
 
 	prefabs_bar = BayterekPrefabsBar.new()
 	prefabs_bar.name = "PrefabsBar"
 	prefabs_bar.size_flags_horizontal = SIZE_EXPAND_FILL
 	prefabs_bar.editor = self
-	bottom_v_split.add_child(prefabs_bar)
+	bottom_container.add_child(prefabs_bar)
 
 	prefabs_panel = VBoxContainer.new()
 	prefabs_panel.name = "PrefabsPanel"
 	prefabs_panel.size_flags_horizontal = SIZE_EXPAND_FILL
 	prefabs_panel.size_flags_vertical = SIZE_EXPAND_FILL
-	bottom_v_split.add_child(prefabs_panel)
+	bottom_container.add_child(prefabs_panel)
 
-	prefabs_bar.init(null, bottom_v_split, prefabs_panel)
+	prefabs_bar.init(null, bottom_container, prefabs_panel)
+
+	if tree_view and tree_view.prefabs_service:
+		tree_view.prefabs_service.prefab_created.connect(_on_prefab_created)
+
+func _on_prefab_created(_prefab: BayterekPrefab) -> void:
+	call_deferred("_refresh_prefabs_panels")
+
+func _refresh_prefabs_panels() -> void:
+	if not prefabs_panel:
+		return
+	for i in prefabs_panel.get_child_count():
+		var panel = prefabs_panel.get_child(i)
+		if panel.has_method("refresh"):
+			panel.refresh()
 
 func _create_context_menu() -> void:
 	context_menu = PopupMenu.new()
@@ -278,6 +294,15 @@ func _create_context_menu() -> void:
 	context_menu.add_child(submenu)
 	context_menu.add_submenu_node_item("New Node", submenu, 0)
 
+	context_menu.add_separator()
+	context_menu.add_item("Save as Prefab", 100)
+	context_menu.add_item("Save as Copy", 101)
+	context_menu.add_item("Make Unique", 102)
+	context_menu.add_separator()
+	context_menu.add_item("Delete", 103)
+
+	context_menu.id_pressed.connect(_on_context_menu_pressed)
+
 	add_child(context_menu)
 
 # ============================================================
@@ -288,10 +313,81 @@ func _on_tree_view_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			_last_click_pos = event.position
+			_update_context_menu_state()
 			context_menu.popup_on_parent(Rect2i(
 				tree_view.get_screen_transform() * event.position,
 				Vector2i.ZERO
 			))
+
+func _update_context_menu_state() -> void:
+	if not context_menu:
+		return
+	var has_selection: bool = not tree_view.selected_nodes.is_empty()
+
+	_set_item_disabled_by_id(100, not has_selection)
+	_set_item_disabled_by_id(101, not has_selection)
+	_set_item_disabled_by_id(102, not has_selection)
+	_set_item_disabled_by_id(103, not has_selection)
+
+	if has_selection:
+		var any_prefab: bool = false
+		for n in tree_view.selected_nodes:
+			if is_instance_valid(n) and n.prefab:
+				any_prefab = true
+				break
+		_set_item_disabled_by_id(102, not any_prefab)
+
+func _set_item_disabled_by_id(item_id: int, disabled: bool) -> void:
+	var idx: int = context_menu.get_item_index(item_id)
+	if idx >= 0:
+		context_menu.set_item_disabled(idx, disabled)
+
+func _on_context_menu_pressed(id: int) -> void:
+	match id:
+		100: _save_selected_as_prefab(false)
+		101: _save_selected_as_prefab(true)
+		102: _make_selected_unique()
+		103: _delete_selected()
+
+func _save_selected_as_prefab(is_copy: bool) -> void:
+	if not tree_view or not tree_view.prefabs_service:
+		return
+	if tree_view.selected_nodes.is_empty():
+		return
+
+	for node in tree_view.selected_nodes:
+		if not is_instance_valid(node):
+			continue
+		tree_view.prefabs_service.create_prefab(node, is_copy)
+
+	_refresh_prefabs_panels()
+	set_dirty(true)
+
+	if prefabs_bar and not tree_view.selected_nodes.is_empty():
+		var node = tree_view.selected_nodes[0]
+		var tab_idx: int = _node_type_to_panel_index(node.node_data.type)
+		prefabs_bar.current_tab = tab_idx
+
+func _node_type_to_panel_index(t: BayterekNode.NodeType) -> int:
+	match t:
+		BayterekNode.NodeType.SMALL: return 0
+		BayterekNode.NodeType.MEDIUM: return 1
+		BayterekNode.NodeType.LARGE: return 2
+		BayterekNode.NodeType.DECORATION: return 3
+	return 0
+
+func _make_selected_unique() -> void:
+	if not tree_view or not tree_view.prefabs_service:
+		return
+	for node in tree_view.selected_nodes:
+		if is_instance_valid(node):
+			tree_view.prefabs_service.make_unique(node)
+	_refresh_prefabs_panels()
+	set_dirty(true)
+
+func _delete_selected() -> void:
+	if tree_view:
+		tree_view.delete_selected()
 
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
@@ -314,7 +410,7 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 # ============================================================
-# SEÇİM
+# SELECTION
 # ============================================================
 
 func _on_selection_changed(selected: Array) -> void:
@@ -333,7 +429,7 @@ func _on_node_moved(node: BayterekNodeButton) -> void:
 	inspector.update_position_only(node.node_data.position)
 
 # ============================================================
-# ATTRIBUTES HANDLER'LARI
+# ATTRIBUTES HANDLERS
 # ============================================================
 
 func _on_attr_changed(_attr_id: String) -> void:
@@ -357,7 +453,7 @@ func _on_attrs_list_changed() -> void:
 		inspector.refresh_attributes()
 
 # ============================================================
-# SPLIT HANDLER'LARI
+# SPLIT HANDLERS
 # ============================================================
 
 func _on_h_split_dragged(offset: int) -> void:
@@ -371,7 +467,7 @@ func _on_bottom_split_dragged(offset: int) -> void:
 		set_dirty(true)
 
 # ============================================================
-# SETTINGS HANDLER'LARI
+# SETTINGS HANDLERS
 # ============================================================
 
 func _on_settings_size_changed() -> void:
@@ -407,7 +503,7 @@ func _on_settings_border_scale_changed() -> void:
 	pass
 
 # ============================================================
-# NODE OLUŞTURMA
+# NODE CREATION
 # ============================================================
 
 func _on_new_node_type_selected(id: int) -> void:
@@ -440,6 +536,21 @@ func _undo_create_node() -> void:
 	tree_view.nodes_service.delete_node(last_node)
 	set_dirty(true)
 
+func _on_prefab_dropped_from_canvas(prefab: BayterekPrefab, tree_pos: Vector2) -> void:
+	if not tree_view or not tree_view.nodes_service:
+		return
+
+	undo_redo.create_action("Create Node From Prefab")
+	undo_redo.add_do_method(_do_create_node_from_prefab.bind(prefab, tree_pos))
+	undo_redo.add_undo_method(_undo_create_node)
+	undo_redo.commit_action()
+
+func _do_create_node_from_prefab(prefab: BayterekPrefab, pos_in_tree: Vector2) -> void:
+	if not tree_view or not tree_view.nodes_service:
+		return
+	tree_view.nodes_service.create_from_prefab(pos_in_tree, prefab)
+	set_dirty(true)
+
 # ============================================================
 # MENU
 # ============================================================
@@ -465,7 +576,7 @@ func do_redo() -> void:
 		set_dirty(true)
 
 # ============================================================
-# KAYDETME / DURUM
+# SAVE / STATE
 # ============================================================
 
 func save_tree() -> void:
@@ -479,12 +590,12 @@ func save_tree() -> void:
 
 	var err: Error = ResourceSaver.save(tree, tree_path)
 	if err != OK:
-		push_error("Bayterek: Tree kaydedilemedi (%d)" % err)
+		push_error("Bayterek: Tree save failed (%d)" % err)
 		return
 
 	_last_save_time = Time.get_ticks_msec()
 	set_dirty(false)
-	print("Bayterek: Tree kaydedildi: ", tree_path)
+	print("Bayterek: Tree saved: ", tree_path)
 
 func set_dirty(is_dirty: bool) -> void:
 	if dirty != is_dirty:
@@ -493,7 +604,7 @@ func set_dirty(is_dirty: bool) -> void:
 
 func get_last_modified_time() -> String:
 	if _last_save_time == 0:
-		return "hiç kaydedilmedi"
+		return "never saved"
 
 	var elapsed: int = Time.get_ticks_msec() - _last_save_time
 	var seconds: int = elapsed / 1000
@@ -501,11 +612,11 @@ func get_last_modified_time() -> String:
 	var hours: int = minutes / 60
 
 	if hours > 0:
-		return "%d saat önce" % hours
+		return "%d hours ago" % hours
 	elif minutes > 0:
-		return "%d dakika önce" % minutes
+		return "%d minutes ago" % minutes
 	else:
-		return "%d saniye önce" % seconds
+		return "%d seconds ago" % seconds
 
 func _on_tree_view_changed() -> void:
 	set_dirty(true)

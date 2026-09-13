@@ -1,7 +1,7 @@
 @tool
 class_name BayterekTreeHierarchy
 extends VBoxContainer
-## Sol panel hiyerarşi — node listesi.
+## Left panel hierarchy — node list.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -17,7 +17,7 @@ var _nodes_item: TreeItem
 # node_id -> TreeItem
 var _id_to_item: Dictionary = {}
 
-## Canvas'tan seçim yankısını önlemek için flag
+## Flag to prevent selection echo from canvas
 var _updating_selection_from_canvas: bool = false
 
 func _ready() -> void:
@@ -57,6 +57,7 @@ func init(p_tree_view: BayterekTreeView) -> void:
 
 	if tree_view:
 		tree_view.node_created.connect(_on_node_created)
+		tree_view.node_deleted.connect(_on_node_deleted)
 		tree_view.selection_changed.connect(_on_selection_changed)
 
 	_refresh()
@@ -86,11 +87,17 @@ func _update_header() -> void:
 	pass
 
 # ============================================================
-# NODE EKLE / ÇIKAR
+# NODE ADD / REMOVE
 # ============================================================
 
 func _on_node_created(node: BayterekNodeButton) -> void:
 	_add_node_item(node)
+	_update_header()
+
+func _on_node_deleted(node: BayterekNodeButton) -> void:
+	if not node:
+		return
+	_remove_item_for_node(node.id)
 	_update_header()
 
 func _add_node_item(node: BayterekNodeButton) -> void:
@@ -125,11 +132,11 @@ func _remove_item_for_node(node_id: int) -> void:
 	_update_header()
 
 # ============================================================
-# SEÇİM SENKRONİZASYONU
+# SELECTION SYNC
 # ============================================================
 
 func _on_item_selected() -> void:
-	# Canvas'tan gelen seçim yankısıysa atla — döngüyü önle
+	# Skip if this is an echo from canvas selection
 	if _updating_selection_from_canvas:
 		return
 
@@ -155,10 +162,10 @@ func _on_item_selected() -> void:
 	tree_view.select_node(node, ctrl)
 
 func _on_item_activated() -> void:
-	# Seçim
+	# Selection
 	_on_item_selected()
 
-	# Kamera odaklanma
+	# Camera focus
 	var selected := _tree.get_selected()
 	if not selected:
 		return
@@ -179,7 +186,7 @@ func _on_item_activated() -> void:
 		tree_view.camera.focus_on(node.node_data.position, 1.0)
 
 func _on_selection_changed(selected: Array) -> void:
-	# Canvas'tan geldi — yankıyı bastır
+	# Came from canvas — suppress echo
 	_updating_selection_from_canvas = true
 
 	_tree.deselect_all()
@@ -196,7 +203,7 @@ func _on_selection_changed(selected: Array) -> void:
 	_updating_selection_from_canvas = false
 
 # ============================================================
-# BUTON AKSİYONLARI
+# BUTTON ACTIONS
 # ============================================================
 
 func _on_item_button_clicked(item: TreeItem, column: int, id: int, mouse_button_index: int) -> void:
@@ -243,6 +250,7 @@ func _do_delete_node(node: BayterekNodeButton) -> void:
 	else:
 		tree_view.connections_service.remove_all_connections_of(node)
 		tree_view.nodes_service.delete_node(node)
+		tree_view.node_deleted.emit(node)
 
 	_remove_item_for_node(node.id)
 	changed.emit()

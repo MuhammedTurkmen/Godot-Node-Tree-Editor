@@ -22,4 +22,12 @@ signal max_allocations_changed(prefab: BayterekPrefab)
 @export_storage var attributes: Dictionary = {}
 @export_storage var max_allocations: int = 1
 
-var nodes: Array[BayterekNodeButton] = []
+var nodes: Array = []
+
+func add_node(node: BayterekNodeButton) -> void:
+	if node in nodes:
+		return
+	nodes.append(node)
+
+func remove_node(node: BayterekNodeButton) -> void:
+	nodes.erase(node)

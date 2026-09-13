@@ -1,19 +1,19 @@
 @tool
 class_name BayterekPrefabsBar
 extends TabBar
-## Prefab alt bar — Small/Medium/Large/Decoration sekmeleri.
+## Prefab bottom bar — Small/Medium/Large/Decoration tabs.
 
 signal changed
 
 var editor: BayterekEditor
 
 var _panel_scene: PackedScene
-var _splitter: SplitContainer
+var _container: Control
 var _prefabs_panel: Control
 
-func init(p_panel_scene: PackedScene, p_splitter: SplitContainer, p_prefabs_panel: Control) -> void:
+func init(p_panel_scene: PackedScene, p_container: Control, p_prefabs_panel: Control) -> void:
 	_panel_scene = p_panel_scene
-	_splitter = p_splitter
+	_container = p_container
 	_prefabs_panel = p_prefabs_panel
 
 	deselect_enabled = true
@@ -42,11 +42,10 @@ func _on_tab_changed(tab_index: int) -> void:
 		p.visible = false
 
 	if tab_index < 0:
-		if _splitter:
-			_splitter.collapsed = true
 		return
 
 	var panel: Control = _prefabs_panel.get_child(tab_index)
 	panel.visible = true
-	if _splitter:
-		_splitter.collapsed = false
+
+	if panel.has_method("refresh"):
+		panel.refresh()

@@ -1,11 +1,13 @@
 @tool
 class_name BayterekTreeView
 extends Control
-## Editör canvas'ı.
+## Editor canvas.
 
 signal node_created(node: BayterekNodeButton)
+signal node_deleted(node: BayterekNodeButton)
 signal selection_changed(selected: Array)
 signal node_moved(node: BayterekNodeButton)
+signal prefab_dropped(prefab: BayterekPrefab, at_tree_position: Vector2)
 signal changed
 
 var main_container: Control
@@ -18,6 +20,7 @@ var nodes_container: Control
 var camera: BayterekCamera
 var nodes_service: BayterekNodesService
 var connections_service: BayterekConnectionsService
+var prefabs_service: BayterekPrefabsService
 var selection_box: BayterekSelectionBox
 
 var undo_redo_provider: Object = null
@@ -69,7 +72,7 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 
 # ============================================================
-# SEÇİM
+# SELECTION
 # ============================================================
 
 func select_node(node: BayterekNodeButton, additive: bool = false) -> void:
@@ -118,6 +121,7 @@ func delete_selected() -> void:
 			if is_instance_valid(node):
 				connections_service.remove_all_connections_of(node)
 				nodes_service.delete_node(node)
+				node_deleted.emit(node)
 		changed.emit()
 		return
 
@@ -151,6 +155,7 @@ func _do_delete_nodes(nodes: Array) -> void:
 		if is_instance_valid(node):
 			connections_service.remove_all_connections_of(node)
 			nodes_service.delete_node(node)
+			node_deleted.emit(node)
 
 func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connections: Array) -> void:
 	for i in range(nodes.size()):
@@ -164,7 +169,7 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 			connections_service.create_connection(from_node, to_node)
 
 # ============================================================
-# BAĞLANTI OLUŞTURMA (Shift + Tık)
+# CONNECTION CREATION (Shift + Click)
 # ============================================================
 
 func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void:
@@ -209,7 +214,7 @@ func _do_remove_connection(from_id: int, to_id: int) -> void:
 	connections_service.remove_connection(from_id, to_id)
 
 # ============================================================
-# TAŞIMA
+# MOVEMENT
 # ============================================================
 
 func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> void:
@@ -315,10 +320,6 @@ func _apply_positions(positions: Dictionary) -> void:
 # ============================================================
 
 func _on_selection_box_selected(rect: Rect2) -> void:
-	# --- DEBUG ---
-	print("=== SELECTION RECT ===")
-	print("    pos=", rect.position, " size=", rect.size)
-
 	if rect.size.x < 1.0 and rect.size.y < 1.0:
 		clear_selection()
 		return
@@ -333,9 +334,7 @@ func _on_selection_box_selected(rect: Rect2) -> void:
 		if node.node_data and node.node_data.locked:
 			continue
 		var node_rect := Rect2(node.node_data.position - (node.size * 0.5), node.size)
-		var hit: bool = rect.intersects(node_rect)
-		print("  node %d: pos=%s rect=%s hit=%s" % [node.id, node.node_data.position, node_rect, hit])
-		if hit:
+		if rect.intersects(node_rect):
 			select_node(node, true)
 
 # ============================================================
@@ -384,6 +383,9 @@ func _create_containers() -> void:
 	nodes_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	main_container.add_child(nodes_container)
 
+	# Drag forwarding — 3 params: get_drag_data, can_drop_data, drop_data
+	nodes_container.set_drag_forwarding(_drag_get_data, _drag_can_drop, _drag_drop_data)
+
 func _create_background() -> void:
 	var color_rect := ColorRect.new()
 	color_rect.name = "BackgroundColor"
@@ -430,6 +432,9 @@ func _create_services() -> void:
 	connections_service = BayterekConnectionsService.new(self)
 	connections_service.load_tree(_tree_data)
 
+	prefabs_service = BayterekPrefabsService.new(self)
+	prefabs_service.load_tree(_tree_data)
+
 func _create_selection_box() -> void:
 	selection_box = BayterekSelectionBox.new()
 	selection_box.set_view(self)
@@ -437,19 +442,44 @@ func _create_selection_box() -> void:
 	add_child(selection_box)
 
 # ============================================================
-# KOORDİNAT DÖNÜŞÜMLERİ
+# COORDINATE HELPERS
 # ============================================================
 
-## View (TreeView) local koordinatından tree koordinatına (0,0 merkez)
 func screen_to_tree(screen_pos: Vector2) -> Vector2:
 	var local: Vector2 = main_container.get_global_transform().affine_inverse() * (get_global_transform() * screen_pos)
 	return local - (_tree_data.size * 0.5)
 
-## Tree koordinatından view (TreeView) local koordinatına
 func tree_to_view_local(tree_pos: Vector2) -> Vector2:
 	var local_in_mc: Vector2 = tree_pos + (_tree_data.size * 0.5)
 	var global_pos: Vector2 = main_container.get_global_transform() * local_in_mc
 	return get_global_transform().affine_inverse() * global_pos
+
+# ============================================================
+# PREFAB DROP
+# ============================================================
+
+func _drag_get_data(_at_position: Vector2) -> Variant:
+	# We are not a drag source — only a drop target
+	return null
+
+func _drag_can_drop(_at_position: Vector2, data: Variant) -> bool:
+	if not data is Dictionary:
+		return false
+	return data.get("type", "") == "prefab"
+
+func _drag_drop_data(at_position: Vector2, data: Variant) -> void:
+	if not data is Dictionary:
+		return
+	var prefab = data.get("prefab", null)
+	if not prefab is BayterekPrefab:
+		return
+
+	# at_position is relative to nodes_container → convert to TreeView local first
+	var nodes_container_global: Vector2 = nodes_container.get_global_transform() * at_position
+	var view_local: Vector2 = get_global_transform().affine_inverse() * nodes_container_global
+
+	var tree_pos: Vector2 = screen_to_tree(view_local)
+	prefab_dropped.emit(prefab, tree_pos)
 
 # ============================================================
 # SIGNAL FORWARDING

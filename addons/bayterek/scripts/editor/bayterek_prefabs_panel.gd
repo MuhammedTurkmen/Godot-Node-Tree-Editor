@@ -1,7 +1,7 @@
 @tool
 class_name BayterekPrefabPanelEditor
 extends VBoxContainer
-## Tek bir prefab tipinin listesi.
+## Single prefab type's list.
 
 signal changed
 
@@ -12,6 +12,8 @@ var _list: ItemList
 
 func init() -> void:
 	add_theme_constant_override("separation", 4)
+	size_flags_horizontal = SIZE_EXPAND_FILL
+	size_flags_vertical = SIZE_EXPAND_FILL
 
 	# Filter
 	_filter = LineEdit.new()
@@ -20,15 +22,17 @@ func init() -> void:
 	_filter.text_changed.connect(_on_filter_changed)
 	add_child(_filter)
 
-	# Liste
+	# List
 	_list = ItemList.new()
 	_list.size_flags_horizontal = SIZE_EXPAND_FILL
 	_list.size_flags_vertical = SIZE_EXPAND_FILL
+	_list.custom_minimum_size = Vector2(0, 80)
 	_list.max_columns = 0
 	_list.same_column_width = true
 	_list.fixed_column_width = 100
 	_list.icon_mode = ItemList.ICON_MODE_TOP
 	_list.fixed_icon_size = Vector2i(64, 64)
+	_list.set_drag_forwarding(_get_drag_data, _can_drop_data, _drop_data)
 	add_child(_list)
 
 func refresh() -> void:
@@ -56,10 +60,37 @@ func refresh() -> void:
 		var idx: int = _list.item_count - 1
 		_list.set_item_metadata(idx, prefab)
 
+# ============================================================
+# ICON
+# ============================================================
+
 func _make_icon(prefab) -> Texture2D:
 	if prefab.icon and prefab.icon is Texture2D:
 		return prefab.icon
-	return null
+	return _make_fallback_icon(prefab.type)
+
+func _make_fallback_icon(t: int) -> Texture2D:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var color: Color = _type_color(t)
+	img.fill(color)
+
+	var border_color := Color(1, 1, 1, 0.6)
+	for x in 64:
+		img.set_pixel(x, 0, border_color)
+		img.set_pixel(x, 63, border_color)
+	for y in 64:
+		img.set_pixel(0, y, border_color)
+		img.set_pixel(63, y, border_color)
+
+	return ImageTexture.create_from_image(img)
+
+func _type_color(t: int) -> Color:
+	match t:
+		0: return Color(0.4, 0.7, 1.0, 0.85)
+		1: return Color(0.4, 1.0, 0.5, 0.85)
+		2: return Color(1.0, 0.7, 0.4, 0.85)
+		3: return Color(0.7, 0.5, 1.0, 0.85)
+	return Color.WHITE
 
 func _index_to_type(idx: int) -> BayterekNode.NodeType:
 	match idx:
@@ -71,3 +102,33 @@ func _index_to_type(idx: int) -> BayterekNode.NodeType:
 
 func _on_filter_changed(_text: String) -> void:
 	refresh()
+
+# ============================================================
+# DRAG & DROP
+# ============================================================
+
+func _get_drag_data(_at_position: Vector2) -> Variant:
+	var selected: PackedInt32Array = _list.get_selected_items()
+	if selected.is_empty():
+		return null
+
+	var idx: int = selected[0]
+	var prefab = _list.get_item_metadata(idx)
+	if not prefab:
+		return null
+
+	var preview := Label.new()
+	preview.text = prefab.node_name
+	preview.add_theme_color_override("font_color", Color.WHITE)
+	preview.add_theme_color_override("font_shadow_color", Color.BLACK)
+	preview.add_theme_constant_override("shadow_offset_x", 1)
+	preview.add_theme_constant_override("shadow_offset_y", 1)
+	set_drag_preview(preview)
+
+	return {"type": "prefab", "prefab": prefab}
+
+func _can_drop_data(_at_position: Vector2, _data: Variant) -> bool:
+	return false
+
+func _drop_data(_at_position: Vector2, _data: Variant) -> void:
+	pass
