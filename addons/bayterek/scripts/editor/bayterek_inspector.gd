@@ -1,16 +1,21 @@
 @tool
 class_name BayterekTreeEditorInspector
 extends Control
-## Node Inspector.
+## Node Inspector with Prefab mode support.
 
 signal changed
 
 var editor: BayterekEditor
 
 var _current_node: BayterekNodeButton
+var _current_prefab: BayterekPrefab = null
 
 var _empty_label: Label
 var _content: VBoxContainer
+
+# Mode banner (shown only in prefab mode)
+var _mode_banner: PanelContainer
+var _mode_banner_label: Label
 
 var _root_panel: HBoxContainer
 var _root_check: CheckBox
@@ -76,6 +81,36 @@ func _build_ui() -> void:
 	_content.size_flags_horizontal = SIZE_EXPAND_FILL
 	_content.add_theme_constant_override("separation", 6)
 	scroll.add_child(_content)
+
+	# --- Mode Banner (prefab mode only) ---
+	_mode_banner = PanelContainer.new()
+	_mode_banner.visible = false
+	_content.add_child(_mode_banner)
+
+	var banner_style := StyleBoxFlat.new()
+	banner_style.bg_color = Color(0.2, 0.4, 0.7, 0.6)
+	banner_style.corner_radius_top_left = 3
+	banner_style.corner_radius_top_right = 3
+	banner_style.corner_radius_bottom_left = 3
+	banner_style.corner_radius_bottom_right = 3
+	banner_style.content_margin_left = 6
+	banner_style.content_margin_right = 6
+	banner_style.content_margin_top = 4
+	banner_style.content_margin_bottom = 4
+	_mode_banner.add_theme_stylebox_override("panel", banner_style)
+
+	var banner_hbox := HBoxContainer.new()
+	_mode_banner.add_child(banner_hbox)
+
+	_mode_banner_label = Label.new()
+	_mode_banner_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	_mode_banner_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	banner_hbox.add_child(_mode_banner_label)
+
+	var back_btn := Button.new()
+	back_btn.text = "Back to Node"
+	back_btn.pressed.connect(_on_back_to_node_pressed)
+	banner_hbox.add_child(back_btn)
 
 	# --- Is Root ---
 	_root_panel = HBoxContainer.new()
@@ -283,12 +318,21 @@ func remove_attribute_from_node(attr_id: String) -> void:
 func _show_empty() -> void:
 	_empty_label.visible = true
 	_content.visible = false
+	_current_prefab = null
 
 func _show_content() -> void:
 	_empty_label.visible = false
 	_content.visible = true
 
+# ============================================================
+# INSPECT NODE
+# ============================================================
+
 func inspect(node: BayterekNodeButton) -> void:
+	_current_prefab = null
+	_mode_banner.visible = false
+	_root_check.disabled = false
+
 	_current_node = node
 
 	if not node or not node.node_data:
@@ -296,6 +340,12 @@ func inspect(node: BayterekNodeButton) -> void:
 		return
 
 	_show_content()
+
+	# Show node-only fields
+	_root_panel.visible = true
+	_transform_panel.visible = true
+	_connections_panel.visible = true
+
 	_updating_ui = true
 
 	_id_input.text = node.node_data.external_id if not node.node_data.external_id.is_empty() else str(node.node_data.id)
@@ -319,6 +369,53 @@ func inspect(node: BayterekNodeButton) -> void:
 	_rebuild_attributes_list()
 	_rebuild_connections_list()
 
+# ============================================================
+# INSPECT PREFAB
+# ============================================================
+
+func inspect_prefab(prefab: BayterekPrefab) -> void:
+	if not prefab:
+		return
+
+	_current_node = null
+	_current_prefab = prefab
+
+	_show_content()
+
+	# Show banner
+	_mode_banner.visible = true
+	_mode_banner_label.text = "Editing Prefab: %s" % prefab.node_name
+
+	# Hide node-only fields
+	_root_panel.visible = false
+	_transform_panel.visible = false
+	_connections_panel.visible = false
+	_max_alloc_panel.visible = false
+
+	_updating_ui = true
+
+	_id_input.text = prefab.reference_id if not prefab.reference_id.is_empty() else "(copy)"
+	_name_input.text = prefab.node_name
+	_description_input.text = prefab.description
+
+	_icon_input.set_texture(prefab.icon)
+	_border_normal_input.set_texture(prefab.border_normal)
+	_border_intermediate_input.set_texture(prefab.border_intermediate)
+	_border_active_input.set_texture(prefab.border_active)
+
+	_updating_ui = false
+
+	_rebuild_attributes_list()
+
+func _on_back_to_node_pressed() -> void:
+	_current_prefab = null
+	_mode_banner.visible = false
+
+	if _current_node:
+		inspect(_current_node)
+	else:
+		_show_empty()
+
 func update_position_only(pos: Vector2) -> void:
 	if _updating_ui:
 		return
@@ -334,12 +431,23 @@ func update_position_only(pos: Vector2) -> void:
 func _on_root_toggled(pressed: bool) -> void:
 	if _updating_ui or not _current_node:
 		return
+	if _current_prefab:
+		return
 	_current_node.node_data.is_root = pressed
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_name_changed(new_text: String) -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
+		return
+
+	if _current_prefab:
+		_current_prefab.set_node_name(new_text)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
 		return
 
 	if _current_node.prefab:
@@ -351,7 +459,16 @@ func _on_name_changed(new_text: String) -> void:
 	_notify_editor_dirty()
 
 func _on_description_changed() -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
+		return
+
+	if _current_prefab:
+		_current_prefab.set_description(_description_input.text)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
 		return
 
 	if _current_node.prefab:
@@ -363,7 +480,7 @@ func _on_description_changed() -> void:
 	_notify_editor_dirty()
 
 func _on_max_alloc_changed(value: float) -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui or _current_prefab or not _current_node:
 		return
 
 	var new_max: int = int(value)
@@ -398,7 +515,7 @@ func _on_max_alloc_changed(value: float) -> void:
 	_notify_editor_dirty()
 
 func _on_position_changed(_value: float) -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui or _current_prefab or not _current_node:
 		return
 
 	var new_pos := Vector2(_pos_x_input.value, _pos_y_input.value)
@@ -414,9 +531,18 @@ func _on_position_changed(_value: float) -> void:
 # --- Texture handlers ---
 
 func _on_icon_changed(path: String) -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
 		return
 	var tex: Texture2D = load(path) as Texture2D
+
+	if _current_prefab:
+		_current_prefab.set_icon(tex)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
+		return
 	if _current_node.prefab:
 		_current_node.prefab.set_icon(tex)
 	else:
@@ -427,7 +553,16 @@ func _on_icon_changed(path: String) -> void:
 	_notify_editor_dirty()
 
 func _on_icon_cleared() -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
+		return
+
+	if _current_prefab:
+		_current_prefab.set_icon(null)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
 		return
 	if _current_node.prefab:
 		_current_node.prefab.set_icon(null)
@@ -439,9 +574,18 @@ func _on_icon_cleared() -> void:
 	_notify_editor_dirty()
 
 func _on_border_normal_changed(path: String) -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
 		return
 	var tex: Texture2D = load(path) as Texture2D
+
+	if _current_prefab:
+		_current_prefab.set_border_normal(tex)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
+		return
 	if _current_node.prefab:
 		_current_node.prefab.set_border_normal(tex)
 	else:
@@ -452,7 +596,16 @@ func _on_border_normal_changed(path: String) -> void:
 	_notify_editor_dirty()
 
 func _on_border_normal_cleared() -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
+		return
+
+	if _current_prefab:
+		_current_prefab.set_border_normal(null)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
 		return
 	if _current_node.prefab:
 		_current_node.prefab.set_border_normal(null)
@@ -464,9 +617,18 @@ func _on_border_normal_cleared() -> void:
 	_notify_editor_dirty()
 
 func _on_border_intermediate_changed(path: String) -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
 		return
 	var tex: Texture2D = load(path) as Texture2D
+
+	if _current_prefab:
+		_current_prefab.set_border_intermediate(tex)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
+		return
 	if _current_node.prefab:
 		_current_node.prefab.set_border_intermediate(tex)
 	else:
@@ -475,7 +637,16 @@ func _on_border_intermediate_changed(path: String) -> void:
 	_notify_editor_dirty()
 
 func _on_border_intermediate_cleared() -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
+		return
+
+	if _current_prefab:
+		_current_prefab.set_border_intermediate(null)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
 		return
 	if _current_node.prefab:
 		_current_node.prefab.set_border_intermediate(null)
@@ -485,9 +656,18 @@ func _on_border_intermediate_cleared() -> void:
 	_notify_editor_dirty()
 
 func _on_border_active_changed(path: String) -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
 		return
 	var tex: Texture2D = load(path) as Texture2D
+
+	if _current_prefab:
+		_current_prefab.set_border_active(tex)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
+		return
 	if _current_node.prefab:
 		_current_node.prefab.set_border_active(tex)
 	else:
@@ -496,7 +676,16 @@ func _on_border_active_changed(path: String) -> void:
 	_notify_editor_dirty()
 
 func _on_border_active_cleared() -> void:
-	if _updating_ui or not _current_node:
+	if _updating_ui:
+		return
+
+	if _current_prefab:
+		_current_prefab.set_border_active(null)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
 		return
 	if _current_node.prefab:
 		_current_node.prefab.set_border_active(null)
@@ -530,6 +719,32 @@ func _rebuild_attributes_list() -> void:
 	var ids: Array = tree_attrs.keys()
 	ids.sort()
 
+	# ===== PREFAB MODE =====
+	if _current_prefab:
+		for attr_id in ids:
+			var attr: BayterekAttribute = tree_attrs[attr_id]
+
+			var block := VBoxContainer.new()
+			block.add_theme_constant_override("separation", 2)
+			_attributes_list.add_child(block)
+
+			var check := CheckBox.new()
+			check.text = "%s (%s)" % [attr.name, attr_id]
+			check.button_pressed = _current_prefab.attributes.has(attr_id)
+			check.toggled.connect(_on_attr_toggled_prefab.bind(attr_id))
+			block.add_child(check)
+
+			_attr_checkboxes[attr_id] = check
+
+			if _current_prefab.attributes.has(attr_id):
+				var raw = _current_prefab.attributes[attr_id]
+				var info := Label.new()
+				info.text = "  (default: %s)" % str(raw)
+				info.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+				block.add_child(info)
+		return
+
+	# ===== NODE MODE =====
 	for attr_id in ids:
 		var attr: BayterekAttribute = tree_attrs[attr_id]
 
@@ -649,6 +864,45 @@ func _rebuild_attributes_list() -> void:
 
 		_attr_value_inputs[attr_id] = attr_inputs
 
+# --- Prefab attribute toggle ---
+
+func _on_attr_toggled_prefab(pressed: bool, attr_id: String) -> void:
+	if _updating_ui or not _current_prefab:
+		return
+	if not editor or not editor.tree:
+		return
+	if not editor.tree.attributes.has(attr_id):
+		return
+
+	var attr: BayterekAttribute = editor.tree.attributes[attr_id]
+	var multi: bool = editor.tree.multiallocation
+
+	if pressed:
+		var new_values: Variant
+		if multi:
+			var levels: Array = []
+			for level in _current_prefab.max_allocations:
+				var values: Array = []
+				for i in attr.value_count:
+					values.append(0)
+				levels.append(values)
+			new_values = levels
+		else:
+			var values: Array = []
+			for i in attr.value_count:
+				values.append(0)
+			new_values = values
+
+		_current_prefab.set_attribute(attr_id, new_values)
+	else:
+		_current_prefab.remove_attribute(attr_id)
+
+	_rebuild_attributes_list()
+	editor.set_dirty(true)
+	changed.emit()
+
+# --- Node attribute toggle ---
+
 func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 	if _updating_ui or not _current_node:
 		return
@@ -712,33 +966,31 @@ func _on_attr_value_changed(value: float, attr_id: String, index: int, level: in
 	if typeof(value) == TYPE_FLOAT and value == floor(value):
 		v = int(value)
 
-	if _current_node.prefab:
-		_current_node.prefab.set_attribute_value(attr_id, index, v, level)
+	# Attribute values are ALWAYS per-node (override)
+	if level >= 0:
+		var levels = _current_node.node_data.attributes[attr_id]
+		if not levels is Array:
+			return
+		if level >= levels.size():
+			return
+		var level_vals = levels[level]
+		if not level_vals is Array:
+			return
+		if index < 0 or index >= level_vals.size():
+			return
+		level_vals[index] = v
 	else:
-		if level >= 0:
-			var levels = _current_node.node_data.attributes[attr_id]
-			if not levels is Array:
+		var vals = _current_node.node_data.attributes[attr_id]
+		if not vals is Array:
+			return
+		if vals.size() > 0 and vals[0] is Array:
+			if index < 0 or index >= vals[0].size():
 				return
-			if level >= levels.size():
-				return
-			var level_vals = levels[level]
-			if not level_vals is Array:
-				return
-			if index < 0 or index >= level_vals.size():
-				return
-			level_vals[index] = v
+			vals[0][index] = v
 		else:
-			var vals = _current_node.node_data.attributes[attr_id]
-			if not vals is Array:
+			if index < 0 or index >= vals.size():
 				return
-			if vals.size() > 0 and vals[0] is Array:
-				if index < 0 or index >= vals[0].size():
-					return
-				vals[0][index] = v
-			else:
-				if index < 0 or index >= vals.size():
-					return
-				vals[index] = v
+			vals[index] = v
 
 	editor.set_dirty(true)
 	changed.emit()

@@ -33,10 +33,19 @@ func init() -> void:
 	_list.icon_mode = ItemList.ICON_MODE_TOP
 	_list.fixed_icon_size = Vector2i(64, 64)
 	_list.set_drag_forwarding(_get_drag_data, _can_drop_data, _drop_data)
+	_list.item_activated.connect(_on_item_activated)
 	add_child(_list)
 
 func refresh() -> void:
+	print("[PrefabPanel] refresh() index=", get_index(),
+		" | editor=", editor,
+		" | tree=", (editor.tree if editor else null),
+		" | self.visible=", visible,
+		" | list_size=", _list.size,
+		" | item_count_before=", _list.item_count)
+
 	if not editor or not editor.tree:
+		print("    → SKIP: editor or tree is null")
 		return
 
 	_list.clear()
@@ -45,10 +54,14 @@ func refresh() -> void:
 	var node_type: BayterekNode.NodeType = _index_to_type(panel_index)
 
 	var prefabs_dict: Dictionary = editor.tree.prefabs
+	print("    → prefabs_dict keys=", prefabs_dict.keys())
 	if not prefabs_dict.has(node_type):
+		print("    → no prefabs for node_type=", node_type)
 		return
 
 	var prefabs_list: Array = prefabs_dict[node_type]
+	print("    → prefabs_list.size=", prefabs_list.size())
+
 	var filter_text: String = _filter.text.strip_edges().to_lower()
 
 	for prefab in prefabs_list:
@@ -59,6 +72,9 @@ func refresh() -> void:
 		_list.add_item(prefab.node_name, _make_icon(prefab), true)
 		var idx: int = _list.item_count - 1
 		_list.set_item_metadata(idx, prefab)
+		print("    → added: ", prefab.node_name, " (items now=", _list.item_count, ")")
+
+	print("    → refresh DONE, item_count_after=", _list.item_count)
 
 # ============================================================
 # ICON
@@ -86,10 +102,10 @@ func _make_fallback_icon(t: int) -> Texture2D:
 
 func _type_color(t: int) -> Color:
 	match t:
-		0: return Color(0.4, 0.7, 1.0, 0.85)
-		1: return Color(0.4, 1.0, 0.5, 0.85)
-		2: return Color(1.0, 0.7, 0.4, 0.85)
-		3: return Color(0.7, 0.5, 1.0, 0.85)
+		0: return Color(0.4, 0.7, 1.0, 0.85)      # SMALL
+		1: return Color(0.4, 1.0, 0.5, 0.85)      # MEDIUM
+		2: return Color(1.0, 0.7, 0.4, 0.85)      # LARGE
+		3: return Color(0.7, 0.5, 1.0, 0.85)      # DECORATION
 	return Color.WHITE
 
 func _index_to_type(idx: int) -> BayterekNode.NodeType:
@@ -132,3 +148,20 @@ func _can_drop_data(_at_position: Vector2, _data: Variant) -> bool:
 
 func _drop_data(_at_position: Vector2, _data: Variant) -> void:
 	pass
+
+# ============================================================
+# ITEM ACTIVATED (double-click)
+# ============================================================
+
+func _on_item_activated(index: int) -> void:
+	if not editor:
+		return
+
+	var prefab = _list.get_item_metadata(index)
+	if not prefab is BayterekPrefab:
+		return
+
+	if editor.inspector:
+		editor.inspector.inspect_prefab(prefab)
+		if editor.tab_container:
+			editor.tab_container.current_tab = 0

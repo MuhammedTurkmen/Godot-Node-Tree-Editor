@@ -1,7 +1,7 @@
 @tool
 class_name BayterekAttributesEditor
 extends VBoxContainer
-## Attribute listesi editörü — sağ panel 3. sekme.
+## Attribute list editor — right panel 3rd tab.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -17,7 +17,7 @@ var _root_item: TreeItem
 var _filter_input: LineEdit
 var _add_button: Button
 
-# Detay paneli
+# Detail panel
 var _detail_panel: VBoxContainer
 var _detail_title: Label
 var _name_input: LineEdit
@@ -40,7 +40,7 @@ func init() -> void:
 	_refresh()
 
 func _build_ui() -> void:
-	# --- Üst toolbar: Filter + Add ---
+	# --- Top toolbar: Filter + Add ---
 	var top := HBoxContainer.new()
 	add_child(top)
 
@@ -52,12 +52,12 @@ func _build_ui() -> void:
 
 	_add_button = Button.new()
 	_add_button.text = "+"
-	_add_button.tooltip_text = "Yeni attribute ekle"
+	_add_button.tooltip_text = "Add new attribute"
 	_add_button.custom_minimum_size = Vector2(28, 0)
 	_add_button.pressed.connect(_on_add_pressed)
 	top.add_child(_add_button)
 
-	# --- Attribute listesi ---
+	# --- Attribute list ---
 	_tree = Tree.new()
 	_tree.hide_root = true
 	_tree.select_mode = Tree.SELECT_ROW
@@ -69,7 +69,7 @@ func _build_ui() -> void:
 
 	_root_item = _tree.create_item()
 
-	# --- Detay paneli ---
+	# --- Detail panel ---
 	var sep := HSeparator.new()
 	add_child(sep)
 
@@ -102,7 +102,7 @@ func _build_ui() -> void:
 	effect_label.text = "Effect"
 	effect_label.custom_minimum_size = Vector2(90, 0)
 	effect_label.size_flags_vertical = 0
-	effect_label.tooltip_text = "Değerler için # placeholder kullan"
+	effect_label.tooltip_text = "Use # placeholder for values"
 	effect_row.add_child(effect_label)
 	_effect_input = TextEdit.new()
 	_effect_input.custom_minimum_size = Vector2(0, 60)
@@ -116,7 +116,7 @@ func _build_ui() -> void:
 	var count_label := Label.new()
 	count_label.text = "Value Count"
 	count_label.custom_minimum_size = Vector2(90, 0)
-	count_label.tooltip_text = "Kaç değer alacak (0-4)"
+	count_label.tooltip_text = "How many values (0-4)"
 	count_row.add_child(count_label)
 	_value_count_input = SpinBox.new()
 	_value_count_input.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -175,7 +175,7 @@ func _add_attr_item(attr: BayterekAttribute) -> void:
 		item.select(0)
 
 # ============================================================
-# DETAY PANELİ
+# DETAIL PANEL
 # ============================================================
 
 func _show_detail(visible_state: bool) -> void:
@@ -201,7 +201,7 @@ func _load_detail(attr_id: String) -> void:
 	_show_detail(true)
 
 # ============================================================
-# SİNYAL HANDLER'LARI
+# SIGNAL HANDLERS
 # ============================================================
 
 func _on_filter_changed(_text: String) -> void:
@@ -272,7 +272,7 @@ func _delete_attribute(attr_id: String) -> void:
 	_refresh()
 
 # ============================================================
-# DETAY DEĞİŞİKLİKLERİ
+# DETAIL CHANGES
 # ============================================================
 
 func _on_name_changed(new_text: String) -> void:
@@ -310,7 +310,56 @@ func _on_value_count_changed(value: float) -> void:
 	var attr: BayterekAttribute = editor.tree.attributes.get(_current_attr_id, null)
 	if not attr:
 		return
-	attr.value_count = int(value)
+
+	var old_count: int = attr.value_count
+	var new_count: int = int(value)
+	attr.value_count = new_count
+
+	# Resize all nodes' arrays for this attribute
+	if old_count != new_count:
+		_resize_nodes_arrays(_current_attr_id, new_count)
+
 	editor.set_dirty(true)
 	changed.emit()
 	attribute_changed.emit(_current_attr_id)
+
+func _resize_nodes_arrays(attr_id: String, new_count: int) -> void:
+	if not editor or not editor.tree:
+		return
+
+	# Resize each node
+	for node_data in editor.tree.nodes:
+		if not node_data.attributes.has(attr_id):
+			continue
+		var values = node_data.attributes[attr_id]
+		_resize_value_array(values, new_count)
+
+	# Resize each prefab
+	for node_type in editor.tree.prefabs.keys():
+		if node_type == BayterekNode.NodeType.DECORATION:
+			continue
+		var prefabs_list: Array = editor.tree.prefabs[node_type]
+		for prefab in prefabs_list:
+			if not prefab.attributes.has(attr_id):
+				continue
+			var values = prefab.attributes[attr_id]
+			_resize_value_array(values, new_count)
+
+func _resize_value_array(values: Variant, new_count: int) -> void:
+	if not values is Array:
+		return
+
+	# Multi-allocation: array of arrays (one per level)
+	if values.size() > 0 and values[0] is Array:
+		for level in values.size():
+			var level_values: Array = values[level]
+			while level_values.size() < new_count:
+				level_values.append(0)
+			while level_values.size() > new_count:
+				level_values.pop_back()
+	else:
+		# Single level
+		while values.size() < new_count:
+			values.append(0)
+		while values.size() > new_count:
+			values.pop_back()
