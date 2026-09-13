@@ -28,6 +28,11 @@ extends Resource
 @export_storage var prefabs: Dictionary = {}
 @export_storage var attributes: Dictionary = {}
 
+# Editor layout
+@export_storage var hierarchy_split_offset: int = 200
+@export_storage var prefabs_split_offset: int = -180
+@export_storage var inspector_split_offset: int = -320
+
 var tree_state: BayterekTreeState
 
 func _init() -> void:
@@ -51,6 +56,11 @@ func _init() -> void:
 		BayterekNode.NodeType.LARGE: Vector2(64, 64)
 	}
 	tree_state = BayterekTreeState.new()
+
+	# Editor layout defaults (eski .tres dosyaları için garantile)
+	hierarchy_split_offset = 200
+	prefabs_split_offset = -180
+	inspector_split_offset = -320
 
 func get_next_id() -> int:
 	id_counter += 1

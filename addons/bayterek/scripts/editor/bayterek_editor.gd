@@ -1,14 +1,13 @@
 @tool
 class_name BayterekEditor
 extends Control
-## Graph editörü + sol hierarchy + sağ panel (Inspector/Settings/Attributes).
+## Graph editörü + sol hierarchy + sağ panel + alt prefabs bar.
 
 signal closed
 signal dirty_changed(editor: BayterekEditor, dirty: bool)
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
-## Sol panel (hierarchy) genişliği + sağ panel (tab) genişliği + kenar boşlukları
 const LEFT_PANEL_WIDTH := 200.0
 const RIGHT_PANEL_WIDTH := 320.0
 const MENU_HEIGHT := 28.0
@@ -22,6 +21,7 @@ var undo_redo: UndoRedo
 
 var h_split: HSplitContainer
 var hierarchy: BayterekTreeHierarchy
+var center_v_split: VSplitContainer
 var left_container: VBoxContainer
 var menu_bar: HBoxContainer
 var tree_view: BayterekTreeView
@@ -29,6 +29,10 @@ var tab_container: TabContainer
 var inspector: BayterekTreeEditorInspector
 var settings_editor: BayterekSettingsEditor
 var attributes_editor: BayterekAttributesEditor
+
+var bottom_v_split: VSplitContainer
+var prefabs_bar: BayterekPrefabsBar
+var prefabs_panel: Control
 
 var context_menu: PopupMenu
 
@@ -52,7 +56,6 @@ func _process(delta: float) -> void:
 			_apply_min_size_to_tree()
 
 func _on_editor_resized() -> void:
-	# Debounce: kullanıcı pencereyi sürüklerken spam yapmasın
 	_resize_debounce = 0.2
 
 func _apply_min_size_to_tree() -> void:
@@ -60,13 +63,11 @@ func _apply_min_size_to_tree() -> void:
 		return
 
 	var vp_size: Vector2 = get_viewport().get_visible_rect().size
-
 	var canvas_w: float = max(400.0, vp_size.x - LEFT_PANEL_WIDTH - RIGHT_PANEL_WIDTH - SAFETY_MARGIN)
 	var canvas_h: float = max(300.0, vp_size.y - MENU_HEIGHT - SAFETY_MARGIN)
 
 	var changed: bool = false
 
-	# Sadece tree.size yetersizse büyüt (küçültme yok)
 	if tree.size.x < canvas_w:
 		tree.size.x = canvas_w
 		changed = true
@@ -93,12 +94,36 @@ func load_tree(path: String) -> void:
 
 	_build_ui()
 	_create_tree_view()
+	_create_prefabs_bar()
 	_create_context_menu()
 
-	# İlk açılışta minimum boyutu uygula
+	_restore_split_offsets()
+	_connect_split_signals()
+
 	call_deferred("_apply_min_size_to_tree")
 
 	set_dirty(false)
+
+func _restore_split_offsets() -> void:
+	if h_split and tree:
+		var v = tree.get("hierarchy_split_offset")
+		if v == null or typeof(v) != TYPE_INT:
+			v = 200
+			tree.set("hierarchy_split_offset", 200)
+		h_split.split_offset = int(v)
+
+	if bottom_v_split and tree:
+		var v2 = tree.get("prefabs_split_offset")
+		if v2 == null or typeof(v2) != TYPE_INT:
+			v2 = -180
+			tree.set("prefabs_split_offset", -180)
+		bottom_v_split.split_offset = int(v2)
+
+func _connect_split_signals() -> void:
+	if h_split:
+		h_split.dragged.connect(_on_h_split_dragged)
+	if bottom_v_split:
+		bottom_v_split.dragged.connect(_on_bottom_split_dragged)
 
 # ============================================================
 # UI KURULUM
@@ -119,12 +144,18 @@ func _build_ui() -> void:
 	hierarchy.size_flags_vertical = SIZE_EXPAND_FILL
 	h_split.add_child(hierarchy)
 
+	center_v_split = VSplitContainer.new()
+	center_v_split.name = "CenterVSplit"
+	center_v_split.size_flags_horizontal = SIZE_EXPAND_FILL
+	center_v_split.size_flags_vertical = SIZE_EXPAND_FILL
+	h_split.add_child(center_v_split)
+
 	left_container = VBoxContainer.new()
 	left_container.name = "LeftContainer"
 	left_container.size_flags_horizontal = SIZE_EXPAND_FILL
 	left_container.size_flags_vertical = SIZE_EXPAND_FILL
 	left_container.add_theme_constant_override("separation", 0)
-	h_split.add_child(left_container)
+	center_v_split.add_child(left_container)
 
 	menu_bar = HBoxContainer.new()
 	menu_bar.name = "MenuBar"
@@ -209,6 +240,29 @@ func _create_tree_view() -> void:
 		attributes_editor.attribute_changed.connect(_on_attr_changed)
 		attributes_editor.attribute_removed.connect(_on_attr_removed)
 		attributes_editor.attributes_list_changed.connect(_on_attrs_list_changed)
+
+func _create_prefabs_bar() -> void:
+	bottom_v_split = VSplitContainer.new()
+	bottom_v_split.name = "BottomVSplit"
+	bottom_v_split.custom_minimum_size = Vector2(0, 180)
+	bottom_v_split.size_flags_horizontal = SIZE_EXPAND_FILL
+	bottom_v_split.size_flags_vertical = SIZE_EXPAND_FILL
+	bottom_v_split.collapsed = true
+	center_v_split.add_child(bottom_v_split)
+
+	prefabs_bar = BayterekPrefabsBar.new()
+	prefabs_bar.name = "PrefabsBar"
+	prefabs_bar.size_flags_horizontal = SIZE_EXPAND_FILL
+	prefabs_bar.editor = self
+	bottom_v_split.add_child(prefabs_bar)
+
+	prefabs_panel = VBoxContainer.new()
+	prefabs_panel.name = "PrefabsPanel"
+	prefabs_panel.size_flags_horizontal = SIZE_EXPAND_FILL
+	prefabs_panel.size_flags_vertical = SIZE_EXPAND_FILL
+	bottom_v_split.add_child(prefabs_panel)
+
+	prefabs_bar.init(null, bottom_v_split, prefabs_panel)
 
 func _create_context_menu() -> void:
 	context_menu = PopupMenu.new()
@@ -301,6 +355,20 @@ func _on_attr_removed(attr_id: String) -> void:
 func _on_attrs_list_changed() -> void:
 	if inspector:
 		inspector.refresh_attributes()
+
+# ============================================================
+# SPLIT HANDLER'LARI
+# ============================================================
+
+func _on_h_split_dragged(offset: int) -> void:
+	if tree:
+		tree.hierarchy_split_offset = offset
+		set_dirty(true)
+
+func _on_bottom_split_dragged(offset: int) -> void:
+	if tree:
+		tree.prefabs_split_offset = offset
+		set_dirty(true)
 
 # ============================================================
 # SETTINGS HANDLER'LARI
