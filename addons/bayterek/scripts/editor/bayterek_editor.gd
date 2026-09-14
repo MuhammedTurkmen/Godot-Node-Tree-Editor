@@ -35,6 +35,7 @@ var prefabs_bar: BayterekPrefabsBar
 var prefabs_panel: Control
 
 var context_menu: PopupMenu
+var validator: BayterekValidator
 
 # Prefab delete dialog (editor-level — like ContextMenu)
 var delete_confirmation: ConfirmationDialog
@@ -104,6 +105,7 @@ func load_tree(path: String) -> void:
 	_create_prefabs_bar()
 	_create_context_menu()
 	_create_delete_dialog()
+	_create_validator()
 
 	_restore_split_offsets()
 	_connect_split_signals()
@@ -296,6 +298,19 @@ func _create_prefabs_bar() -> void:
 	prefabs_bar.init(null, bottom_container, prefabs_panel)
 
 	call_deferred("_refresh_prefabs_panels")
+
+func _create_validator() -> void:
+	validator = BayterekValidator.new()
+	validator.name = "Validator"
+	validator.editor = self
+	validator.init()
+
+	# Add to left_container (over TreeView)
+	if left_container:
+		left_container.add_child(validator)
+
+	# Initial validation
+	validator.validate()
 
 # ============================================================
 # DELETE DIALOG (editor-level)
@@ -830,6 +845,10 @@ func set_dirty(is_dirty: bool) -> void:
 	if dirty != is_dirty:
 		dirty = is_dirty
 		dirty_changed.emit(self, dirty)
+
+	# Validate whenever tree changes
+	if validator:
+		validator.validate()
 
 func get_last_modified_time() -> String:
 	if _last_save_time == 0:
