@@ -32,6 +32,13 @@ enum AllocationState {
 	REFUND,
 }
 
+enum TooltipCorner {
+	TOP_LEFT,
+	TOP_RIGHT,
+	BOTTOM_LEFT,
+	BOTTOM_RIGHT,
+}
+
 # --- Static editor-side registry ---
 
 static var _editor_registry: BayterekRegistry = null

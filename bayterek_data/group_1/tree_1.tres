@@ -1,11 +1,19 @@
 [gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://dpct2yoh4f760"]
 
+[ext_resource type="Script" uid="uid://hqjiiihenipg" path="res://addons/bayterek/scripts/resources/bayterek_attribute.gd" id="1_32bmc"]
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_d7nu5"]
 [ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://icon.svg" id="2_p7r5a"]
 [ext_resource type="Texture2D" uid="uid://brdob75d0ryhu" path="res://medium_border.png" id="2_s5f85"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_y2ort"]
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_p7r5a"]
 [ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="3_tyv6k"]
+
+[sub_resource type="Resource" id="Resource_gjclu"]
+script = ExtResource("1_32bmc")
+id = "new_attribute"
+name = "New Attribute"
+effect = "Effect #"
+value_count = 3
 
 [sub_resource type="Resource" id="Resource_32bmc"]
 script = ExtResource("3_tyv6k")
@@ -22,6 +30,9 @@ line_data = {
 3: SubResource("Resource_32bmc")
 }
 out_nodes = Array[int]([3])
+attributes = {
+"new_attribute": [0, 0, 0]
+}
 
 [sub_resource type="Resource" id="Resource_4kaxi"]
 script = ExtResource("3_tyv6k")
@@ -39,6 +50,9 @@ line_data = {
 }
 out_nodes = Array[int]([5])
 in_nodes = Array[int]([3])
+attributes = {
+"new_attribute": [0, 0, 0]
+}
 
 [sub_resource type="Resource" id="Resource_8xuuo"]
 script = ExtResource("3_tyv6k")
@@ -56,6 +70,12 @@ line_data = {
 }
 out_nodes = Array[int]([2])
 in_nodes = Array[int]([1])
+attributes = {
+"new_attribute": [4, 2, 2]
+}
+overridden_attributes = {
+"new_attribute": true
+}
 
 [sub_resource type="Resource" id="Resource_1jmks"]
 script = ExtResource("3_tyv6k")
@@ -108,6 +128,9 @@ reference_id = "c2f66cb8-e22c-4405-9a70-bba43ecfd1f3"
 node_name = "Small Node"
 icon = ExtResource("2_p7r5a")
 border_normal = ExtResource("2_s5f85")
+attributes = {
+"new_attribute": [0, 0, 0]
+}
 
 [sub_resource type="Resource" id="Resource_ev4tw"]
 script = ExtResource("3_p7r5a")
@@ -137,7 +160,7 @@ name = "Tree 1"
 id_counter = 10
 border_scale = 2.5
 icon_sizes = {
-0: Vector2(25, 10),
+0: Vector2(25, 25),
 1: Vector2(45, 45),
 2: Vector2(60, 60)
 }
@@ -156,6 +179,9 @@ prefabs = {
 0: [SubResource("Resource_l30q8"), SubResource("Resource_ev4tw")],
 1: [SubResource("Resource_govpd")],
 2: [SubResource("Resource_s6ywc")]
+}
+attributes = {
+"new_attribute": SubResource("Resource_gjclu")
 }
 hierarchy_split_offset = -382
 prefabs_split_offset = 259

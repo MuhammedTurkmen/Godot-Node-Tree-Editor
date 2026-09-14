@@ -37,6 +37,9 @@ var prefabs_panel: Control
 var context_menu: PopupMenu
 var validator: BayterekValidator
 
+# Tooltip menu reference (for checkmarks)
+var _tooltip_menu: PopupMenu
+
 # Prefab delete dialog (editor-level — like ContextMenu)
 var delete_confirmation: ConfirmationDialog
 var delete_option: OptionButton
@@ -193,6 +196,8 @@ func _build_ui() -> void:
 	view_btn.text = "View"
 	var view_popup: PopupMenu = view_btn.get_popup()
 	view_popup.add_item("Center Camera", 0)
+	view_popup.add_separator()
+	_build_tooltip_submenu(view_popup)
 	view_popup.id_pressed.connect(_on_view_menu_pressed)
 	menu_bar.add_child(view_btn)
 
@@ -223,6 +228,79 @@ func _build_ui() -> void:
 	tab_container.add_child(attributes_editor)
 	tab_container.set_tab_title(2, "Attributes")
 
+# ============================================================
+# TOOLTIP POSITION MENU
+# ============================================================
+
+const TOOLTIP_ID_NEAR_RIGHT := 100
+const TOOLTIP_ID_NEAR_LEFT := 101
+const TOOLTIP_ID_NEAR_TOP := 102
+const TOOLTIP_ID_NEAR_BOTTOM := 103
+const TOOLTIP_ID_CORNER_TL := 110
+const TOOLTIP_ID_CORNER_TR := 111
+const TOOLTIP_ID_CORNER_BL := 112
+const TOOLTIP_ID_CORNER_BR := 113
+
+func _build_tooltip_submenu(view_popup: PopupMenu) -> void:
+	_tooltip_menu = PopupMenu.new()
+	_tooltip_menu.name = "TooltipMenu"
+
+	# NEAR_NODE options
+	_tooltip_menu.add_radio_check_item("Near Node — Right", TOOLTIP_ID_NEAR_RIGHT)
+	_tooltip_menu.add_radio_check_item("Near Node — Left", TOOLTIP_ID_NEAR_LEFT)
+	_tooltip_menu.add_radio_check_item("Near Node — Top", TOOLTIP_ID_NEAR_TOP)
+	_tooltip_menu.add_radio_check_item("Near Node — Bottom", TOOLTIP_ID_NEAR_BOTTOM)
+	_tooltip_menu.add_separator()
+	# FIXED_CORNER options
+	_tooltip_menu.add_radio_check_item("Corner — Top Left", TOOLTIP_ID_CORNER_TL)
+	_tooltip_menu.add_radio_check_item("Corner — Top Right", TOOLTIP_ID_CORNER_TR)
+	_tooltip_menu.add_radio_check_item("Corner — Bottom Left", TOOLTIP_ID_CORNER_BL)
+	_tooltip_menu.add_radio_check_item("Corner — Bottom Right", TOOLTIP_ID_CORNER_BR)
+
+	# Default = Near Node — Right
+	_tooltip_menu.set_item_checked(_tooltip_menu.get_item_index(TOOLTIP_ID_NEAR_RIGHT), true)
+
+	_tooltip_menu.id_pressed.connect(_on_tooltip_menu_pressed)
+
+	view_popup.add_child(_tooltip_menu)
+	view_popup.add_submenu_node_item("Tooltip Position", _tooltip_menu, 1)
+
+func _on_tooltip_menu_pressed(id: int) -> void:
+	if not tree_view:
+		return
+
+	# Uncheck all
+	for i in _tooltip_menu.item_count:
+		_tooltip_menu.set_item_checked(i, false)
+
+	# Check the selected one
+	var idx: int = _tooltip_menu.get_item_index(id)
+	if idx >= 0:
+		_tooltip_menu.set_item_checked(idx, true)
+
+	# Apply position
+	match id:
+		TOOLTIP_ID_NEAR_RIGHT:
+			tree_view.set_tooltip_near_node_right()
+		TOOLTIP_ID_NEAR_LEFT:
+			tree_view.set_tooltip_near_node_left()
+		TOOLTIP_ID_NEAR_TOP:
+			tree_view.set_tooltip_near_node_top()
+		TOOLTIP_ID_NEAR_BOTTOM:
+			tree_view.set_tooltip_near_node_bottom()
+		TOOLTIP_ID_CORNER_TL:
+			tree_view.set_tooltip_corner_top_left()
+		TOOLTIP_ID_CORNER_TR:
+			tree_view.set_tooltip_corner_top_right()
+		TOOLTIP_ID_CORNER_BL:
+			tree_view.set_tooltip_corner_bottom_left()
+		TOOLTIP_ID_CORNER_BR:
+			tree_view.set_tooltip_corner_bottom_right()
+
+# ============================================================
+# TREE VIEW
+# ============================================================
+
 func _create_tree_view() -> void:
 	tree_view = BayterekTreeView.new()
 	tree_view.name = "TreeView"
@@ -250,6 +328,9 @@ func _create_tree_view() -> void:
 	tree_view.selection_changed.connect(_on_selection_changed)
 	tree_view.node_moved.connect(_on_node_moved)
 	tree_view.prefab_dropped.connect(_on_prefab_dropped_from_canvas)
+
+	# Default tooltip position: Near Node — Right
+	tree_view.set_tooltip_near_node_right()
 
 	if hierarchy:
 		hierarchy.editor = self
@@ -305,11 +386,9 @@ func _create_validator() -> void:
 	validator.editor = self
 	validator.init()
 
-	# Add to left_container (over TreeView)
 	if left_container:
 		left_container.add_child(validator)
 
-	# Initial validation
 	validator.validate()
 
 # ============================================================
@@ -323,14 +402,9 @@ func _create_delete_dialog() -> void:
 	delete_confirmation.ok_button_text = "Delete"
 	delete_confirmation.cancel_button_text = "Cancel"
 	delete_confirmation.dialog_text = ""
-
-	# CRITICAL: reset min_size to zero — overrides Godot's own size calc
 	delete_confirmation.min_size = Vector2i.ZERO
-
-	# CRITICAL: keep unresizable = true
 	delete_confirmation.unresizable = true
 
-	# Content as VBox — NO Margin wrapper
 	var vbox := VBoxContainer.new()
 	vbox.name = "ContentVBox"
 	vbox.custom_minimum_size = Vector2(460, 0)
@@ -846,7 +920,6 @@ func set_dirty(is_dirty: bool) -> void:
 		dirty = is_dirty
 		dirty_changed.emit(self, dirty)
 
-	# Validate whenever tree changes
 	if validator:
 		validator.validate()
 

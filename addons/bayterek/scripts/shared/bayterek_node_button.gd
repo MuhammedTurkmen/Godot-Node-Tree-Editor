@@ -12,6 +12,7 @@ signal drag_ended(node: BayterekNodeButton)
 
 var node_data: BayterekNode
 var prefab: BayterekPrefab
+var tree_data: BayterekTree
 
 var is_mouse_over: bool = false
 var selected: bool = false
@@ -254,3 +255,123 @@ func _on_mouse_entered() -> void:
 func _on_mouse_exited() -> void:
 	is_mouse_over = false
 	node_hovered.emit(self, false)
+
+# ============================================================
+# TOOLTIP FORMATTING
+# ============================================================
+
+## Returns a BBCode-formatted string for the tooltip.
+## Respects multi-allocation state (shows current + next level).
+func format_tooltip() -> String:
+	if not node_data:
+		return ""
+
+	# Header: name + allocation level
+	var text: String = ""
+
+	var display_name: String = node_name
+	if display_name.is_empty():
+		display_name = "Node %d" % id
+
+	# Multi-allocation: show current level
+	if _is_multiallocation():
+		text += "[b][color=#f9e6ca]%s[/color][/b] [color=#a0a0a0](%d/%d)[/color]\n\n" % [
+			display_name, allocation_level, node_data.max_allocations
+		]
+	else:
+		text += "[b][color=#f9e6ca]%s[/color][/b]\n\n" % display_name
+
+	# Attributes
+	text += _format_attributes()
+
+	# Description
+	if not node_data.description.is_empty():
+		text += "\n[color=orange]%s[/color]" % node_data.description
+
+	return text.strip_edges()
+
+## Checks if this node is under a multi-allocation tree.
+func _is_multiallocation() -> bool:
+	if not tree_data:
+		return false
+	return tree_data.multiallocation
+
+## Formats attribute effects with values substituted.
+func _format_attributes() -> String:
+	if not node_data or not tree_data:
+		return ""
+
+	var result: String = ""
+
+	var regex := RegEx.new()
+	regex.compile("#")
+
+	for attr_id in node_data.attributes.keys():
+		if not tree_data.attributes.has(attr_id):
+			continue
+
+		var attribute: BayterekAttribute = tree_data.attributes[attr_id]
+		result += _format_single_attribute(regex, attribute, attr_id)
+		result += "\n"
+
+	return result.strip_edges()
+
+## Formats a single attribute's effect at current allocation level.
+## If multi-allocation and not at max, also shows "Next Level".
+func _format_single_attribute(regex: RegEx, attribute: BayterekAttribute, attr_id: String) -> String:
+	var formatted: String = ""
+
+	if _is_multiallocation():
+		# Current level (if any)
+		if allocation_level > 0:
+			formatted = attribute.effect
+			var level_index: int = max(0, allocation_level - 1)
+			var raw = node_data.attributes[attr_id]
+
+			if raw is Array and level_index < raw.size():
+				var values = raw[level_index]
+				if values is Array:
+					for i in attribute.value_count:
+						if i < values.size():
+							formatted = regex.sub(formatted, str(values[i]))
+
+		# Next level preview (if not at max)
+		if allocation_level < node_data.max_allocations:
+			var next_level: int = allocation_level
+			var next_text: String = attribute.effect
+			var raw2 = node_data.attributes[attr_id]
+
+			if raw2 is Array and next_level < raw2.size():
+				var next_values = raw2[next_level]
+				if next_values is Array:
+					for i in attribute.value_count:
+						if i < next_values.size():
+							next_text = regex.sub(next_text, str(next_values[i]))
+
+			formatted += "\n[color=orange]Next Level: %s[/color]" % next_text.strip_edges()
+
+		# If not allocated at all yet, show level 1 as "Next"
+		if allocation_level == 0:
+			var first_text: String = attribute.effect
+			var raw3 = node_data.attributes[attr_id]
+
+			if raw3 is Array and raw3.size() > 0:
+				var first_values = raw3[0]
+				if first_values is Array:
+					for i in attribute.value_count:
+						if i < first_values.size():
+							first_text = regex.sub(first_text, str(first_values[i]))
+
+			formatted = "[color=orange]Next Level: %s[/color]" % first_text.strip_edges()
+	else:
+		# Single-level: just substitute current values
+		formatted = attribute.effect
+		var values = node_data.attributes[attr_id]
+
+		if values is Array:
+			for i in attribute.value_count:
+				if i < values.size() and not values[i] is Array:
+					formatted = regex.sub(formatted, str(values[i]))
+
+	# Color the attribute text
+	return "[color=#8a8aff]%s[/color]" % formatted

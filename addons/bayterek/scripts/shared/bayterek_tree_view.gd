@@ -37,6 +37,10 @@ var selected_nodes: Array[BayterekNodeButton] = []
 
 var _tree_data: BayterekTree
 
+# Tooltip
+var _tooltip: BayterekTooltip
+var _hovered_node: BayterekNodeButton = null
+
 var _dragging: bool = false
 var _drag_start_mouse_tree: Vector2 = Vector2.ZERO
 var _drag_start_positions: Dictionary = {}
@@ -45,6 +49,8 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_PASS
+
+	_create_tooltip()
 
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
@@ -91,6 +97,141 @@ func center_camera_on_content() -> void:
 
 	var centroid: Vector2 = sum / float(count)
 	camera.focus_on(centroid, 1.0)
+
+# ============================================================
+# TOOLTIP — CREATION
+# ============================================================
+
+func _create_tooltip() -> void:
+	_tooltip = BayterekTooltip.new()
+	_tooltip.name = "BayterekTooltip"
+	_tooltip.tree_view = self
+	_tooltip.position_mode = BayterekTooltip.PositionMode.NEAR_NODE
+	_tooltip.corner = Bayterek.TooltipCorner.BOTTOM_RIGHT
+	_tooltip.z_index = 100
+	_tooltip.visible = false
+	_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 6)
+	margin.add_theme_constant_override("margin_bottom", 6)
+	_tooltip.add_child(margin)
+
+	var rich := RichTextLabel.new()
+	rich.name = "Label"
+	rich.bbcode_enabled = true
+	rich.fit_content = true
+	rich.custom_minimum_size = Vector2(280, 0)
+	rich.custom_maximum_size = Vector2(550, -1)
+	rich.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rich.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(rich)
+
+	_tooltip.label = rich
+
+	add_child(_tooltip)
+
+	# Stylebox
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
+	style.border_color = Color(0.3, 0.3, 0.3, 0.9)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	_tooltip.add_theme_stylebox_override("panel", style)
+
+# ============================================================
+# TOOLTIP CONFIGURATION (public API)
+# ============================================================
+
+## NEAR_NODE: tooltip to the right of node (default)
+func set_tooltip_near_node_right() -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.set_position_right()
+
+## NEAR_NODE: tooltip to the left of node
+func set_tooltip_near_node_left() -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.set_position_left()
+
+## NEAR_NODE: tooltip above node
+func set_tooltip_near_node_top() -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.set_position_top()
+
+## NEAR_NODE: tooltip below node
+func set_tooltip_near_node_bottom() -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.set_position_bottom()
+
+## NEAR_NODE with custom offset
+func set_tooltip_near_node_offset(offset: Vector2) -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.position_mode = BayterekTooltip.PositionMode.NEAR_NODE
+		_tooltip.node_offset = offset
+
+## FIXED_CORNER: top-left of tree view
+func set_tooltip_corner_top_left() -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.set_corner_top_left()
+
+## FIXED_CORNER: top-right of tree view
+func set_tooltip_corner_top_right() -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.set_corner_top_right()
+
+## FIXED_CORNER: bottom-left of tree view
+func set_tooltip_corner_bottom_left() -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.set_corner_bottom_left()
+
+## FIXED_CORNER: bottom-right of tree view
+func set_tooltip_corner_bottom_right() -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.set_corner_bottom_right()
+
+## FIXED_CORNER with custom corner and margin
+func set_tooltip_fixed_corner(corner: int, margin: Vector2 = Vector2(20, 20)) -> void:
+	if _tooltip:
+		_tooltip.tree_view = self
+		_tooltip.position_mode = BayterekTooltip.PositionMode.FIXED_CORNER
+		_tooltip.corner = corner
+		_tooltip.corner_margin = margin
+
+# ============================================================
+# NODE HOVER HANDLERS
+# ============================================================
+
+func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
+	if not _tooltip:
+		return
+
+	# Ignore decorations
+	if node and node.type == BayterekNode.NodeType.DECORATION:
+		return
+
+	if is_hovered:
+		_hovered_node = node
+		_tooltip.inspect(node)
+	else:
+		if _hovered_node == node:
+			_hovered_node = null
+		_tooltip.reset()
+
+## Called when node moves while hovered — keeps tooltip aligned.
+func refresh_tooltip_position() -> void:
+	if _tooltip and _tooltip.visible and _hovered_node:
+		_tooltip.update_position_for(_hovered_node)
 
 # ============================================================
 # INPUT
@@ -258,9 +399,6 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 	select_node(node, additive)
 
 func _is_allocation_active() -> bool:
-	# Allocation is only active when:
-	# - Tree has allocation enabled
-	# - We are NOT in editor
 	return _tree_data != null and _tree_data.allocation and not Engine.is_editor_hint()
 
 func _do_create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButton) -> void:
@@ -278,7 +416,6 @@ func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) 
 		return
 	if node.node_data.locked:
 		return
-	# Disable dragging when allocation is active
 	if _is_allocation_active():
 		return
 
@@ -318,6 +455,8 @@ func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> vo
 
 		nodes_service.update_position(n, new_pos)
 		connections_service.update_lines_of(n)
+
+	refresh_tooltip_position()
 
 	if not selected_nodes.is_empty():
 		if selected_nodes.size() == 1:
@@ -379,7 +518,6 @@ func _apply_positions(positions: Dictionary) -> void:
 # ============================================================
 
 func _on_selection_box_selected(rect: Rect2) -> void:
-	# Selection box is disabled during allocation
 	if _is_allocation_active():
 		return
 
@@ -476,7 +614,6 @@ func _create_grid() -> void:
 	add_child(grid)
 	grid.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	# Hide grid during runtime
 	if not Engine.is_editor_hint():
 		grid.visible = false
 
@@ -492,6 +629,7 @@ func _create_services() -> void:
 	nodes_service.load_tree(_tree_data)
 	nodes_service.node_created.connect(_on_nodes_service_node_created)
 	nodes_service.node_pressed.connect(_on_node_pressed_internal)
+	nodes_service.node_hovered.connect(_on_node_hovered)
 	nodes_service.node_drag_started.connect(_on_node_drag_started)
 	nodes_service.node_dragged.connect(_on_node_dragged)
 	nodes_service.node_drag_ended.connect(_on_node_drag_ended)
@@ -507,7 +645,6 @@ func _create_services() -> void:
 	# Allocation
 	allocation_service = BayterekAllocationService.new(self)
 
-	# Wire allocation signals → nodes_service state updates
 	allocation_service.node_preallocated.connect(nodes_service.on_node_preallocated)
 	allocation_service.node_unpreallocated.connect(nodes_service.on_node_unpreallocated)
 	allocation_service.node_allocated.connect(nodes_service.on_node_allocated)
@@ -515,7 +652,6 @@ func _create_services() -> void:
 	allocation_service.node_refund_added.connect(nodes_service.on_node_refund_added)
 	allocation_service.node_refund_removed.connect(nodes_service.on_node_refund_removed)
 
-	# Wire allocation signals → connections_service line texture updates
 	allocation_service.node_preallocated.connect(connections_service.on_node_allocation_changed)
 	allocation_service.node_unpreallocated.connect(connections_service.on_node_allocation_changed)
 	allocation_service.node_allocated.connect(connections_service.on_node_allocation_changed)
@@ -523,21 +659,16 @@ func _create_services() -> void:
 	allocation_service.node_refund_added.connect(connections_service.on_node_allocation_changed)
 	allocation_service.node_refund_removed.connect(connections_service.on_node_allocation_changed)
 
-	# Forward allocation signals to high-level signals
 	allocation_service.node_allocated.connect(func(n): node_allocated.emit(n.node_data))
 	allocation_service.node_deallocated.connect(func(n): node_deallocated.emit(n.node_data))
 
-	# Forward prefab signals
 	prefabs_service.prefab_created.connect(func(p): prefab_created.emit(p))
 
-	# Forward line creation
 	connections_service.line_created.connect(func(l, f, t): line_created.emit(l, f, t))
 
-	# Load saved allocation state (only in runtime)
 	allocation_service.load_tree(_tree_data)
 
 func _create_selection_box() -> void:
-	# Selection box only in editor
 	if not Engine.is_editor_hint():
 		return
 

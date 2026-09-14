@@ -5,6 +5,7 @@ extends BayterekBaseService
 
 signal node_created(node: BayterekNodeButton)
 signal node_pressed(node: BayterekNodeButton, additive: bool)
+signal node_hovered(node: BayterekNodeButton, is_hovered: bool)
 signal node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal node_drag_ended(node: BayterekNodeButton)
@@ -23,6 +24,7 @@ func _create_node_from_data(node_data: BayterekNode) -> BayterekNodeButton:
 		return null
 
 	node.node_data = node_data
+	node.tree_data = _tree_data
 	node.name = "Node_%d" % node_data.id
 
 	_position_node(node, node_data.position)
@@ -31,6 +33,7 @@ func _create_node_from_data(node_data: BayterekNode) -> BayterekNodeButton:
 	_nodes[node_data.id] = node
 
 	node.pressed.connect(_on_node_pressed.bind(node))
+	node.node_hovered.connect(_on_node_hovered)
 	node.drag_started.connect(_on_node_drag_started)
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
@@ -63,6 +66,7 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 	node_data.max_allocations = 1
 
 	node.node_data = node_data
+	node.tree_data = _tree_data
 	node.name = "Node_%d" % node_data.id
 
 	_position_node(node, position)
@@ -73,6 +77,7 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 	_tree_data.nodes.append(node_data)
 
 	node.pressed.connect(_on_node_pressed.bind(node))
+	node.node_hovered.connect(_on_node_hovered)
 	node.drag_started.connect(_on_node_drag_started)
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
@@ -110,6 +115,7 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 		prefab.add_node(node)
 
 	node.node_data = node_data
+	node.tree_data = _tree_data
 	node.name = "Node_%d" % node_data.id
 
 	_position_node(node, position)
@@ -120,6 +126,7 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	_tree_data.nodes.append(node_data)
 
 	node.pressed.connect(_on_node_pressed.bind(node))
+	node.node_hovered.connect(_on_node_hovered)
 	node.drag_started.connect(_on_node_drag_started)
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
@@ -148,6 +155,7 @@ func restore_node(node: BayterekNodeButton, node_data: BayterekNode, index: int 
 		return
 
 	node.node_data = node_data
+	node.tree_data = _tree_data
 	_nodes[node_data.id] = node
 
 	_position_node(node, node_data.position)
@@ -177,7 +185,7 @@ func update_position(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
 	_position_node(node, pos_in_tree)
 
 # ============================================================
-# ALLOCATION STATE CALLBACKS (Faz 9)
+# ALLOCATION STATE CALLBACKS
 # ============================================================
 
 ## Called when a node becomes allocated
@@ -187,7 +195,6 @@ func on_node_allocated(node: BayterekNodeButton) -> void:
 
 	node.set_state(Bayterek.AllocationState.ACTIVE)
 
-	# Refresh neighbors (they may become INTERMEDIATE)
 	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
 	for neighbor_id in neighbors:
 		var neighbor: BayterekNodeButton = get_node(neighbor_id)
@@ -205,7 +212,6 @@ func on_node_deallocated(node: BayterekNodeButton) -> void:
 	else:
 		_refresh_node_state(node)
 
-	# Refresh neighbors
 	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
 	for neighbor_id in neighbors:
 		var neighbor: BayterekNodeButton = get_node(neighbor_id)
@@ -271,12 +277,10 @@ func _refresh_node_state(node: BayterekNodeButton) -> void:
 	if node.type == BayterekNode.NodeType.DECORATION:
 		return
 
-	# Preallocated → highest priority
 	if node.preallocated:
 		node.set_state(Bayterek.AllocationState.PREALLOCATED_ACTIVE)
 		return
 
-	# Allocated
 	if node.allocated:
 		if node.refund:
 			node.set_state(Bayterek.AllocationState.REFUND)
@@ -284,7 +288,6 @@ func _refresh_node_state(node: BayterekNodeButton) -> void:
 			node.set_state(Bayterek.AllocationState.ACTIVE)
 		return
 
-	# Check neighbors — if any is allocated or preallocated, this becomes INTERMEDIATE
 	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
 	for neighbor_id in neighbors:
 		var neighbor: BayterekNodeButton = get_node(neighbor_id)
@@ -299,7 +302,6 @@ func _refresh_node_state(node: BayterekNodeButton) -> void:
 			node.set_state(Bayterek.AllocationState.PREALLOCATED_INTERMEDIATE)
 			return
 
-	# Nothing active nearby → NORMAL
 	node.set_state(Bayterek.AllocationState.NORMAL)
 
 # ============================================================
@@ -342,6 +344,9 @@ func _default_name(node_type: BayterekNode.NodeType) -> String:
 func _on_node_pressed(node: BayterekNodeButton) -> void:
 	var additive: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
 	node_pressed.emit(node, additive)
+
+func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
+	node_hovered.emit(node, is_hovered)
 
 func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> void:
 	node_drag_started.emit(node, mouse_screen_pos)

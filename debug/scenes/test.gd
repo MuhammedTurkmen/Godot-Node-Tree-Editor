@@ -104,6 +104,17 @@ func _load_and_build_tree() -> void:
 
 	print("Test: Tree view built successfully")
 
+	# === TOOLTIP POSITION (runtime) ===
+	# Change this line to set tooltip position at runtime:
+	_tree_view.set_tooltip_near_node_right()      # default
+	# _tree_view.set_tooltip_near_node_left()
+	# _tree_view.set_tooltip_near_node_top()
+	# _tree_view.set_tooltip_near_node_bottom()
+	# _tree_view.set_tooltip_corner_top_left()
+	# _tree_view.set_tooltip_corner_top_right()
+	# _tree_view.set_tooltip_corner_bottom_left()
+	# _tree_view.set_tooltip_corner_bottom_right()
+
 # ============================================================
 # CALLBACKS
 # ============================================================
@@ -161,38 +172,19 @@ func _on_save_pressed() -> void:
 	if not _tree_view or not _tree_view._tree_data:
 		return
 	var tree = _tree_view._tree_data
-
-	print("=== SAVE DEBUG ===")
-	print("  tree: ", tree)
-	print("  tree.resource_path: ", tree.resource_path)
-	print("  tree.tree_state: ", tree.tree_state)
-
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
-		print("  → created new tree_state")
-
-	print("  allocated_nodes: ", tree.tree_state.allocated_nodes)
-	print("  allocation_level: ", tree.tree_state.allocation_level)
-
 	BayterekSerializer.save_tree_state(tree)
-	print("  → saved")
+	print("Test: Tree state saved")
 
 func _on_load_pressed() -> void:
 	if not _tree_view or not _tree_view._tree_data:
 		return
 	var tree = _tree_view._tree_data
-
-	print("=== LOAD DEBUG ===")
-	print("  tree.resource_path: ", tree.resource_path)
-	print("  has_save: ", BayterekSerializer.has_save(tree))
-
 	BayterekSerializer.load_tree_state(tree)
-	print("  loaded allocated_nodes: ", tree.tree_state.allocated_nodes)
-	print("  loaded allocation_level: ", tree.tree_state.allocation_level)
-
 	if _tree_view.allocation_service:
 		_tree_view.allocation_service.reload_from_state()
-		print("  → reloaded from state")
+	print("Test: Tree state loaded")
 
 func _update_refund_button_text() -> void:
 	var btn: Button = get_node_or_null("TopBar/RefundButton")
