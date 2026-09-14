@@ -413,3 +413,41 @@ func _deallocate_node(node: BayterekNodeButton) -> void:
 
 	node.refund = false
 	node_deallocated.emit(node)
+
+# ============================================================
+# RELOAD FROM STATE
+# ============================================================
+
+## Re-applies tree_state to runtime nodes.
+## Call this after loading a save file.
+func reload_from_state() -> void:
+	if not _tree_data or not _tree_data.tree_state:
+		return
+
+	# Clear current runtime state
+	_preallocated_nodes.clear()
+	_refund_nodes.clear()
+	_refund_mode = false
+
+	# Reset all nodes
+	for node in _tree_view.nodes_service.get_all_nodes():
+		node.allocated = false
+		node.preallocated = false
+		node.refund = false
+		node.allocation_level = 0
+		node.set_state(Bayterek.AllocationState.NORMAL)
+
+	# Apply loaded state
+	for node_id in _allocated_nodes:
+		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+		if not node:
+			continue
+		node.allocated = true
+		node.set_state(Bayterek.AllocationState.ACTIVE)
+		if _tree_data.multiallocation:
+			node.allocation_level = _allocation_level.get(node_id, 1)
+
+	# Refresh neighbors so INTERMEDIATE states appear
+	for node in _tree_view.nodes_service.get_all_nodes():
+		if not node.allocated and not node.preallocated:
+			_tree_view.nodes_service._refresh_node_state(node)

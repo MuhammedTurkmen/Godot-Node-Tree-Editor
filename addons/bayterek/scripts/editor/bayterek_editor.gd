@@ -36,7 +36,7 @@ var prefabs_panel: Control
 
 var context_menu: PopupMenu
 
-# Prefab delete dialog (editor seviyesinde — ContextMenu gibi)
+# Prefab delete dialog (editor-level — like ContextMenu)
 var delete_confirmation: ConfirmationDialog
 var delete_option: OptionButton
 var delete_title_label: Label
@@ -187,6 +187,13 @@ func _build_ui() -> void:
 	edit_popup.id_pressed.connect(_on_edit_menu_pressed)
 	menu_bar.add_child(edit_btn)
 
+	var view_btn := MenuButton.new()
+	view_btn.text = "View"
+	var view_popup: PopupMenu = view_btn.get_popup()
+	view_popup.add_item("Center Camera", 0)
+	view_popup.id_pressed.connect(_on_view_menu_pressed)
+	menu_bar.add_child(view_btn)
+
 	tab_container = TabContainer.new()
 	tab_container.name = "TabContainer"
 	tab_container.custom_minimum_size = Vector2(320, 0)
@@ -291,7 +298,7 @@ func _create_prefabs_bar() -> void:
 	call_deferred("_refresh_prefabs_panels")
 
 # ============================================================
-# DELETE DIALOG (editor seviyesinde)
+# DELETE DIALOG (editor-level)
 # ============================================================
 
 func _create_delete_dialog() -> void:
@@ -302,13 +309,13 @@ func _create_delete_dialog() -> void:
 	delete_confirmation.cancel_button_text = "Cancel"
 	delete_confirmation.dialog_text = ""
 
-	# ⚠️ KRİTİK: min_size'ı SIFIRLA — Godot'un kendi boyut hesabını ez
+	# CRITICAL: reset min_size to zero — overrides Godot's own size calc
 	delete_confirmation.min_size = Vector2i.ZERO
 
-	# ⚠️ KRİTİK: unresizable false YAPMA, true kalsın
+	# CRITICAL: keep unresizable = true
 	delete_confirmation.unresizable = true
 
-	# İçeriği VBox olarak ekle — Margin YOK
+	# Content as VBox — NO Margin wrapper
 	var vbox := VBoxContainer.new()
 	vbox.name = "ContentVBox"
 	vbox.custom_minimum_size = Vector2(460, 0)
@@ -360,7 +367,6 @@ func request_delete_prefab(prefab: BayterekPrefab) -> void:
 		prefab.get_nodes().size()
 	]
 
-	# Dialog'u manuel boyutlandır
 	delete_confirmation.reset_size()
 	delete_confirmation.size = Vector2i(500, 280)
 	delete_confirmation.popup_centered()
@@ -574,7 +580,7 @@ func _cleanup_orphan_prefabs() -> void:
 	if count > 0:
 		_refresh_prefabs_panels()
 		set_dirty(true)
-		print("Bayterek: %d orphan prefab temizlendi." % count)
+		print("Bayterek: %d orphan prefab cleaned up." % count)
 
 func _save_selected_as_prefab(is_copy: bool) -> void:
 	if not tree_view or not tree_view.prefabs_service:
@@ -785,6 +791,12 @@ func _on_edit_menu_pressed(id: int) -> void:
 	match id:
 		0: do_undo()
 		1: do_redo()
+
+func _on_view_menu_pressed(id: int) -> void:
+	match id:
+		0:
+			if tree_view:
+				tree_view.center_camera_on_content()
 
 func do_undo() -> void:
 	if undo_redo and undo_redo.has_undo():

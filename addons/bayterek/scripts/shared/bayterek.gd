@@ -1,7 +1,7 @@
 @tool
 class_name Bayterek
 extends RefCounted
-## Global sabitler ve yardımcı fonksiyonlar.
+## Global constants and helper functions.
 
 const VERSION := "0.1.0"
 
@@ -16,7 +16,7 @@ const TREE_ICON := "KeyValue"
 
 const BlankIcon: Texture2D = null  # TODO: preload("res://addons/bayterek/blank_icon.png")
 
-# --- Faz 3: Editör görsel sabitleri ---
+# --- Editor visual constants ---
 const GRID_CELL_SIZE := Vector2(16, 16)
 const GRID_PRIMARY_STEP := 4
 const GRID_LINE_COLOR := Color(1, 1, 1, 0.12)
@@ -81,3 +81,12 @@ static func to_snake_case(text: String) -> String:
 	regex.compile("[^a-zA-Z0-9]+")
 	var result: String = regex.sub(text.strip_edges(), "_", true)
 	return result.to_lower()
+
+static func get_version_number(version: String = VERSION) -> int:
+	var parts = version.split(".")
+	if parts.size() < 3:
+		return 0
+	var major = int(parts[0]) * 10000
+	var minor = int(parts[1]) * 100
+	var patch = int(parts[2])
+	return major + minor + patch

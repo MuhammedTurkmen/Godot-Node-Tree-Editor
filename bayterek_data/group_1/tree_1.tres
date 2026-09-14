@@ -102,5 +102,5 @@ nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_s5f85"), SubResourc
 prefabs = {
 0: [SubResource("Resource_32bmc")]
 }
-hierarchy_split_offset = -462
+hierarchy_split_offset = -400
 prefabs_split_offset = 259

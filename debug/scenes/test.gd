@@ -49,6 +49,27 @@ func _build_ui() -> void:
 	clear_btn.pressed.connect(_on_clear_pressed)
 	top_bar.add_child(clear_btn)
 
+	# Center camera button
+	var center_btn := Button.new()
+	center_btn.name = "CenterButton"
+	center_btn.text = "Center Camera"
+	center_btn.pressed.connect(_on_center_pressed)
+	top_bar.add_child(center_btn)
+
+	# Save button
+	var save_btn := Button.new()
+	save_btn.name = "SaveButton"
+	save_btn.text = "Save State"
+	save_btn.pressed.connect(_on_save_pressed)
+	top_bar.add_child(save_btn)
+
+	# Load button
+	var load_btn := Button.new()
+	load_btn.name = "LoadButton"
+	load_btn.text = "Load State"
+	load_btn.pressed.connect(_on_load_pressed)
+	top_bar.add_child(load_btn)
+
 	# --- Tree container ---
 	var tree_container := Control.new()
 	tree_container.name = "TreeContainer"
@@ -82,36 +103,6 @@ func _load_and_build_tree() -> void:
 		return
 
 	print("Test: Tree view built successfully")
-
-	# Center camera on tree origin (deferred so layout is ready)
-	call_deferred("_center_camera")
-
-func _center_camera() -> void:
-	if not _tree_view or not _tree_view.camera:
-		return
-	if not _tree_view.nodes_service:
-		return
-
-	var nodes: Array = _tree_view.nodes_service.get_all_nodes()
-	if nodes.is_empty():
-		_tree_view.camera.focus_on(Vector2.ZERO, 1.0)
-		return
-
-	# Calculate centroid of all nodes
-	var sum: Vector2 = Vector2.ZERO
-	var count: int = 0
-	for node in nodes:
-		if is_instance_valid(node) and node.node_data:
-			sum += node.node_data.position
-			count += 1
-
-	if count == 0:
-		_tree_view.camera.focus_on(Vector2.ZERO, 1.0)
-		return
-
-	var centroid: Vector2 = sum / float(count)
-	print("Test: Camera centroid = ", centroid)
-	_tree_view.camera.focus_on(centroid, 1.0)
 
 # ============================================================
 # CALLBACKS
@@ -161,6 +152,47 @@ func _on_clear_pressed() -> void:
 		_tree_view.allocation_service.clear_preallocations()
 
 	_update_refund_button_text()
+
+func _on_center_pressed() -> void:
+	if _tree_view:
+		_tree_view.center_camera_on_content()
+
+func _on_save_pressed() -> void:
+	if not _tree_view or not _tree_view._tree_data:
+		return
+	var tree = _tree_view._tree_data
+
+	print("=== SAVE DEBUG ===")
+	print("  tree: ", tree)
+	print("  tree.resource_path: ", tree.resource_path)
+	print("  tree.tree_state: ", tree.tree_state)
+
+	if not tree.tree_state:
+		tree.tree_state = BayterekTreeState.new()
+		print("  → created new tree_state")
+
+	print("  allocated_nodes: ", tree.tree_state.allocated_nodes)
+	print("  allocation_level: ", tree.tree_state.allocation_level)
+
+	BayterekSerializer.save_tree_state(tree)
+	print("  → saved")
+
+func _on_load_pressed() -> void:
+	if not _tree_view or not _tree_view._tree_data:
+		return
+	var tree = _tree_view._tree_data
+
+	print("=== LOAD DEBUG ===")
+	print("  tree.resource_path: ", tree.resource_path)
+	print("  has_save: ", BayterekSerializer.has_save(tree))
+
+	BayterekSerializer.load_tree_state(tree)
+	print("  loaded allocated_nodes: ", tree.tree_state.allocated_nodes)
+	print("  loaded allocation_level: ", tree.tree_state.allocation_level)
+
+	if _tree_view.allocation_service:
+		_tree_view.allocation_service.reload_from_state()
+		print("  → reloaded from state")
 
 func _update_refund_button_text() -> void:
 	var btn: Button = get_node_or_null("TopBar/RefundButton")

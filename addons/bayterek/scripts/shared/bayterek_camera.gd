@@ -25,7 +25,6 @@ func set_viewport(viewport: Control) -> void:
 	_viewport.offset_transform_visual_only = false
 	_viewport.offset_transform_pivot_ratio = Vector2(0.5, 0.5)
 
-	# Start centered with no pan and default zoom
 	_zoom = 1.0
 	_viewport.offset_transform_position = Vector2.ZERO
 	_viewport.offset_transform_scale = Vector2.ONE
@@ -37,7 +36,6 @@ func set_viewport(viewport: Control) -> void:
 func set_bounds(bounds: Rect2) -> void:
 	_bounds = bounds
 
-	# Recenter on bounds change
 	if _viewport:
 		_viewport.offset_transform_position = Vector2.ZERO
 
@@ -114,15 +112,6 @@ func focus_on(target_center: Vector2, target_zoom: float = 1.0) -> void:
 	var delta: Vector2 = target_local - pivot
 
 	_viewport.offset_transform_position = -delta * _zoom
-
-	# DEBUG
-	print("=== CAMERA focus_on ===")
-	print("  tree_size: ", tree_size)
-	print("  target_local: ", target_local)
-	print("  pivot: ", pivot)
-	print("  delta: ", delta)
-	print("  new pos: ", _viewport.offset_transform_position)
-	print("  pivot_ratio: ", _viewport.offset_transform_pivot_ratio)
 
 	zoom_changed.emit(_zoom, previous)
 
