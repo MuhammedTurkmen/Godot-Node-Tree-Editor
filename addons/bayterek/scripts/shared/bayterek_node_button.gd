@@ -16,6 +16,13 @@ var prefab: BayterekPrefab
 var is_mouse_over: bool = false
 var selected: bool = false
 
+# === Allocation runtime vars ===
+var allocated: bool = false
+var preallocated: bool = false
+var refund: bool = false
+var allocation_level: int = 0
+var state: Bayterek.AllocationState = Bayterek.AllocationState.NORMAL
+
 var _icon_rect: TextureRect
 var _icon_fallback: ColorRect
 var _border_rect: TextureRect
@@ -57,7 +64,7 @@ func _ready() -> void:
 	_build_visuals()
 
 func _build_visuals() -> void:
-	# 1) Fallback (renkli kutu — texture yoksa görünür)
+	# 1) Fallback (colored box — visible when no texture)
 	_icon_fallback = ColorRect.new()
 	_icon_fallback.name = "IconFallback"
 	_icon_fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -83,7 +90,7 @@ func _build_visuals() -> void:
 	_border_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_border_rect)
 
-	# 4) Seçim çerçevesi
+	# 4) Selection frame
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -103,7 +110,7 @@ func _build_visuals() -> void:
 	add_child(_select_border)
 
 # ============================================================
-# GÖRSEL GÜNCELLEME
+# VISUAL UPDATE
 # ============================================================
 
 func refresh_visuals() -> void:
@@ -121,27 +128,70 @@ func refresh_visuals() -> void:
 		_icon_fallback.visible = true
 		_icon_fallback.color = _get_type_color(node_data.type)
 
-	# Border
-	_update_border()
+	# Border — based on allocation state
+	_apply_state_border()
 
-	# Locked ise yarı saydam göster
+	# Locked → semi transparent
 	if node_data.locked:
 		modulate = Color(1, 1, 1, 0.5)
 	else:
 		modulate = Color.WHITE
 
-func _update_border() -> void:
+func _apply_state_border() -> void:
 	if not node_data:
 		return
 
-	var tex: Texture2D = node_data.border_normal
+	match state:
+		Bayterek.AllocationState.NORMAL:
+			_update_border(node_data.border_normal, Color.WHITE)
+		Bayterek.AllocationState.INTERMEDIATE:
+			_update_border(node_data.border_intermediate, Color.WHITE)
+		Bayterek.AllocationState.ACTIVE:
+			_update_border(node_data.border_active, Color.WHITE)
+		Bayterek.AllocationState.PREALLOCATED_INTERMEDIATE:
+			_update_border(node_data.border_intermediate, Color(1, 0.8, 0))
+		Bayterek.AllocationState.PREALLOCATED_ACTIVE:
+			_update_border(node_data.border_active, Color(1, 0.8, 0))
+		Bayterek.AllocationState.REFUND:
+			_update_border(node_data.border_active, Color(1, 0, 0))
+		_:
+			_update_border(node_data.border_normal, Color.WHITE)
 
-	if tex:
-		_border_rect.texture = tex
-		_border_rect.visible = true
-	else:
-		_border_rect.texture = null
-		_border_rect.visible = false
+	# Fallback: if no border texture, use icon modulate to show state
+	if not _border_rect or not _border_rect.texture:
+		_apply_state_fallback()
+
+## Fallback visual when no border textures are assigned.
+## Uses the icon's modulate color to indicate state.
+func _apply_state_fallback() -> void:
+	var tint: Color = Color.WHITE
+
+	match state:
+		Bayterek.AllocationState.NORMAL:
+			tint = Color(0.5, 0.5, 0.5)        # gray
+		Bayterek.AllocationState.INTERMEDIATE:
+			tint = Color(0.7, 0.7, 0.7)        # light gray
+		Bayterek.AllocationState.ACTIVE:
+			tint = Color(1, 1, 1)              # white
+		Bayterek.AllocationState.PREALLOCATED_INTERMEDIATE:
+			tint = Color(1, 0.9, 0.5)          # light yellow
+		Bayterek.AllocationState.PREALLOCATED_ACTIVE:
+			tint = Color(1, 0.8, 0.2)          # yellow
+		Bayterek.AllocationState.REFUND:
+			tint = Color(1, 0.4, 0.4)          # red
+
+	if _icon_rect:
+		_icon_rect.modulate = tint
+	if _icon_fallback:
+		_icon_fallback.modulate = tint
+
+func _update_border(texture: Texture2D, color: Color = Color.WHITE) -> void:
+	if not _border_rect:
+		return
+
+	_border_rect.texture = texture
+	_border_rect.modulate = color
+	_border_rect.visible = texture != null
 
 func _get_type_color(t: BayterekNode.NodeType) -> Color:
 	match t:
@@ -150,6 +200,14 @@ func _get_type_color(t: BayterekNode.NodeType) -> Color:
 		BayterekNode.NodeType.LARGE:  return Color(1.0, 0.7, 0.4, 0.8)
 		BayterekNode.NodeType.DECORATION: return Color(0.7, 0.5, 1.0, 0.8)
 	return Color.WHITE
+
+# ============================================================
+# ALLOCATION STATE
+# ============================================================
+
+func set_state(new_state: Bayterek.AllocationState) -> void:
+	state = new_state
+	_apply_state_border()
 
 func set_selected(value: bool) -> void:
 	selected = value

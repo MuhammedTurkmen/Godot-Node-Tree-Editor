@@ -1,7 +1,7 @@
 @tool
 class_name BayterekConnectionsService
 extends BayterekBaseService
-## Bağlantı oluşturma / silme / güncelleme.
+## Connection creation / deletion / updates.
 
 signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 signal line_removed(from_id: int, to_id: int)
@@ -17,7 +17,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 			_create_line_from_data(node_data.id, to_id)
 
 # ============================================================
-# SORGU
+# QUERY
 # ============================================================
 
 func get_line(from_id: int, to_id: int) -> BayterekConnection:
@@ -27,7 +27,7 @@ func has_line(from_id: int, to_id: int) -> bool:
 	return _lines.has(_key(from_id, to_id))
 
 # ============================================================
-# OLUŞTURMA
+# CREATION
 # ============================================================
 
 func create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButton) -> BayterekConnection:
@@ -35,7 +35,6 @@ func create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButto
 		return null
 	if from_node.id == to_node.id:
 		return null
-
 	if has_line(from_node.id, to_node.id):
 		return null
 
@@ -45,12 +44,11 @@ func create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButto
 	from_data.out_nodes.append(to_data.id)
 	to_data.in_nodes.append(from_data.id)
 
-	# Line data oluştur
+	# Create line data
 	var line_data := BayterekLineData.new()
 	from_data.line_data[to_data.id] = line_data
 
 	var line := _create_line_from_data(from_data.id, to_data.id)
-
 	return line
 
 func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
@@ -65,7 +63,7 @@ func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
 	line.joint_mode = Line2D.LINE_JOINT_BEVEL
 	line.antialiased = true
 
-	# LineData al
+	# Get line data from source node
 	var from_node: BayterekNodeButton = _tree_view.nodes_service.get_node(from_id)
 	if from_node and from_node.node_data:
 		if from_node.node_data.line_data.has(to_id):
@@ -80,12 +78,13 @@ func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
 	_lines[_key(from_id, to_id)] = line
 
 	_update_line_points(line)
+	_refresh_line_state(from_id, to_id)
 
 	line_created.emit(line, from_id, to_id)
 	return line
 
 # ============================================================
-# SİLME
+# DELETION
 # ============================================================
 
 func remove_connection(from_id: int, to_id: int) -> void:
@@ -124,7 +123,7 @@ func remove_all_connections_of(node: BayterekNodeButton) -> void:
 		remove_connection(from_id, node.id)
 
 # ============================================================
-# GÜNCELLEME
+# UPDATE
 # ============================================================
 
 func update_lines_of(node: BayterekNodeButton) -> void:
@@ -146,7 +145,7 @@ func update_all_lines() -> void:
 		if is_instance_valid(line):
 			_update_line_points(line)
 
-## Line data değişince çağrılır — çizgiyi yeniden şekillendirir
+## Called when line data changes (curve, segments, etc.)
 func refresh_line(from_id: int, to_id: int) -> void:
 	var line: BayterekConnection = get_line(from_id, to_id)
 	if line:
@@ -154,7 +153,66 @@ func refresh_line(from_id: int, to_id: int) -> void:
 		line_changed.emit(from_id, to_id)
 
 # ============================================================
-# PRIVATE — şekil hesaplama
+# ALLOCATION STATE VISUALS (Faz 9)
+# ============================================================
+
+## Called when a node's allocation state changes.
+## Updates texture on all lines touching this node.
+func on_node_allocation_changed(node: BayterekNodeButton) -> void:
+	if not node or not node.node_data:
+		return
+	if node.type == BayterekNode.NodeType.DECORATION:
+		return
+
+	# Outgoing lines
+	for to_id in node.node_data.out_nodes:
+		_refresh_line_state(node.id, to_id)
+
+	# Incoming lines
+	for from_id in node.node_data.in_nodes:
+		_refresh_line_state(from_id, node.id)
+
+## Picks the right texture based on endpoint allocation states.
+func _refresh_line_state(from_id: int, to_id: int) -> void:
+	var line: BayterekConnection = get_line(from_id, to_id)
+	if not line:
+		return
+
+	var from_node: BayterekNodeButton = _tree_view.nodes_service.get_node(from_id)
+	var to_node: BayterekNodeButton = _tree_view.nodes_service.get_node(to_id)
+	if not from_node or not to_node:
+		return
+
+	# Determine if each endpoint is "active" (allocated or preallocated)
+	var from_active: bool = from_node.allocated or from_node.preallocated
+	var to_active: bool = to_node.allocated or to_node.preallocated
+
+	# Refund mode: treat node as active if it still has remaining levels
+	if _tree_data.multiallocation:
+		if from_node.refund:
+			from_active = from_node.allocation_level > 1
+		if to_node.refund:
+			to_active = to_node.allocation_level > 1
+
+	# Pick texture
+	var texture: Texture2D = null
+	if from_active and to_active:
+		texture = _tree_data.line_texture_active
+	elif from_active or to_active:
+		texture = _tree_data.line_texture_intermediate
+	else:
+		texture = _tree_data.line_texture_normal
+
+	line.texture = texture
+
+	# Visibility rule: when tree is not revealed, hide normal lines
+	if not _tree_data.revealed and not from_active and not to_active:
+		line.visible = false
+	else:
+		line.visible = true
+
+# ============================================================
+# PRIVATE — shape calculation
 # ============================================================
 
 func _update_line_points(line: BayterekConnection) -> void:
@@ -163,7 +221,6 @@ func _update_line_points(line: BayterekConnection) -> void:
 
 	var from_node: BayterekNodeButton = _tree_view.nodes_service.get_node(line.from_id)
 	var to_node: BayterekNodeButton = _tree_view.nodes_service.get_node(line.to_id)
-
 	if not from_node or not to_node:
 		return
 
@@ -184,12 +241,10 @@ func _update_line_points(line: BayterekConnection) -> void:
 		BayterekLineData.LineType.ARC:
 			line.points = _arc_points(p0, p2, data)
 
-## Quadratic Bezier eğrisi
+## Quadratic Bezier curve
 func _bezier_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:
 	var pts := PackedVector2Array()
-
 	var segments: int = max(2, data.segments)
-	var p1: Vector2
 
 	var center: Vector2 = (p0 + p2) * 0.5
 	var dir: Vector2 = p2 - p0
@@ -199,6 +254,7 @@ func _bezier_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedV
 		return PackedVector2Array([p0, p2])
 
 	var normal: Vector2 = Vector2(-dir.y, dir.x) / length
+	var p1: Vector2
 	if data.reversed:
 		p1 = center - normal * data.curve_height
 	else:
@@ -213,10 +269,9 @@ func _bezier_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedV
 
 	return pts
 
-## Yay — merkez etrafında dönen yarım daire
+## Arc — half circle around midpoint
 func _arc_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:
 	var pts := PackedVector2Array()
-
 	var segments: int = max(2, data.segments)
 	var chord: Vector2 = p2 - p0
 	var diameter: float = chord.length()

@@ -4,6 +4,10 @@
 [ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://icon.svg" id="2_p7r5a"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_y2ort"]
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_p7r5a"]
+[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="3_tyv6k"]
+
+[sub_resource type="Resource" id="Resource_fi42j"]
+script = ExtResource("3_tyv6k")
 
 [sub_resource type="Resource" id="Resource_s5f85"]
 script = ExtResource("1_d7nu5")
@@ -11,35 +15,62 @@ reference_id = "ba418da0-4c96-414c-9f28-ddd820ef8910"
 id = 23
 name = "Yeni"
 icon = ExtResource("2_p7r5a")
-position = Vector2(-368, -96)
+position = Vector2(-703.55566, -106)
+line_data = {
+25: SubResource("Resource_fi42j")
+}
+out_nodes = Array[int]([25])
+in_nodes = Array[int]([24])
+
+[sub_resource type="Resource" id="Resource_8xuuo"]
+script = ExtResource("3_tyv6k")
 
 [sub_resource type="Resource" id="Resource_p7r5a"]
 script = ExtResource("1_d7nu5")
 id = 24
 name = "Yeni"
 icon = ExtResource("2_p7r5a")
-position = Vector2(-832, -80)
+position = Vector2(-911.55566, -106)
+line_data = {
+23: SubResource("Resource_8xuuo")
+}
+out_nodes = Array[int]([23])
+in_nodes = Array[int]([27])
 
 [sub_resource type="Resource" id="Resource_tyv6k"]
 script = ExtResource("1_d7nu5")
 id = 25
 name = "Yeni"
 icon = ExtResource("2_p7r5a")
-position = Vector2(-736, -256)
+position = Vector2(-815.55566, -218)
+in_nodes = Array[int]([23])
 
 [sub_resource type="Resource" id="Resource_gmi7d"]
 script = ExtResource("1_d7nu5")
+is_root = true
 id = 26
 name = "Yeni"
 icon = ExtResource("2_p7r5a")
-position = Vector2(-704, -16)
+position = Vector2(-787.7937, 62.714355)
+in_nodes = Array[int]([27])
+
+[sub_resource type="Resource" id="Resource_l3jbr"]
+script = ExtResource("3_tyv6k")
+
+[sub_resource type="Resource" id="Resource_1jmks"]
+script = ExtResource("3_tyv6k")
 
 [sub_resource type="Resource" id="Resource_4kaxi"]
 script = ExtResource("1_d7nu5")
 id = 27
 name = "Yeni"
 icon = ExtResource("2_p7r5a")
-position = Vector2(-912.4319, 7.067871)
+position = Vector2(-932.8889, -4.666748)
+line_data = {
+24: SubResource("Resource_l3jbr"),
+26: SubResource("Resource_1jmks")
+}
+out_nodes = Array[int]([24, 26])
 
 [sub_resource type="Resource" id="Resource_32bmc"]
 script = ExtResource("3_p7r5a")

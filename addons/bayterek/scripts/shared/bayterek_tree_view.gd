@@ -1,7 +1,7 @@
 @tool
 class_name BayterekTreeView
 extends Control
-## Editor canvas.
+## Editor canvas AND runtime tree view.
 
 signal node_created(node: BayterekNodeButton)
 signal node_deleted(node: BayterekNodeButton)
@@ -9,6 +9,13 @@ signal selection_changed(selected: Array)
 signal node_moved(node: BayterekNodeButton)
 signal prefab_dropped(prefab: BayterekPrefab, at_tree_position: Vector2)
 signal changed
+
+# Runtime / high-level signals (used by BayterekBuilder)
+signal tree_version_mismatch(tree: BayterekTree, saved_version: int)
+signal node_allocated(node: BayterekNode)
+signal node_deallocated(node: BayterekNode)
+signal prefab_created(prefab: BayterekPrefab)
+signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 
 var main_container: Control
 var background_container: Control
@@ -21,6 +28,7 @@ var camera: BayterekCamera
 var nodes_service: BayterekNodesService
 var connections_service: BayterekConnectionsService
 var prefabs_service: BayterekPrefabsService
+var allocation_service: BayterekAllocationService
 var selection_box: BayterekSelectionBox
 
 var undo_redo_provider: Object = null
@@ -41,12 +49,48 @@ func _ready() -> void:
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
 
+	# Check version mismatch
+	if _tree_data.tree_state and _tree_data.tree_state.version != _tree_data.version:
+		tree_version_mismatch.emit(_tree_data, _tree_data.tree_state.version)
+
 	_create_containers()
 	_create_background()
 	_create_grid()
 	_create_camera()
 	_create_services()
 	_create_selection_box()
+
+	# Defer camera centering so layout is ready
+	call_deferred("center_camera_on_content")
+
+# ============================================================
+# CAMERA CENTERING
+# ============================================================
+
+## Centers the camera on the centroid of all nodes.
+## Call this after load_tree() when the layout is ready.
+func center_camera_on_content() -> void:
+	if not camera or not nodes_service:
+		return
+
+	var nodes: Array = nodes_service.get_all_nodes()
+	if nodes.is_empty():
+		camera.focus_on(Vector2.ZERO, 1.0)
+		return
+
+	var sum: Vector2 = Vector2.ZERO
+	var count: int = 0
+	for node in nodes:
+		if is_instance_valid(node) and node.node_data:
+			sum += node.node_data.position
+			count += 1
+
+	if count == 0:
+		camera.focus_on(Vector2.ZERO, 1.0)
+		return
+
+	var centroid: Vector2 = sum / float(count)
+	camera.focus_on(centroid, 1.0)
 
 # ============================================================
 # INPUT
@@ -178,6 +222,12 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 	if node.node_data.locked:
 		return
 
+	# === RUNTIME: allocation takes priority ===
+	if _is_allocation_active():
+		allocation_service.on_node_pressed(node)
+		return
+
+	# === EDITOR: connection or selection ===
 	var shift_pressed: bool = Input.is_key_pressed(KEY_SHIFT)
 
 	if shift_pressed and not selected_nodes.is_empty():
@@ -207,6 +257,12 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 
 	select_node(node, additive)
 
+func _is_allocation_active() -> bool:
+	# Allocation is only active when:
+	# - Tree has allocation enabled
+	# - We are NOT in editor
+	return _tree_data != null and _tree_data.allocation and not Engine.is_editor_hint()
+
 func _do_create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButton) -> void:
 	connections_service.create_connection(from_node, to_node)
 
@@ -221,6 +277,9 @@ func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) 
 	if not node or not node.node_data:
 		return
 	if node.node_data.locked:
+		return
+	# Disable dragging when allocation is active
+	if _is_allocation_active():
 		return
 
 	if not selected_nodes.has(node):
@@ -320,6 +379,10 @@ func _apply_positions(positions: Dictionary) -> void:
 # ============================================================
 
 func _on_selection_box_selected(rect: Rect2) -> void:
+	# Selection box is disabled during allocation
+	if _is_allocation_active():
+		return
+
 	if rect.size.x < 1.0 and rect.size.y < 1.0:
 		clear_selection()
 		return
@@ -383,7 +446,6 @@ func _create_containers() -> void:
 	nodes_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	main_container.add_child(nodes_container)
 
-	# Drag forwarding — 3 params: get_drag_data, can_drop_data, drop_data
 	nodes_container.set_drag_forwarding(_drag_get_data, _drag_can_drop, _drag_drop_data)
 
 func _create_background() -> void:
@@ -414,6 +476,10 @@ func _create_grid() -> void:
 	add_child(grid)
 	grid.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
+	# Hide grid during runtime
+	if not Engine.is_editor_hint():
+		grid.visible = false
+
 func _create_camera() -> void:
 	camera = BayterekCamera.new()
 	camera.set_viewport(main_container)
@@ -421,6 +487,7 @@ func _create_camera() -> void:
 	camera.set_bounds(Rect2(-half_size, _tree_data.size))
 
 func _create_services() -> void:
+	# Nodes
 	nodes_service = BayterekNodesService.new(self)
 	nodes_service.load_tree(_tree_data)
 	nodes_service.node_created.connect(_on_nodes_service_node_created)
@@ -429,13 +496,51 @@ func _create_services() -> void:
 	nodes_service.node_dragged.connect(_on_node_dragged)
 	nodes_service.node_drag_ended.connect(_on_node_drag_ended)
 
+	# Connections
 	connections_service = BayterekConnectionsService.new(self)
 	connections_service.load_tree(_tree_data)
 
+	# Prefabs
 	prefabs_service = BayterekPrefabsService.new(self)
 	prefabs_service.load_tree(_tree_data)
 
+	# Allocation
+	allocation_service = BayterekAllocationService.new(self)
+
+	# Wire allocation signals → nodes_service state updates
+	allocation_service.node_preallocated.connect(nodes_service.on_node_preallocated)
+	allocation_service.node_unpreallocated.connect(nodes_service.on_node_unpreallocated)
+	allocation_service.node_allocated.connect(nodes_service.on_node_allocated)
+	allocation_service.node_deallocated.connect(nodes_service.on_node_deallocated)
+	allocation_service.node_refund_added.connect(nodes_service.on_node_refund_added)
+	allocation_service.node_refund_removed.connect(nodes_service.on_node_refund_removed)
+
+	# Wire allocation signals → connections_service line texture updates
+	allocation_service.node_preallocated.connect(connections_service.on_node_allocation_changed)
+	allocation_service.node_unpreallocated.connect(connections_service.on_node_allocation_changed)
+	allocation_service.node_allocated.connect(connections_service.on_node_allocation_changed)
+	allocation_service.node_deallocated.connect(connections_service.on_node_allocation_changed)
+	allocation_service.node_refund_added.connect(connections_service.on_node_allocation_changed)
+	allocation_service.node_refund_removed.connect(connections_service.on_node_allocation_changed)
+
+	# Forward allocation signals to high-level signals
+	allocation_service.node_allocated.connect(func(n): node_allocated.emit(n.node_data))
+	allocation_service.node_deallocated.connect(func(n): node_deallocated.emit(n.node_data))
+
+	# Forward prefab signals
+	prefabs_service.prefab_created.connect(func(p): prefab_created.emit(p))
+
+	# Forward line creation
+	connections_service.line_created.connect(func(l, f, t): line_created.emit(l, f, t))
+
+	# Load saved allocation state (only in runtime)
+	allocation_service.load_tree(_tree_data)
+
 func _create_selection_box() -> void:
+	# Selection box only in editor
+	if not Engine.is_editor_hint():
+		return
+
 	selection_box = BayterekSelectionBox.new()
 	selection_box.set_view(self)
 	selection_box.selected.connect(_on_selection_box_selected)
@@ -459,7 +564,6 @@ func tree_to_view_local(tree_pos: Vector2) -> Vector2:
 # ============================================================
 
 func _drag_get_data(_at_position: Vector2) -> Variant:
-	# We are not a drag source — only a drop target
 	return null
 
 func _drag_can_drop(_at_position: Vector2, data: Variant) -> bool:
@@ -474,7 +578,6 @@ func _drag_drop_data(at_position: Vector2, data: Variant) -> void:
 	if not prefab is BayterekPrefab:
 		return
 
-	# at_position is relative to nodes_container → convert to TreeView local first
 	var nodes_container_global: Vector2 = nodes_container.get_global_transform() * at_position
 	var view_local: Vector2 = get_global_transform().affine_inverse() * nodes_container_global
 

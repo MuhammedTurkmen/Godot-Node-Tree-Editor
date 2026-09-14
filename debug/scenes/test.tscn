@@ -1,3 +1,10 @@
 [gd_scene format=3 uid="uid://bn2s6i8ueepi0"]
 
-[node name="Node2D" type="Node2D" unique_id=894725863]
+[ext_resource type="Script" uid="uid://dngdb6le67uo6" path="res://debug/scenes/test.gd" id="1_f2iej"]
+
+[node name="Control" type="Control" unique_id=700784679]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_f2iej")

@@ -177,6 +177,132 @@ func update_position(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
 	_position_node(node, pos_in_tree)
 
 # ============================================================
+# ALLOCATION STATE CALLBACKS (Faz 9)
+# ============================================================
+
+## Called when a node becomes allocated
+func on_node_allocated(node: BayterekNodeButton) -> void:
+	if not node or node.type == BayterekNode.NodeType.DECORATION:
+		return
+
+	node.set_state(Bayterek.AllocationState.ACTIVE)
+
+	# Refresh neighbors (they may become INTERMEDIATE)
+	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
+	for neighbor_id in neighbors:
+		var neighbor: BayterekNodeButton = get_node(neighbor_id)
+		if neighbor:
+			_refresh_node_state(neighbor)
+
+## Called when a node is deallocated
+func on_node_deallocated(node: BayterekNodeButton) -> void:
+	if not node or node.type == BayterekNode.NodeType.DECORATION:
+		return
+
+	# Multi-allocation: if still has levels, keep ACTIVE
+	if _tree_data.multiallocation and node.allocation_level > 0:
+		node.set_state(Bayterek.AllocationState.ACTIVE)
+	else:
+		_refresh_node_state(node)
+
+	# Refresh neighbors
+	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
+	for neighbor_id in neighbors:
+		var neighbor: BayterekNodeButton = get_node(neighbor_id)
+		if neighbor:
+			_refresh_node_state(neighbor)
+
+## Called when a node is preallocated (waiting for confirmation)
+func on_node_preallocated(node: BayterekNodeButton) -> void:
+	if not node or node.type == BayterekNode.NodeType.DECORATION:
+		return
+
+	node.set_state(Bayterek.AllocationState.PREALLOCATED_ACTIVE)
+
+	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
+	for neighbor_id in neighbors:
+		var neighbor: BayterekNodeButton = get_node(neighbor_id)
+		if neighbor:
+			_refresh_node_state(neighbor)
+
+## Called when preallocation is cancelled
+func on_node_unpreallocated(node: BayterekNodeButton) -> void:
+	if not node or node.type == BayterekNode.NodeType.DECORATION:
+		return
+
+	_refresh_node_state(node)
+
+	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
+	for neighbor_id in neighbors:
+		var neighbor: BayterekNodeButton = get_node(neighbor_id)
+		if neighbor:
+			_refresh_node_state(neighbor)
+
+## Called when a node is staged for refund
+func on_node_refund_added(node: BayterekNodeButton) -> void:
+	if not node or node.type == BayterekNode.NodeType.DECORATION:
+		return
+
+	node.set_state(Bayterek.AllocationState.REFUND)
+
+	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
+	for neighbor_id in neighbors:
+		var neighbor: BayterekNodeButton = get_node(neighbor_id)
+		if neighbor:
+			_refresh_node_state(neighbor)
+
+## Called when a node is removed from refund staging
+func on_node_refund_removed(node: BayterekNodeButton) -> void:
+	if not node or node.type == BayterekNode.NodeType.DECORATION:
+		return
+
+	node.set_state(Bayterek.AllocationState.ACTIVE)
+
+	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
+	for neighbor_id in neighbors:
+		var neighbor: BayterekNodeButton = get_node(neighbor_id)
+		if neighbor:
+			_refresh_node_state(neighbor)
+
+## Recomputes the correct state for a node based on its own flags and its neighbors
+func _refresh_node_state(node: BayterekNodeButton) -> void:
+	if not node or not node.node_data:
+		return
+	if node.type == BayterekNode.NodeType.DECORATION:
+		return
+
+	# Preallocated → highest priority
+	if node.preallocated:
+		node.set_state(Bayterek.AllocationState.PREALLOCATED_ACTIVE)
+		return
+
+	# Allocated
+	if node.allocated:
+		if node.refund:
+			node.set_state(Bayterek.AllocationState.REFUND)
+		else:
+			node.set_state(Bayterek.AllocationState.ACTIVE)
+		return
+
+	# Check neighbors — if any is allocated or preallocated, this becomes INTERMEDIATE
+	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
+	for neighbor_id in neighbors:
+		var neighbor: BayterekNodeButton = get_node(neighbor_id)
+		if not neighbor:
+			continue
+
+		if neighbor.allocated and not neighbor.refund:
+			node.set_state(Bayterek.AllocationState.INTERMEDIATE)
+			return
+
+		if neighbor.preallocated:
+			node.set_state(Bayterek.AllocationState.PREALLOCATED_INTERMEDIATE)
+			return
+
+	# Nothing active nearby → NORMAL
+	node.set_state(Bayterek.AllocationState.NORMAL)
+
+# ============================================================
 # PRIVATE
 # ============================================================
 
