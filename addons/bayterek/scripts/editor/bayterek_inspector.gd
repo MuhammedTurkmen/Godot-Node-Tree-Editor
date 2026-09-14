@@ -6,6 +6,7 @@ extends Control
 signal changed
 
 var editor: BayterekEditor
+var icon_selector: BayterekIconSelector
 
 var _current_node: BayterekNodeButton
 var _current_prefab: BayterekPrefab = null
@@ -17,7 +18,7 @@ var _content: VBoxContainer
 var _mode_banner: PanelContainer
 var _mode_banner_label: Label
 
-# Faz 8e — Reset All butonu
+# Reset All button
 var _reset_all_btn: Button = null
 
 var _root_panel: HBoxContainer
@@ -234,26 +235,18 @@ func _build_ui() -> void:
 
 	_icon_input = BayterekInspectorTextureInput.new()
 	_icon_input.title = "Icon"
-	_icon_input.texture_dropped.connect(_on_icon_changed)
-	_icon_input.cleared.connect(_on_icon_cleared)
 	_visuals_panel.add_child(_icon_input)
 
 	_border_normal_input = BayterekInspectorTextureInput.new()
 	_border_normal_input.title = "Border Normal"
-	_border_normal_input.texture_dropped.connect(_on_border_normal_changed)
-	_border_normal_input.cleared.connect(_on_border_normal_cleared)
 	_visuals_panel.add_child(_border_normal_input)
 
 	_border_intermediate_input = BayterekInspectorTextureInput.new()
 	_border_intermediate_input.title = "Border Intermediate"
-	_border_intermediate_input.texture_dropped.connect(_on_border_intermediate_changed)
-	_border_intermediate_input.cleared.connect(_on_border_intermediate_cleared)
 	_visuals_panel.add_child(_border_intermediate_input)
 
 	_border_active_input = BayterekInspectorTextureInput.new()
 	_border_active_input.title = "Border Active"
-	_border_active_input.texture_dropped.connect(_on_border_active_changed)
-	_border_active_input.cleared.connect(_on_border_active_cleared)
 	_visuals_panel.add_child(_border_active_input)
 
 	# --- Attributes ---
@@ -299,7 +292,39 @@ func _build_ui() -> void:
 	_connections_panel.add_child(_connections_list)
 
 func init(tree_view: BayterekTreeView) -> void:
-	pass
+	# Connect icon picker — use internal button references
+	if _icon_input:
+		if not _icon_input._load_button.pressed.is_connected(_on_icon_picker_pressed):
+			_icon_input._load_button.pressed.connect(_on_icon_picker_pressed)
+		if not _icon_input._clear_button.pressed.is_connected(_on_icon_texture_cleared):
+			_icon_input._clear_button.pressed.connect(_on_icon_texture_cleared)
+		if not _icon_input.texture_dropped.is_connected(_on_icon_texture_changed):
+			_icon_input.texture_dropped.connect(_on_icon_texture_changed)
+
+	# Border inputs
+	if _border_normal_input:
+		if not _border_normal_input._load_button.pressed.is_connected(_on_border_normal_picker_pressed):
+			_border_normal_input._load_button.pressed.connect(_on_border_normal_picker_pressed)
+		if not _border_normal_input._clear_button.pressed.is_connected(_on_border_normal_cleared):
+			_border_normal_input._clear_button.pressed.connect(_on_border_normal_cleared)
+		if not _border_normal_input.texture_dropped.is_connected(_on_border_normal_changed):
+			_border_normal_input.texture_dropped.connect(_on_border_normal_changed)
+
+	if _border_intermediate_input:
+		if not _border_intermediate_input._load_button.pressed.is_connected(_on_border_intermediate_picker_pressed):
+			_border_intermediate_input._load_button.pressed.connect(_on_border_intermediate_picker_pressed)
+		if not _border_intermediate_input._clear_button.pressed.is_connected(_on_border_intermediate_cleared):
+			_border_intermediate_input._clear_button.pressed.connect(_on_border_intermediate_cleared)
+		if not _border_intermediate_input.texture_dropped.is_connected(_on_border_intermediate_changed):
+			_border_intermediate_input.texture_dropped.connect(_on_border_intermediate_changed)
+
+	if _border_active_input:
+		if not _border_active_input._load_button.pressed.is_connected(_on_border_active_picker_pressed):
+			_border_active_input._load_button.pressed.connect(_on_border_active_picker_pressed)
+		if not _border_active_input._clear_button.pressed.is_connected(_on_border_active_cleared):
+			_border_active_input._clear_button.pressed.connect(_on_border_active_cleared)
+		if not _border_active_input.texture_dropped.is_connected(_on_border_active_changed):
+			_border_active_input.texture_dropped.connect(_on_border_active_changed)
 
 # ============================================================
 # PUBLIC
@@ -343,11 +368,8 @@ func inspect(node: BayterekNodeButton) -> void:
 		return
 
 	_show_content()
-
-	# Faz 8e — Reset All butonu
 	_update_reset_all_button(node)
 
-	# Show node-only fields
 	_root_panel.visible = true
 	_transform_panel.visible = true
 	_connections_panel.visible = true
@@ -363,10 +385,10 @@ func inspect(node: BayterekNodeButton) -> void:
 	_pos_x_input.set_value_no_signal(node.node_data.position.x)
 	_pos_y_input.set_value_no_signal(node.node_data.position.y)
 
-	_icon_input.set_texture(node.node_data.icon)
-	_border_normal_input.set_texture(node.node_data.border_normal)
-	_border_intermediate_input.set_texture(node.node_data.border_intermediate)
-	_border_active_input.set_texture(node.node_data.border_active)
+	_set_input_texture(_icon_input, node.node_data.icon)
+	_set_input_texture(_border_normal_input, node.node_data.border_normal)
+	_set_input_texture(_border_intermediate_input, node.node_data.border_intermediate)
+	_set_input_texture(_border_active_input, node.node_data.border_active)
 
 	_max_alloc_panel.visible = editor and editor.tree and editor.tree.multiallocation
 
@@ -387,15 +409,11 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_current_prefab = prefab
 
 	_show_content()
-
-	# Faz 8e — Reset All butonu (prefab modunda gizle)
 	_update_reset_all_button(null)
 
-	# Show banner
 	_mode_banner.visible = true
 	_mode_banner_label.text = "Editing Prefab: %s" % prefab.node_name
 
-	# Hide node-only fields
 	_root_panel.visible = false
 	_transform_panel.visible = false
 	_connections_panel.visible = false
@@ -407,10 +425,10 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_name_input.text = prefab.node_name
 	_description_input.text = prefab.description
 
-	_icon_input.set_texture(prefab.icon)
-	_border_normal_input.set_texture(prefab.border_normal)
-	_border_intermediate_input.set_texture(prefab.border_intermediate)
-	_border_active_input.set_texture(prefab.border_active)
+	_set_input_texture(_icon_input, prefab.icon)
+	_set_input_texture(_border_normal_input, prefab.border_normal)
+	_set_input_texture(_border_intermediate_input, prefab.border_intermediate)
+	_set_input_texture(_border_active_input, prefab.border_active)
 
 	_updating_ui = false
 
@@ -432,6 +450,27 @@ func update_position_only(pos: Vector2) -> void:
 	_pos_x_input.set_value_no_signal(pos.x)
 	_pos_y_input.set_value_no_signal(pos.y)
 	_updating_ui = false
+
+# ============================================================
+# HELPER — set/get texture input
+# ============================================================
+
+func _set_input_texture(input: BayterekInspectorTextureInput, tex: Texture2D) -> void:
+	if not input:
+		return
+
+	if input._texture_rect:
+		input._texture_rect.texture = tex
+	if tex:
+		if input._empty_label:
+			input._empty_label.visible = false
+		if input._clear_button:
+			input._clear_button.visible = true
+	else:
+		if input._empty_label:
+			input._empty_label.visible = true
+		if input._clear_button:
+			input._clear_button.visible = false
 
 # ============================================================
 # CHANGE HANDLERS
@@ -537,33 +576,80 @@ func _on_position_changed(_value: float) -> void:
 	changed.emit()
 	_notify_editor_dirty()
 
-# --- Texture handlers ---
+# ============================================================
+# ICON PICKER (spritesheet-based)
+# ============================================================
 
-func _on_icon_changed(path: String) -> void:
+func _on_icon_picker_pressed() -> void:
+	if not _selected_node_valid():
+		return
+
+	# Decorations use quick-open (no spritesheet)
+	if _current_node and _current_node.type == BayterekNode.NodeType.DECORATION:
+		call_deferred("_open_quick_open_for_icon")
+		return
+
+	# Regular nodes: open icon selector
+	if icon_selector:
+		var node_type: int = BayterekNode.NodeType.SMALL
+		if _current_node:
+			node_type = _current_node.type
+		icon_selector.load_icons(node_type)
+		icon_selector.popup_centered()
+	else:
+		# Fallback: deferred quick-open
+		call_deferred("_open_quick_open_for_icon")
+
+func _open_quick_open_for_icon() -> void:
+	EditorInterface.popup_quick_open(_on_icon_texture_changed, ["Texture2D"])
+
+func _selected_node_valid() -> bool:
+	if _current_prefab:
+		return true
+	return _current_node != null
+
+# ============================================================
+# ICON — TEXTURE HANDLERS
+# ============================================================
+
+func _on_icon_texture_changed(path: String) -> void:
 	if _updating_ui:
 		return
-	var tex: Texture2D = load(path) as Texture2D
+	if path.is_empty():
+		_on_icon_texture_cleared()
+		return
 
+	var tex: Texture2D = load(path) as Texture2D
+	if not tex:
+		return
+
+	# Prefab mode
 	if _current_prefab:
 		_current_prefab.set_icon(tex)
+		_set_input_texture(_icon_input, tex)
 		changed.emit()
 		_notify_editor_dirty()
 		return
 
 	if not _current_node:
 		return
+
 	if _current_node.prefab:
 		_current_node.prefab.set_icon(tex)
 	else:
 		_current_node.node_data.icon = tex
 		if _current_node.has_method("refresh_visuals"):
 			_current_node.refresh_visuals()
+
+	_set_input_texture(_icon_input, tex)
 	changed.emit()
 	_notify_editor_dirty()
 
-func _on_icon_cleared() -> void:
+func _on_icon_texture_cleared() -> void:
 	if _updating_ui:
 		return
+
+	_set_input_texture(_icon_input, null)
 
 	if _current_prefab:
 		_current_prefab.set_icon(null)
@@ -573,14 +659,70 @@ func _on_icon_cleared() -> void:
 
 	if not _current_node:
 		return
+
 	if _current_node.prefab:
 		_current_node.prefab.set_icon(null)
 	else:
 		_current_node.node_data.icon = null
 		if _current_node.has_method("refresh_visuals"):
 			_current_node.refresh_visuals()
+
 	changed.emit()
 	_notify_editor_dirty()
+
+## Called by BayterekIconSelector when a region is selected
+func _on_icon_selected(node_type: int, texture: Texture2D, region: Vector2) -> void:
+	if not texture:
+		return
+
+	var icon_size: Vector2 = Vector2(64, 64)
+	if editor and editor.tree:
+		icon_size = editor.tree.icon_sizes.get(node_type, Vector2(64, 64))
+
+	if icon_size == Vector2.ZERO:
+		icon_size = Vector2(64, 64)
+
+	var atlas := AtlasTexture.new()
+	atlas.atlas = texture
+	atlas.region = Rect2(region, icon_size)
+
+	if _current_prefab:
+		_current_prefab.set_icon(atlas)
+		_set_input_texture(_icon_input, atlas)
+		changed.emit()
+		_notify_editor_dirty()
+		return
+
+	if not _current_node:
+		return
+
+	if _current_node.prefab:
+		_current_node.prefab.set_icon(atlas)
+	else:
+		_current_node.node_data.icon = atlas
+		if _current_node.has_method("refresh_visuals"):
+			_current_node.refresh_visuals()
+
+	_set_input_texture(_icon_input, atlas)
+	changed.emit()
+	_notify_editor_dirty()
+
+# ============================================================
+# BORDER — PICKER HANDLERS
+# ============================================================
+
+func _on_border_normal_picker_pressed() -> void:
+	EditorInterface.popup_quick_open(_on_border_normal_changed, ["Texture2D"])
+
+func _on_border_intermediate_picker_pressed() -> void:
+	EditorInterface.popup_quick_open(_on_border_intermediate_changed, ["Texture2D"])
+
+func _on_border_active_picker_pressed() -> void:
+	EditorInterface.popup_quick_open(_on_border_active_changed, ["Texture2D"])
+
+# ============================================================
+# BORDER — TEXTURE HANDLERS
+# ============================================================
 
 func _on_border_normal_changed(path: String) -> void:
 	if _updating_ui:
@@ -589,6 +731,7 @@ func _on_border_normal_changed(path: String) -> void:
 
 	if _current_prefab:
 		_current_prefab.set_border_normal(tex)
+		_set_input_texture(_border_normal_input, tex)
 		changed.emit()
 		_notify_editor_dirty()
 		return
@@ -601,12 +744,15 @@ func _on_border_normal_changed(path: String) -> void:
 		_current_node.node_data.border_normal = tex
 		if _current_node.has_method("refresh_visuals"):
 			_current_node.refresh_visuals()
+	_set_input_texture(_border_normal_input, tex)
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_border_normal_cleared() -> void:
 	if _updating_ui:
 		return
+
+	_set_input_texture(_border_normal_input, null)
 
 	if _current_prefab:
 		_current_prefab.set_border_normal(null)
@@ -632,6 +778,7 @@ func _on_border_intermediate_changed(path: String) -> void:
 
 	if _current_prefab:
 		_current_prefab.set_border_intermediate(tex)
+		_set_input_texture(_border_intermediate_input, tex)
 		changed.emit()
 		_notify_editor_dirty()
 		return
@@ -642,12 +789,15 @@ func _on_border_intermediate_changed(path: String) -> void:
 		_current_node.prefab.set_border_intermediate(tex)
 	else:
 		_current_node.node_data.border_intermediate = tex
+	_set_input_texture(_border_intermediate_input, tex)
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_border_intermediate_cleared() -> void:
 	if _updating_ui:
 		return
+
+	_set_input_texture(_border_intermediate_input, null)
 
 	if _current_prefab:
 		_current_prefab.set_border_intermediate(null)
@@ -671,6 +821,7 @@ func _on_border_active_changed(path: String) -> void:
 
 	if _current_prefab:
 		_current_prefab.set_border_active(tex)
+		_set_input_texture(_border_active_input, tex)
 		changed.emit()
 		_notify_editor_dirty()
 		return
@@ -681,12 +832,15 @@ func _on_border_active_changed(path: String) -> void:
 		_current_node.prefab.set_border_active(tex)
 	else:
 		_current_node.node_data.border_active = tex
+	_set_input_texture(_border_active_input, tex)
 	changed.emit()
 	_notify_editor_dirty()
 
 func _on_border_active_cleared() -> void:
 	if _updating_ui:
 		return
+
+	_set_input_texture(_border_active_input, null)
 
 	if _current_prefab:
 		_current_prefab.set_border_active(null)
@@ -761,7 +915,6 @@ func _rebuild_attributes_list() -> void:
 		block.add_theme_constant_override("separation", 2)
 		_attributes_list.add_child(block)
 
-		# Header row: checkbox + (optional) reset button
 		var header_row := HBoxContainer.new()
 		header_row.add_theme_constant_override("separation", 2)
 		block.add_child(header_row)
@@ -775,7 +928,6 @@ func _rebuild_attributes_list() -> void:
 
 		_attr_checkboxes[attr_id] = check
 
-		# Faz 8e — Reset to Prefab butonu
 		if _current_node and _current_node.prefab and _current_node.node_data.has_attribute_override(attr_id):
 			var reset_btn := Button.new()
 			reset_btn.text = "↺"
@@ -888,8 +1040,6 @@ func _rebuild_attributes_list() -> void:
 
 		_attr_value_inputs[attr_id] = attr_inputs
 
-# --- Prefab attribute toggle ---
-
 func _on_attr_toggled_prefab(pressed: bool, attr_id: String) -> void:
 	if _updating_ui or not _current_prefab:
 		return
@@ -924,8 +1074,6 @@ func _on_attr_toggled_prefab(pressed: bool, attr_id: String) -> void:
 	_rebuild_attributes_list()
 	editor.set_dirty(true)
 	changed.emit()
-
-# --- Node attribute toggle ---
 
 func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 	if _updating_ui or not _current_node:
@@ -1015,7 +1163,6 @@ func _on_attr_value_changed(value: float, attr_id: String, index: int, level: in
 				return
 			vals[index] = v
 
-	# Faz 8e — Node'da prefab referansı varsa override işaretle
 	if _current_node.prefab:
 		_current_node.node_data.mark_attribute_override(attr_id)
 
@@ -1074,7 +1221,6 @@ func _create_connection_entry(to_id: int) -> void:
 		header_capture.text = ("▼ Node %d" % tid_capture) if pressed else ("▶ Node %d" % tid_capture)
 	)
 
-	# Line Type
 	var type_row := HBoxContainer.new()
 	content_box.add_child(type_row)
 	var type_label := Label.new()
@@ -1091,7 +1237,6 @@ func _create_connection_entry(to_id: int) -> void:
 	type_dropdown.item_selected.connect(_on_line_type_changed.bind(to_id))
 	type_row.add_child(type_dropdown)
 
-	# Curve Height
 	var curve_row := HBoxContainer.new()
 	content_box.add_child(curve_row)
 	var curve_label := Label.new()
@@ -1110,7 +1255,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	curve_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER)
 
-	# Segments
 	var seg_row := HBoxContainer.new()
 	content_box.add_child(seg_row)
 	var seg_label := Label.new()
@@ -1129,7 +1273,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	seg_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT)
 
-	# Reversed
 	var rev_row := HBoxContainer.new()
 	content_box.add_child(rev_row)
 	var rev_label := Label.new()
@@ -1145,7 +1288,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	rev_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT)
 
-	# Delete
 	var del_row := HBoxContainer.new()
 	content_box.add_child(del_row)
 	var del_spacer := Control.new()
@@ -1170,7 +1312,6 @@ func _on_line_type_changed(index: int, to_id: int) -> void:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
 
 	_rebuild_connections_list()
-
 	editor.set_dirty(true)
 	changed.emit()
 
@@ -1255,7 +1396,7 @@ func _notify_editor_dirty() -> void:
 		editor.set_dirty(true)
 
 # ============================================================
-# FAZ 8e — RESET TO PREFAB
+# RESET TO PREFAB
 # ============================================================
 
 func _update_reset_all_button(node: BayterekNodeButton) -> void:

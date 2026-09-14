@@ -1,7 +1,7 @@
 @tool
 class_name BayterekTree
 extends Resource
-## Ana ağaç verisi.
+## Main tree data.
 
 @export_storage var version: int = 1
 @export_storage var id: String
@@ -17,6 +17,11 @@ extends Resource
 @export_storage var line_texture_normal: Texture2D
 @export_storage var line_texture_intermediate: Texture2D
 @export_storage var line_texture_active: Texture2D
+
+## Texture filter for nodes, borders, icons.
+## 0 = Linear (smooth, default)
+## 1 = Nearest (pixel art)
+@export_storage var texture_filter: int = 0
 
 @export_storage var id_counter: int = 0
 @export_storage var border_scale: float = 1.5
@@ -57,7 +62,6 @@ func _init() -> void:
 	}
 	tree_state = BayterekTreeState.new()
 
-	# Editor layout defaults (eski .tres dosyaları için garantile)
 	hierarchy_split_offset = 200
 	prefabs_split_offset = -180
 	inspector_split_offset = -320
@@ -68,3 +72,9 @@ func get_next_id() -> int:
 
 func get_node_size(node_type: BayterekNode.NodeType) -> Vector2:
 	return node_size.get(node_type, Vector2.ZERO)
+
+## Returns the Godot texture filter enum value for CanvasItem.
+func get_godot_texture_filter() -> int:
+	match texture_filter:
+		1: return CanvasItem.TEXTURE_FILTER_NEAREST
+		_: return CanvasItem.TEXTURE_FILTER_LINEAR

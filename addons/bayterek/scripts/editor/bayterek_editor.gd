@@ -36,8 +36,9 @@ var prefabs_panel: Control
 
 var context_menu: PopupMenu
 var validator: BayterekValidator
+var icon_selector: BayterekIconSelector
 
-# Tooltip menu reference (for checkmarks)
+# Tooltip menu reference
 var _tooltip_menu: PopupMenu
 
 # Prefab delete dialog (editor-level — like ContextMenu)
@@ -108,6 +109,7 @@ func load_tree(path: String) -> void:
 	_create_prefabs_bar()
 	_create_context_menu()
 	_create_delete_dialog()
+	_create_icon_selector()
 	_create_validator()
 
 	_restore_split_offsets()
@@ -245,19 +247,16 @@ func _build_tooltip_submenu(view_popup: PopupMenu) -> void:
 	_tooltip_menu = PopupMenu.new()
 	_tooltip_menu.name = "TooltipMenu"
 
-	# NEAR_NODE options
 	_tooltip_menu.add_radio_check_item("Near Node — Right", TOOLTIP_ID_NEAR_RIGHT)
 	_tooltip_menu.add_radio_check_item("Near Node — Left", TOOLTIP_ID_NEAR_LEFT)
 	_tooltip_menu.add_radio_check_item("Near Node — Top", TOOLTIP_ID_NEAR_TOP)
 	_tooltip_menu.add_radio_check_item("Near Node — Bottom", TOOLTIP_ID_NEAR_BOTTOM)
 	_tooltip_menu.add_separator()
-	# FIXED_CORNER options
 	_tooltip_menu.add_radio_check_item("Corner — Top Left", TOOLTIP_ID_CORNER_TL)
 	_tooltip_menu.add_radio_check_item("Corner — Top Right", TOOLTIP_ID_CORNER_TR)
 	_tooltip_menu.add_radio_check_item("Corner — Bottom Left", TOOLTIP_ID_CORNER_BL)
 	_tooltip_menu.add_radio_check_item("Corner — Bottom Right", TOOLTIP_ID_CORNER_BR)
 
-	# Default = Near Node — Right
 	_tooltip_menu.set_item_checked(_tooltip_menu.get_item_index(TOOLTIP_ID_NEAR_RIGHT), true)
 
 	_tooltip_menu.id_pressed.connect(_on_tooltip_menu_pressed)
@@ -269,16 +268,13 @@ func _on_tooltip_menu_pressed(id: int) -> void:
 	if not tree_view:
 		return
 
-	# Uncheck all
 	for i in _tooltip_menu.item_count:
 		_tooltip_menu.set_item_checked(i, false)
 
-	# Check the selected one
 	var idx: int = _tooltip_menu.get_item_index(id)
 	if idx >= 0:
 		_tooltip_menu.set_item_checked(idx, true)
 
-	# Apply position
 	match id:
 		TOOLTIP_ID_NEAR_RIGHT:
 			tree_view.set_tooltip_near_node_right()
@@ -329,7 +325,7 @@ func _create_tree_view() -> void:
 	tree_view.node_moved.connect(_on_node_moved)
 	tree_view.prefab_dropped.connect(_on_prefab_dropped_from_canvas)
 
-	# Default tooltip position: Near Node — Right
+	# Default tooltip position
 	tree_view.set_tooltip_near_node_right()
 
 	if hierarchy:
@@ -338,6 +334,7 @@ func _create_tree_view() -> void:
 
 	if inspector:
 		inspector.editor = self
+		inspector.icon_selector = icon_selector
 		inspector.init(tree_view)
 
 	if settings_editor:
@@ -347,6 +344,7 @@ func _create_tree_view() -> void:
 		settings_editor.size_changed.connect(_on_settings_size_changed)
 		settings_editor.background_changed.connect(_on_settings_background_changed)
 		settings_editor.border_scale_changed.connect(_on_settings_border_scale_changed)
+		settings_editor.texture_filter_changed.connect(_on_settings_texture_filter_changed)
 
 	if attributes_editor:
 		attributes_editor.editor = self
@@ -379,6 +377,17 @@ func _create_prefabs_bar() -> void:
 	prefabs_bar.init(null, bottom_container, prefabs_panel)
 
 	call_deferred("_refresh_prefabs_panels")
+
+func _create_icon_selector() -> void:
+	icon_selector = BayterekIconSelector.new()
+	icon_selector.name = "IconSelector"
+	icon_selector.editor = self
+	icon_selector.init()
+
+	if inspector:
+		icon_selector.icon_selected.connect(inspector._on_icon_selected)
+
+	add_child(icon_selector)
 
 func _create_validator() -> void:
 	validator = BayterekValidator.new()
@@ -727,6 +736,9 @@ func _input(event: InputEvent) -> void:
 	elif ctrl and (key == KEY_Y or (shift and key == KEY_Z)):
 		do_redo()
 		get_viewport().set_input_as_handled()
+	elif ctrl and key == KEY_D:
+		duplicate_selected_nodes()
+		get_viewport().set_input_as_handled()
 
 # ============================================================
 # SELECTION
@@ -818,6 +830,15 @@ func _on_settings_background_changed() -> void:
 
 func _on_settings_border_scale_changed() -> void:
 	pass
+
+func _on_settings_texture_filter_changed() -> void:
+	if not tree_view or not tree:
+		return
+
+	# Refresh all nodes to apply the new filter
+	for node in tree_view.nodes_service.get_all_nodes():
+		if node.has_method("refresh_visuals"):
+			node.refresh_visuals()
 
 # ============================================================
 # NODE CREATION
@@ -942,3 +963,59 @@ func _on_tree_view_changed() -> void:
 
 func request_close() -> void:
 	closed.emit()
+
+# ============================================================
+# DUPLICATE NODES
+# ============================================================
+
+func duplicate_selected_nodes() -> void:
+	if not tree_view:
+		return
+	if tree_view.selected_nodes.is_empty():
+		return
+
+	var originals: Array = tree_view.selected_nodes.duplicate()
+	undo_redo.create_action("Duplicate Nodes")
+
+	var created_nodes: Array = []
+	var offset := Vector2(20, 20)
+
+	for original in originals:
+		if not is_instance_valid(original):
+			continue
+		if original.node_data and original.node_data.locked:
+			continue
+
+		# Create a duplicate via nodes_service
+		var duplicate: BayterekNodeButton = tree_view.nodes_service.duplicate_node(original, offset)
+		if not duplicate:
+			continue
+
+		created_nodes.append(duplicate)
+
+		undo_redo.add_do_method(_do_restore_duplicate.bind(duplicate))
+		undo_redo.add_undo_method(_do_remove_duplicate.bind(duplicate))
+
+	undo_redo.commit_action()
+
+	# Select only the new duplicates
+	tree_view.clear_selection()
+	for node in created_nodes:
+		if is_instance_valid(node):
+			tree_view.select_node(node, true)
+
+	set_dirty(true)
+
+func _do_restore_duplicate(node: BayterekNodeButton) -> void:
+	if not node or not node.node_data:
+		return
+	tree_view.nodes_service.restore_node(node, node.node_data)
+	set_dirty(true)
+
+func _do_remove_duplicate(node: BayterekNodeButton) -> void:
+	if not node or not node.node_data:
+		return
+	if tree_view.connections_service:
+		tree_view.connections_service.remove_all_connections_of(node)
+	tree_view.nodes_service.delete_node(node)
+	set_dirty(true)

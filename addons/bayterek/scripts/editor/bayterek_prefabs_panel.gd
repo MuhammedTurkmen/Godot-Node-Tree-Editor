@@ -63,10 +63,14 @@ func refresh() -> void:
 	if not prefabs_dict.has(node_type):
 		return
 	var prefabs_list: Array = prefabs_dict[node_type]
-	var filter_text: String = _filter.text.strip_edges().to_lower()
+	var filter_text: String = _filter.text.strip_edges()
+
+	var fuzzy := BayterekFuzzySearch.new()
+	fuzzy.allow_subsequences = false
+
 	for prefab in prefabs_list:
 		if not filter_text.is_empty():
-			if not prefab.node_name.to_lower().contains(filter_text):
+			if not fuzzy.matches(filter_text, prefab.node_name):
 				continue
 		_list.add_item(prefab.node_name, _make_icon(prefab), true)
 		var idx: int = _list.item_count - 1

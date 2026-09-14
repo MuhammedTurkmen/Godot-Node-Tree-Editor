@@ -143,13 +143,22 @@ func _refresh() -> void:
 	var ids: Array = attrs.keys()
 	ids.sort()
 
-	var filter: String = _filter_input.text.strip_edges().to_lower()
+	var filter: String = _filter_input.text.strip_edges()
+
+	if filter.is_empty():
+		for id in ids:
+			var attr: BayterekAttribute = attrs[id]
+			_add_attr_item(attr)
+		return
+
+	# Fuzzy match against id and name
+	var fuzzy := BayterekFuzzySearch.new()
+	fuzzy.allow_subsequences = false
 
 	for id in ids:
-		if not filter.is_empty() and not String(id).to_lower().contains(filter):
-			continue
 		var attr: BayterekAttribute = attrs[id]
-		_add_attr_item(attr)
+		if fuzzy.matches(filter, id) or fuzzy.matches(filter, attr.name):
+			_add_attr_item(attr)
 
 func _clear_items() -> void:
 	if not _root_item:

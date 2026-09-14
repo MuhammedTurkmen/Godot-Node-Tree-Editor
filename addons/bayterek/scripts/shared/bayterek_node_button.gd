@@ -79,6 +79,7 @@ func _build_visuals() -> void:
 	_icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_icon_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_icon_rect)
 
@@ -88,6 +89,7 @@ func _build_visuals() -> void:
 	_border_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_border_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_border_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_border_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_border_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_border_rect)
 
@@ -117,6 +119,14 @@ func _build_visuals() -> void:
 func refresh_visuals() -> void:
 	if not node_data:
 		return
+
+	# Apply texture filter from tree
+	if tree_data:
+		var filter: int = tree_data.get_godot_texture_filter()
+		if _icon_rect:
+			_icon_rect.texture_filter = filter
+		if _border_rect:
+			_border_rect.texture_filter = filter
 
 	# Icon
 	if node_data.icon:
@@ -163,23 +173,22 @@ func _apply_state_border() -> void:
 		_apply_state_fallback()
 
 ## Fallback visual when no border textures are assigned.
-## Uses the icon's modulate color to indicate state.
 func _apply_state_fallback() -> void:
 	var tint: Color = Color.WHITE
 
 	match state:
 		Bayterek.AllocationState.NORMAL:
-			tint = Color(0.5, 0.5, 0.5)        # gray
+			tint = Color(0.5, 0.5, 0.5)
 		Bayterek.AllocationState.INTERMEDIATE:
-			tint = Color(0.7, 0.7, 0.7)        # light gray
+			tint = Color(0.7, 0.7, 0.7)
 		Bayterek.AllocationState.ACTIVE:
-			tint = Color(1, 1, 1)              # white
+			tint = Color(1, 1, 1)
 		Bayterek.AllocationState.PREALLOCATED_INTERMEDIATE:
-			tint = Color(1, 0.9, 0.5)          # light yellow
+			tint = Color(1, 0.9, 0.5)
 		Bayterek.AllocationState.PREALLOCATED_ACTIVE:
-			tint = Color(1, 0.8, 0.2)          # yellow
+			tint = Color(1, 0.8, 0.2)
 		Bayterek.AllocationState.REFUND:
-			tint = Color(1, 0.4, 0.4)          # red
+			tint = Color(1, 0.4, 0.4)
 
 	if _icon_rect:
 		_icon_rect.modulate = tint
@@ -260,20 +269,16 @@ func _on_mouse_exited() -> void:
 # TOOLTIP FORMATTING
 # ============================================================
 
-## Returns a BBCode-formatted string for the tooltip.
-## Respects multi-allocation state (shows current + next level).
 func format_tooltip() -> String:
 	if not node_data:
 		return ""
 
-	# Header: name + allocation level
 	var text: String = ""
 
 	var display_name: String = node_name
 	if display_name.is_empty():
 		display_name = "Node %d" % id
 
-	# Multi-allocation: show current level
 	if _is_multiallocation():
 		text += "[b][color=#f9e6ca]%s[/color][/b] [color=#a0a0a0](%d/%d)[/color]\n\n" % [
 			display_name, allocation_level, node_data.max_allocations
@@ -281,53 +286,43 @@ func format_tooltip() -> String:
 	else:
 		text += "[b][color=#f9e6ca]%s[/color][/b]\n\n" % display_name
 
-	# Attributes
 	text += _format_attributes()
 
-	# Description
 	if not node_data.description.is_empty():
 		text += "\n[color=orange]%s[/color]" % node_data.description
 
 	return text.strip_edges()
 
-## Checks if this node is under a multi-allocation tree.
 func _is_multiallocation() -> bool:
 	if not tree_data:
 		return false
 	return tree_data.multiallocation
 
-## Formats attribute effects with values substituted.
 func _format_attributes() -> String:
 	if not node_data or not tree_data:
 		return ""
 
 	var result: String = ""
-
 	var regex := RegEx.new()
 	regex.compile("#")
 
 	for attr_id in node_data.attributes.keys():
 		if not tree_data.attributes.has(attr_id):
 			continue
-
 		var attribute: BayterekAttribute = tree_data.attributes[attr_id]
 		result += _format_single_attribute(regex, attribute, attr_id)
 		result += "\n"
 
 	return result.strip_edges()
 
-## Formats a single attribute's effect at current allocation level.
-## If multi-allocation and not at max, also shows "Next Level".
 func _format_single_attribute(regex: RegEx, attribute: BayterekAttribute, attr_id: String) -> String:
 	var formatted: String = ""
 
 	if _is_multiallocation():
-		# Current level (if any)
 		if allocation_level > 0:
 			formatted = attribute.effect
 			var level_index: int = max(0, allocation_level - 1)
 			var raw = node_data.attributes[attr_id]
-
 			if raw is Array and level_index < raw.size():
 				var values = raw[level_index]
 				if values is Array:
@@ -335,43 +330,34 @@ func _format_single_attribute(regex: RegEx, attribute: BayterekAttribute, attr_i
 						if i < values.size():
 							formatted = regex.sub(formatted, str(values[i]))
 
-		# Next level preview (if not at max)
 		if allocation_level < node_data.max_allocations:
 			var next_level: int = allocation_level
 			var next_text: String = attribute.effect
 			var raw2 = node_data.attributes[attr_id]
-
 			if raw2 is Array and next_level < raw2.size():
 				var next_values = raw2[next_level]
 				if next_values is Array:
 					for i in attribute.value_count:
 						if i < next_values.size():
 							next_text = regex.sub(next_text, str(next_values[i]))
-
 			formatted += "\n[color=orange]Next Level: %s[/color]" % next_text.strip_edges()
 
-		# If not allocated at all yet, show level 1 as "Next"
 		if allocation_level == 0:
 			var first_text: String = attribute.effect
 			var raw3 = node_data.attributes[attr_id]
-
 			if raw3 is Array and raw3.size() > 0:
 				var first_values = raw3[0]
 				if first_values is Array:
 					for i in attribute.value_count:
 						if i < first_values.size():
 							first_text = regex.sub(first_text, str(first_values[i]))
-
 			formatted = "[color=orange]Next Level: %s[/color]" % first_text.strip_edges()
 	else:
-		# Single-level: just substitute current values
 		formatted = attribute.effect
 		var values = node_data.attributes[attr_id]
-
 		if values is Array:
 			for i in attribute.value_count:
 				if i < values.size() and not values[i] is Array:
 					formatted = regex.sub(formatted, str(values[i]))
 
-	# Color the attribute text
 	return "[color=#8a8aff]%s[/color]" % formatted

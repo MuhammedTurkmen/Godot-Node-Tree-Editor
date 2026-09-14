@@ -130,7 +130,6 @@ func _build_ui() -> void:
 	_delete_checkbox.button_pressed = true
 	_delete_dialog.add_child(_delete_checkbox)
 
-	# Layout'u şimdi hesapla
 	queue_sort()
 
 func _connect_signals() -> void:
@@ -343,7 +342,7 @@ func _request_delete_group() -> void:
 	_pending_delete = {"type": "group", "path": meta["path"], "name": selected.get_text(0)}
 	_delete_checkbox.visible = true
 	_delete_checkbox.text = "Delete tree files too"
-	_delete_dialog.dialog_text = "\"%s\" grubunu silmek istiyor musun?" % selected.get_text(0)
+	_delete_dialog.dialog_text = "Do you want to remove \"%s\" group?" % selected.get_text(0)
 	_delete_dialog.popup_centered()
 
 func _request_delete_tree() -> void:
@@ -357,7 +356,7 @@ func _request_delete_tree() -> void:
 	_pending_delete = {"type": "tree", "path": meta["path"], "name": selected.get_text(0), "group_path": meta.get("group_path", "")}
 	_delete_checkbox.visible = true
 	_delete_checkbox.text = "Delete tree file"
-	_delete_dialog.dialog_text = "\"%s\" ağacını silmek istiyor musun?" % selected.get_text(0)
+	_delete_dialog.dialog_text = "Do you want to remove \"%s\" tree?" % selected.get_text(0)
 	_delete_dialog.popup_centered()
 
 func _on_delete_confirmed() -> void:
@@ -421,17 +420,27 @@ func _do_delete_tree(info: Dictionary, delete_file: bool) -> void:
 # ============================================================
 
 func _on_search_changed(new_text: String) -> void:
-	var q: String = new_text.strip_edges().to_lower()
+	var q: String = new_text.strip_edges()
 	var root: TreeItem = _tree.get_root()
+
+	if q.is_empty():
+		for g in root.get_children():
+			g.visible = true
+			for t in g.get_children():
+				t.visible = true
+		return
+
+	var fuzzy := BayterekFuzzySearch.new()
+	fuzzy.allow_subsequences = false  # faster / more predictable
 
 	for g in root.get_children():
 		var group_visible := false
-		var group_name: String = g.get_text(0).to_lower()
-		var group_matches := q.is_empty() or group_name.contains(q)
+		var group_name: String = g.get_text(0)
+		var group_matches := fuzzy.matches(q, group_name)
 
 		for t in g.get_children():
-			var tree_name: String = t.get_text(0).to_lower()
-			var tree_matches := q.is_empty() or tree_name.contains(q)
+			var tree_name: String = t.get_text(0)
+			var tree_matches := fuzzy.matches(q, tree_name)
 			t.visible = group_matches or tree_matches
 			if t.visible:
 				group_visible = true

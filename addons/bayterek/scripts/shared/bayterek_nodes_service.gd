@@ -356,3 +356,65 @@ func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> vo
 
 func _on_node_drag_ended(node: BayterekNodeButton) -> void:
 	node_drag_ended.emit(node)
+
+# ============================================================
+# DUPLICATE NODE
+# ============================================================
+
+## Creates a copy of the given node with an offset.
+## The duplicate keeps attributes, prefab reference, borders, icon, etc.
+## Does NOT copy connections.
+func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 20)) -> BayterekNodeButton:
+	if not original or not original.node_data:
+		return null
+
+	# Build a new node visual
+	var node := _build_node(original.type)
+	if not node:
+		return null
+
+	# Copy data (deep where it matters)
+	var node_data := BayterekNode.new()
+	node_data.id = _tree_data.get_next_id()
+	node_data.name = original.node_data.name
+	node_data.description = original.node_data.description
+	node_data.type = original.node_data.type
+	node_data.icon = original.node_data.icon
+	node_data.border_normal = original.node_data.border_normal
+	node_data.border_intermediate = original.node_data.border_intermediate
+	node_data.border_active = original.node_data.border_active
+	node_data.position = original.node_data.position + offset
+	node_data.max_allocations = original.node_data.max_allocations
+	node_data.attributes = original.node_data.attributes.duplicate(true)
+	node_data.is_root = false  # don't duplicate root status
+	node_data.external_id = original.node_data.external_id
+
+	# Prefab reference (keeps sharing)
+	if not original.node_data.reference_id.is_empty():
+		node_data.reference_id = original.node_data.reference_id
+		node.prefab = original.prefab
+		if original.prefab:
+			original.prefab.add_node(node)
+
+	node.node_data = node_data
+	node.tree_data = _tree_data
+	node.name = "Node_%d" % node_data.id
+
+	_position_node(node, node_data.position)
+
+	_tree_view.nodes_container.add_child(node)
+	_nodes[node_data.id] = node
+
+	_tree_data.nodes.append(node_data)
+
+	# Connect signals
+	node.pressed.connect(_on_node_pressed.bind(node))
+	node.node_hovered.connect(_on_node_hovered)
+	node.drag_started.connect(_on_node_drag_started)
+	node.dragged.connect(_on_node_dragged)
+	node.drag_ended.connect(_on_node_drag_ended)
+
+	node.refresh_visuals()
+
+	node_created.emit(node)
+	return node
