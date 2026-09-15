@@ -1,12 +1,21 @@
 @tool
 class_name BayterekBrowser
 extends MarginContainer
-## Grup / tree listeleme, oluşturma, silme.
+## Grup / tree listeleme, oluşturma, silme, yeniden adlandırma.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
 enum GroupMenuId { CREATE = 0, DELETE = 1, DUPLICATE = 2 }
 enum TreeMenuId  { CREATE = 0, DELETE = 1, DUPLICATE = 2 }
+
+enum ContextMenuId {
+	CREATE_GROUP = 0,
+	CREATE_TREE = 10,
+	RENAME = 20,
+	DUPLICATE = 21,
+	DELETE = 30,
+	OPEN_TREE = 40,
+}
 
 @export var main_screen: BayterekMainScreen
 
@@ -21,8 +30,15 @@ var _version_label: Label
 var _docs_button: Button
 var _delete_dialog: ConfirmationDialog
 var _delete_checkbox: CheckBox
+var _tree_context_menu: PopupMenu
 
 var _pending_delete: Dictionary = {}
+
+## Suppresses _on_item_selected when we programmatically change selection.
+var _suppress_selection: bool = false
+
+## Set to the item being currently renamed (so we can restore on failure).
+var _renaming_item: TreeItem = null
 
 # ============================================================
 # KURULUM
@@ -61,15 +77,19 @@ func _build_ui() -> void:
 	_group_menu.text = "Group"
 	_group_menu.get_popup().add_item("Create", GroupMenuId.CREATE)
 	_group_menu.get_popup().add_item("Delete", GroupMenuId.DELETE)
+	_group_menu.get_popup().add_item("Duplicate", GroupMenuId.DUPLICATE)
 	_group_menu.get_popup().set_item_disabled(GroupMenuId.DELETE, true)
+	_group_menu.get_popup().set_item_disabled(GroupMenuId.DUPLICATE, true)
 	top.add_child(_group_menu)
 
 	_tree_menu = MenuButton.new()
 	_tree_menu.text = "Tree"
 	_tree_menu.get_popup().add_item("Create", TreeMenuId.CREATE)
 	_tree_menu.get_popup().add_item("Delete", TreeMenuId.DELETE)
+	_tree_menu.get_popup().add_item("Duplicate", TreeMenuId.DUPLICATE)
 	_tree_menu.get_popup().set_item_disabled(TreeMenuId.CREATE, true)
 	_tree_menu.get_popup().set_item_disabled(TreeMenuId.DELETE, true)
+	_tree_menu.get_popup().set_item_disabled(TreeMenuId.DUPLICATE, true)
 	top.add_child(_tree_menu)
 
 	_search = LineEdit.new()
@@ -77,13 +97,20 @@ func _build_ui() -> void:
 	_search.size_flags_horizontal = SIZE_EXPAND_FILL
 	top.add_child(_search)
 
-	# --- Orta: Tree ---
+	# --- Orta: Tree (sadece bir kere yaratılır) ---
 	_tree = Tree.new()
 	_tree.hide_root = true
 	_tree.size_flags_vertical = SIZE_EXPAND_FILL
 	_tree.size_flags_horizontal = SIZE_EXPAND_FILL
 	_tree.select_mode = Tree.SELECT_ROW
 	vbox.add_child(_tree)
+	_tree.create_item()
+	vbox.move_child(_tree, 1)
+
+	_tree.item_selected.connect(_on_item_selected)
+	_tree.item_activated.connect(_on_item_activated)
+	_tree.item_edited.connect(_on_item_edited)
+	_tree.gui_input.connect(_on_tree_gui_input)
 
 	# --- Alt satır ---
 	var bottom := HBoxContainer.new()
@@ -120,45 +147,75 @@ func _build_ui() -> void:
 	_version_label.text = "v%s" % Bayterek.VERSION
 	bottom.add_child(_version_label)
 
-	# --- Silme dialogu ---
-	_delete_dialog = ConfirmationDialog.new()
-	_delete_dialog.ok_button_text = "Remove"
-	add_child(_delete_dialog)
-
-	_delete_checkbox = CheckBox.new()
-	_delete_checkbox.text = "Delete related files"
-	_delete_checkbox.button_pressed = true
-	_delete_dialog.add_child(_delete_checkbox)
+	# --- Context Menu (right-click) ---
+	_tree_context_menu = PopupMenu.new()
+	_tree_context_menu.name = "TreeContextMenu"
+	add_child(_tree_context_menu)
 
 	queue_sort()
 
 func _connect_signals() -> void:
 	_group_menu.get_popup().id_pressed.connect(_on_group_menu_pressed)
 	_tree_menu.get_popup().id_pressed.connect(_on_tree_menu_pressed)
-	_tree.item_selected.connect(_on_item_selected)
-	_tree.item_activated.connect(_on_item_activated)
 	_search.text_changed.connect(_on_search_changed)
 	_docs_button.pressed.connect(_on_docs_pressed)
-	_delete_dialog.confirmed.connect(_on_delete_confirmed)
+	_tree_context_menu.id_pressed.connect(_on_tree_context_menu_pressed)
 
 # ============================================================
 # REFRESH
 # ============================================================
 
+## Full refresh: reloads registry from disk, then rebuilds the UI.
 func _refresh() -> void:
-	var start_time := Time.get_ticks_usec()
+	var registry_path: String = Bayterek.get_registry_path()
+	if FileAccess.file_exists(registry_path):
+		Bayterek.reload_editor_registry()
+	else:
+		Bayterek.clear_editor_registry()
 
-	Bayterek.reload_editor_registry()
+	_refresh_ui_only()
+
+## UI-only refresh: schedules a rebuild of the Tree content.
+## Uses call_deferred to avoid "!is_inside_tree()" errors caused by
+## manipulating the Tree control during a viewport pass.
+func _refresh_ui_only() -> void:
+	_do_refresh_ui.call_deferred()
+
+func _do_refresh_ui() -> void:
+	if not is_inside_tree():
+		return
+	if not _tree or not is_instance_valid(_tree) or not _tree.is_inside_tree():
+		return
+
+	var start_time := Time.get_ticks_usec()
 	var registry: BayterekRegistry = Bayterek.get_editor_registry()
 
-	_tree.clear()
-	_tree.create_item()
+	_rebuild_tree_contents(registry)
 
 	if not registry:
 		return
 
-	var root: TreeItem = _tree.get_root()
+	_groups_count_label.text = "Total groups: %d" % registry.groups.size()
 	var total_trees: int = 0
+	for g: BayterekGroup in registry.groups:
+		total_trees += g.trees.size()
+	_trees_count_label.text = "Total trees: %d" % total_trees
+
+	var elapsed: float = (Time.get_ticks_usec() - start_time) / 1_000_000.0
+	_load_time_label.text = "Load time: %.2fs" % elapsed
+
+## Rebuilds Tree content in place without destroying the Tree control.
+func _rebuild_tree_contents(registry: BayterekRegistry) -> void:
+	_tree.clear()
+	_tree.create_item()
+
+	if not registry:
+		_tree.queue_redraw()
+		return
+
+	var root: TreeItem = _tree.get_root()
+	if not root:
+		return
 
 	for group: BayterekGroup in registry.groups:
 		var g_item := root.create_child()
@@ -171,28 +228,29 @@ func _refresh() -> void:
 			t_item.set_text(0, tree.name)
 			t_item.set_icon(0, EditorInterface.get_editor_theme().get_icon(Bayterek.TREE_ICON, Bayterek.ICON_THEME))
 			t_item.set_metadata(0, {"type": "tree", "path": tree.resource_path, "group_path": group.resource_path})
-			total_trees += 1
 
-	_groups_count_label.text = "Total groups: %d" % registry.groups.size()
-	_trees_count_label.text = "Total trees: %d" % total_trees
-
-	var elapsed: float = (Time.get_ticks_usec() - start_time) / 1_000_000.0
-	_load_time_label.text = "Load time: %.2fs" % elapsed
+	_tree.queue_redraw()
 
 # ============================================================
 # SEÇİM
 # ============================================================
 
 func _on_item_selected() -> void:
+	if _suppress_selection:
+		return
+
 	var selected := _tree.get_selected()
 	if not selected:
 		return
 
 	var is_group: bool = selected.get_parent() == _tree.get_root()
+	var is_tree: bool = not is_group
 
 	_group_menu.get_popup().set_item_disabled(GroupMenuId.DELETE, not is_group)
+	_group_menu.get_popup().set_item_disabled(GroupMenuId.DUPLICATE, not is_group)
 	_tree_menu.get_popup().set_item_disabled(TreeMenuId.CREATE, false)
-	_tree_menu.get_popup().set_item_disabled(TreeMenuId.DELETE, is_group)
+	_tree_menu.get_popup().set_item_disabled(TreeMenuId.DELETE, not is_tree)
+	_tree_menu.get_popup().set_item_disabled(TreeMenuId.DUPLICATE, not is_tree)
 
 func _on_item_activated() -> void:
 	var selected := _tree.get_selected()
@@ -211,6 +269,101 @@ func _on_item_activated() -> void:
 		main_screen.open_tree(meta["path"])
 
 # ============================================================
+# CONTEXT MENU (right-click)
+# ============================================================
+
+func _on_tree_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			_show_tree_context_menu(event.position)
+
+func _show_tree_context_menu(mouse_pos: Vector2) -> void:
+	var item: TreeItem = _tree.get_item_at_position(mouse_pos)
+
+	if item:
+		item.select(0)
+
+	_tree_context_menu.clear()
+
+	if not item:
+		_tree_context_menu.add_item("Create Group", ContextMenuId.CREATE_GROUP)
+	else:
+		var is_group: bool = item.get_parent() == _tree.get_root()
+
+		if is_group:
+			_tree_context_menu.add_item("Create Tree", ContextMenuId.CREATE_TREE)
+			_tree_context_menu.add_separator()
+			_tree_context_menu.add_item("Rename", ContextMenuId.RENAME)
+			_tree_context_menu.add_item("Duplicate", ContextMenuId.DUPLICATE)
+			_tree_context_menu.add_separator()
+			_tree_context_menu.add_item("Delete", ContextMenuId.DELETE)
+		else:
+			_tree_context_menu.add_item("Open Tree", ContextMenuId.OPEN_TREE)
+			_tree_context_menu.add_separator()
+			_tree_context_menu.add_item("Rename", ContextMenuId.RENAME)
+			_tree_context_menu.add_item("Duplicate", ContextMenuId.DUPLICATE)
+			_tree_context_menu.add_separator()
+			_tree_context_menu.add_item("Delete", ContextMenuId.DELETE)
+
+	_tree_context_menu.popup_on_parent(Rect2i(
+		_tree.get_screen_transform() * mouse_pos,
+		Vector2i.ZERO
+	))
+
+func _on_tree_context_menu_pressed(id: int) -> void:
+	match id:
+		ContextMenuId.CREATE_GROUP:
+			_create_group()
+		ContextMenuId.CREATE_TREE:
+			_create_tree()
+		ContextMenuId.RENAME:
+			_start_rename_selected()
+		ContextMenuId.DUPLICATE:
+			_duplicate_selected_item()
+		ContextMenuId.DELETE:
+			_delete_selected_item()
+		ContextMenuId.OPEN_TREE:
+			_open_selected_tree()
+
+func _duplicate_selected_item() -> void:
+	var selected := _tree.get_selected()
+	if not selected:
+		return
+
+	var is_group: bool = selected.get_parent() == _tree.get_root()
+
+	if is_group:
+		_duplicate_selected_group()
+	else:
+		_duplicate_selected_tree()
+
+func _delete_selected_item() -> void:
+	var selected := _tree.get_selected()
+	if not selected:
+		return
+
+	var is_group: bool = selected.get_parent() == _tree.get_root()
+
+	if is_group:
+		_request_delete_group()
+	else:
+		_request_delete_tree()
+
+func _open_selected_tree() -> void:
+	var selected := _tree.get_selected()
+	if not selected:
+		return
+	if selected.get_parent() == _tree.get_root():
+		return
+
+	var meta: Dictionary = selected.get_metadata(0)
+	if meta.get("type", "") != "tree":
+		return
+
+	if main_screen:
+		main_screen.open_tree(meta["path"])
+
+# ============================================================
 # GROUP MENU
 # ============================================================
 
@@ -218,6 +371,7 @@ func _on_group_menu_pressed(id: int) -> void:
 	match id:
 		GroupMenuId.CREATE: _create_group()
 		GroupMenuId.DELETE: _request_delete_group()
+		GroupMenuId.DUPLICATE: _duplicate_selected_group()
 
 func _create_group() -> void:
 	var registry: BayterekRegistry = Bayterek.get_editor_registry()
@@ -255,11 +409,14 @@ func _create_group() -> void:
 		return
 
 	var saved: BayterekGroup = ResourceLoader.load(group_file, "BayterekGroup", ResourceLoader.CACHE_MODE_IGNORE) as BayterekGroup
-	registry.groups.append(saved)
-	Bayterek.save_editor_registry()
+	if saved:
+		saved.resource_path = group_file
+		registry.groups.append(saved)
+
+	ResourceSaver.save(registry, Bayterek.get_registry_path())
 
 	EditorInterface.get_resource_filesystem().scan()
-	_refresh()
+	_refresh_ui_only()
 
 	print("Bayterek: Grup oluşturuldu: ", group_name)
 
@@ -271,6 +428,7 @@ func _on_tree_menu_pressed(id: int) -> void:
 	match id:
 		TreeMenuId.CREATE: _create_tree()
 		TreeMenuId.DELETE: _request_delete_tree()
+		TreeMenuId.DUPLICATE: _duplicate_selected_tree()
 
 func _create_tree() -> void:
 	var selected := _tree.get_selected()
@@ -316,16 +474,409 @@ func _create_tree() -> void:
 		return
 
 	var saved: BayterekTree = ResourceLoader.load(tree_file, "BayterekTree", ResourceLoader.CACHE_MODE_IGNORE) as BayterekTree
-	group.trees.append(saved)
+	if saved:
+		saved.resource_path = tree_file
+		group.trees.append(saved)
 
 	var group_save_err: Error = ResourceSaver.save(group, group.resource_path)
 	if group_save_err != OK:
 		push_error("Bayterek: Grup güncellenemedi (%d)" % group_save_err)
 
+	ResourceSaver.save(registry, Bayterek.get_registry_path())
+
+	EditorInterface.get_resource_filesystem().scan()
+	_refresh_ui_only()
+
+	print("Bayterek: Tree oluşturuldu: ", tree_name)
+
+# ============================================================
+# RENAME
+# ============================================================
+
+func _start_rename_selected() -> void:
+	var selected := _tree.get_selected()
+	if not selected:
+		return
+	_start_rename(selected)
+
+func _start_rename(item: TreeItem) -> void:
+	if not item:
+		return
+	if item == _tree.get_root():
+		return
+
+	_renaming_item = item
+	item.select(0)
+	_tree.edit_selected(true)
+	_tree.grab_focus()
+
+func _shortcut_input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+	if not _tree.has_focus():
+		return
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+
+	if event.keycode == KEY_F2:
+		_start_rename_selected()
+		get_viewport().set_input_as_handled()
+
+func _on_item_edited() -> void:
+	var item: TreeItem = _tree.get_edited()
+	if not item:
+		return
+	_commit_rename(item)
+
+func _commit_rename(item: TreeItem) -> void:
+	var meta: Dictionary = item.get_metadata(0)
+	if meta.is_empty():
+		return
+
+	var item_type: String = meta.get("type", "")
+	var old_name: String = ""
+
+	if item_type == "group":
+		var grp: BayterekGroup = ResourceLoader.load(meta["path"])
+		if grp:
+			old_name = grp.name
+		else:
+			old_name = item.get_text(0)
+	elif item_type == "tree":
+		var tree_res: BayterekTree = ResourceLoader.load(meta["path"])
+		if tree_res:
+			old_name = tree_res.name
+		else:
+			old_name = item.get_text(0)
+	else:
+		return
+
+	var new_name: String = item.get_text(0).strip_edges()
+
+	if new_name.is_empty():
+		_refresh_ui_only()
+		_renaming_item = null
+		return
+
+	if new_name == old_name:
+		_refresh_ui_only()
+		_renaming_item = null
+		return
+
+	if item_type == "group":
+		_rename_group(item, meta, old_name, new_name)
+	elif item_type == "tree":
+		_rename_tree(item, meta, old_name, new_name)
+
+	_renaming_item = null
+
+func _rename_group(item: TreeItem, meta: Dictionary, old_name: String, new_name: String) -> void:
+	var registry: BayterekRegistry = Bayterek.get_editor_registry()
+	if not registry:
+		_refresh_ui_only()
+		return
+
+	var old_path: String = meta["path"]
+	var old_group: BayterekGroup = ResourceLoader.load(old_path, "BayterekGroup", ResourceLoader.CACHE_MODE_IGNORE)
+	if not old_group:
+		_refresh_ui_only()
+		return
+
+	for g: BayterekGroup in registry.groups:
+		if g == old_group:
+			continue
+		if g.name == new_name:
+			push_warning("Bayterek: Grup zaten var: %s" % new_name)
+			_refresh_ui_only()
+			return
+
+	if main_screen:
+		for t: BayterekTree in old_group.trees:
+			if main_screen.has_open_tree(t.resource_path):
+				push_warning("Bayterek: Açık tree'ler varken grup ismi değiştirilemez: %s" % t.name)
+				_refresh_ui_only()
+				return
+
+	var root_path: String = Bayterek.get_root_path()
+	var new_snake: String = Bayterek.to_snake_case(new_name)
+	var new_dir: String = "%s/%s" % [root_path, new_snake]
+	var new_file: String = "%s/%s.tres" % [new_dir, new_snake]
+
+	if DirAccess.dir_exists_absolute(new_dir) or FileAccess.file_exists(new_file):
+		push_warning("Bayterek: Hedef klasör/dosya zaten var: %s" % new_dir)
+		_refresh_ui_only()
+		return
+
+	var old_dir: String = old_path.get_base_dir()
+
+	var rename_dir_err: Error = DirAccess.rename_absolute(old_dir, new_dir)
+	if rename_dir_err != OK:
+		push_error("Bayterek: Grup klasörü taşınamadı (%d)" % rename_dir_err)
+		_refresh_ui_only()
+		return
+
+	var old_file_name: String = old_path.get_file()
+	var new_file_name: String = "%s.tres" % new_snake
+	var moved_file_path: String = "%s/%s" % [new_dir, old_file_name]
+
+	if old_file_name != new_file_name:
+		var inner_rename_err: Error = DirAccess.rename_absolute(moved_file_path, new_file)
+		if inner_rename_err != OK:
+			push_error("Bayterek: Grup dosyası yeniden adlandırılamadı (%d)" % inner_rename_err)
+			DirAccess.rename_absolute(new_dir, old_dir)
+			_refresh_ui_only()
+			return
+		moved_file_path = new_file
+
+	_move_uid_sidecar(old_path, moved_file_path)
+
+	for i in range(old_group.trees.size()):
+		var t: BayterekTree = old_group.trees[i]
+		if not t:
+			continue
+		var old_tree_path: String = t.resource_path
+		var tree_file_name: String = old_tree_path.get_file()
+		var new_tree_path: String = "%s/%s" % [new_dir, tree_file_name]
+		t.resource_path = new_tree_path
+		_move_uid_sidecar(old_tree_path, new_tree_path)
+
+	old_group.name = new_name
+	old_group.resource_path = moved_file_path
+
+	var save_err: Error = ResourceSaver.save(old_group, moved_file_path, ResourceSaver.FLAG_CHANGE_PATH)
+	if save_err != OK:
+		push_error("Bayterek: Grup kaydedilemedi (%d)" % save_err)
+		_refresh_ui_only()
+		return
+
+	ResourceSaver.save(registry, Bayterek.get_registry_path())
+
+	EditorInterface.get_resource_filesystem().scan()
+	_refresh_ui_only()
+
+	print("Bayterek: Grup yeniden adlandırıldı: %s → %s" % [old_name, new_name])
+
+func _rename_tree(item: TreeItem, meta: Dictionary, old_name: String, new_name: String) -> void:
+	var old_path: String = meta["path"]
+	var group_path: String = meta.get("group_path", "")
+	if group_path.is_empty():
+		_refresh_ui_only()
+		return
+
+	var tree_res: BayterekTree = ResourceLoader.load(old_path, "BayterekTree", ResourceLoader.CACHE_MODE_IGNORE)
+	if not tree_res:
+		_refresh_ui_only()
+		return
+
+	if main_screen and main_screen.has_open_tree(old_path):
+		push_warning("Bayterek: Açık tree'ler varken ismi değiştirilemez.")
+		_refresh_ui_only()
+		return
+
+	var registry: BayterekRegistry = Bayterek.get_editor_registry()
+	if not registry:
+		_refresh_ui_only()
+		return
+
+	var group: BayterekGroup = registry.find_group_by_path(group_path)
+	if not group:
+		_refresh_ui_only()
+		return
+
+	for t: BayterekTree in group.trees:
+		if t == tree_res:
+			continue
+		if t.name == new_name:
+			push_warning("Bayterek: Bu grupta aynı isimde tree var: %s" % new_name)
+			_refresh_ui_only()
+			return
+
+	var base_dir: String = group.resource_path.get_base_dir()
+	var new_snake: String = Bayterek.to_snake_case(new_name)
+	var new_file: String = "%s/%s.tres" % [base_dir, new_snake]
+
+	if FileAccess.file_exists(new_file) and new_file != old_path:
+		push_warning("Bayterek: Hedef dosya zaten var: %s" % new_file)
+		_refresh_ui_only()
+		return
+
+	if new_file != old_path:
+		var rename_err: Error = DirAccess.rename_absolute(old_path, new_file)
+		if rename_err != OK:
+			push_error("Bayterek: Tree dosyası taşınamadı (%d)" % rename_err)
+			_refresh_ui_only()
+			return
+
+	_move_uid_sidecar(old_path, new_file)
+
+	tree_res.name = new_name
+	tree_res.id = new_snake
+	tree_res.resource_path = new_file
+
+	var save_err: Error = ResourceSaver.save(tree_res, new_file, ResourceSaver.FLAG_CHANGE_PATH)
+	if save_err != OK:
+		push_error("Bayterek: Tree kaydedilemedi (%d)" % save_err)
+		_refresh_ui_only()
+		return
+
+	ResourceSaver.save(group, group.resource_path)
+	ResourceSaver.save(registry, Bayterek.get_registry_path())
+
+	EditorInterface.get_resource_filesystem().scan()
+	_refresh_ui_only()
+
+	print("Bayterek: Tree yeniden adlandırıldı: %s → %s" % [old_name, new_name])
+
+func _move_uid_sidecar(old_path: String, new_path: String) -> void:
+	var old_uid_file: String = old_path + ".uid"
+	var new_uid_file: String = new_path + ".uid"
+	if FileAccess.file_exists(old_uid_file):
+		if FileAccess.file_exists(new_uid_file):
+			DirAccess.remove_absolute(new_uid_file)
+		DirAccess.rename_absolute(old_uid_file, new_uid_file)
+
+# ============================================================
+# DUPLICATE
+# ============================================================
+
+func _duplicate_selected_group() -> void:
+	var selected := _tree.get_selected()
+	if not selected or selected.get_parent() != _tree.get_root():
+		return
+
+	var meta: Dictionary = selected.get_metadata(0)
+	if meta.get("type", "") != "group":
+		return
+
+	var source_group_path: String = meta["path"]
+	var source_group: BayterekGroup = ResourceLoader.load(source_group_path)
+	if not source_group:
+		push_error("Bayterek: Duplicate group could not be loaded: %s" % source_group_path)
+		return
+
+	var registry: BayterekRegistry = Bayterek.get_editor_registry()
+	if not registry:
+		return
+
+	var base_name: String = source_group.name + " Copy"
+	var root_path: String = Bayterek.get_root_path()
+
+	var counter: int = 0
+	var new_name: String = base_name
+	var snake: String = Bayterek.to_snake_case(new_name)
+	var new_dir: String = "%s/%s" % [root_path, snake]
+	var new_file: String = "%s/%s.tres" % [new_dir, snake]
+
+	while DirAccess.dir_exists_absolute(new_dir) or FileAccess.file_exists(new_file):
+		counter += 1
+		new_name = "%s %d" % [base_name, counter]
+		snake = Bayterek.to_snake_case(new_name)
+		new_dir = "%s/%s" % [root_path, snake]
+		new_file = "%s/%s.tres" % [new_dir, snake]
+
+	var mk_err: Error = DirAccess.make_dir_recursive_absolute(new_dir)
+	if mk_err != OK:
+		push_error("Bayterek: Could not create duplicate group folder (%d)" % mk_err)
+		return
+
+	var new_group := BayterekGroup.new()
+	new_group.name = new_name
+	new_group.trees = []
+
+	var save_err: Error = ResourceSaver.save(new_group, new_file)
+	if save_err != OK:
+		push_error("Bayterek: Could not save duplicate group (%d)" % save_err)
+		return
+
+	var saved_group: BayterekGroup = ResourceLoader.load(new_file, "BayterekGroup", ResourceLoader.CACHE_MODE_IGNORE)
+	if saved_group:
+		saved_group.resource_path = new_file
+
+	for tree_data: BayterekTree in source_group.trees:
+		_duplicate_tree_into_group(tree_data, saved_group, new_dir)
+
+	ResourceSaver.save(saved_group, new_file)
+
+	registry.groups.append(saved_group)
+	ResourceSaver.save(registry, Bayterek.get_registry_path())
+
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh()
 
-	print("Bayterek: Tree oluşturuldu: ", tree_name)
+	print("Bayterek: Group duplicated: %s" % new_name)
+
+func _duplicate_selected_tree() -> void:
+	var selected := _tree.get_selected()
+	if not selected or selected.get_parent() == _tree.get_root():
+		return
+
+	var meta: Dictionary = selected.get_metadata(0)
+	if meta.get("type", "") != "tree":
+		return
+
+	var source_tree_path: String = meta["path"]
+	var group_path: String = meta.get("group_path", "")
+	if group_path.is_empty():
+		return
+
+	var registry: BayterekRegistry = Bayterek.get_editor_registry()
+	if not registry:
+		return
+
+	var group: BayterekGroup = registry.find_group_by_path(group_path)
+	if not group:
+		return
+
+	var source_tree: BayterekTree = ResourceLoader.load(source_tree_path, "BayterekTree", ResourceLoader.CACHE_MODE_IGNORE)
+	if not source_tree:
+		return
+
+	_duplicate_tree_into_group(source_tree, group, group.resource_path.get_base_dir(), source_tree.name + " Copy")
+	ResourceSaver.save(group, group.resource_path)
+	ResourceSaver.save(registry, Bayterek.get_registry_path())
+
+	EditorInterface.get_resource_filesystem().scan()
+	_refresh()
+
+func _duplicate_tree_into_group(
+	source_tree: BayterekTree,
+	target_group: BayterekGroup,
+	target_dir: String,
+	base_name: String = ""
+) -> void:
+	if base_name.is_empty():
+		base_name = source_tree.name + " Copy"
+
+	var counter: int = 0
+	var new_name: String = base_name
+	var snake: String = Bayterek.to_snake_case(new_name)
+	var new_file: String = "%s/%s.tres" % [target_dir, snake]
+
+	while FileAccess.file_exists(new_file):
+		counter += 1
+		new_name = "%s %d" % [base_name, counter]
+		snake = Bayterek.to_snake_case(new_name)
+		new_file = "%s/%s.tres" % [target_dir, snake]
+
+	var duplicate: BayterekTree = source_tree.duplicate(true) as BayterekTree
+	if not duplicate:
+		push_error("Bayterek: Tree duplicate failed for %s" % source_tree.name)
+		return
+
+	duplicate.name = new_name
+	duplicate.id = snake
+
+	var save_err: Error = ResourceSaver.save(duplicate, new_file)
+	if save_err != OK:
+		push_error("Bayterek: Could not save duplicate tree (%d)" % save_err)
+		return
+
+	var saved_tree: BayterekTree = ResourceLoader.load(new_file, "BayterekTree", ResourceLoader.CACHE_MODE_IGNORE)
+	if saved_tree:
+		saved_tree.resource_path = new_file
+		target_group.trees.append(saved_tree)
+
+	print("Bayterek: Tree duplicated: %s" % new_name)
 
 # ============================================================
 # DELETE
@@ -340,10 +891,10 @@ func _request_delete_group() -> void:
 		return
 
 	_pending_delete = {"type": "group", "path": meta["path"], "name": selected.get_text(0)}
-	_delete_checkbox.visible = true
-	_delete_checkbox.text = "Delete tree files too"
-	_delete_dialog.dialog_text = "Do you want to remove \"%s\" group?" % selected.get_text(0)
-	_delete_dialog.popup_centered()
+	_open_delete_dialog(
+		"Do you want to remove \"%s\" group?" % selected.get_text(0),
+		"Delete tree files too"
+	)
 
 func _request_delete_tree() -> void:
 	var selected := _tree.get_selected()
@@ -354,23 +905,85 @@ func _request_delete_tree() -> void:
 		return
 
 	_pending_delete = {"type": "tree", "path": meta["path"], "name": selected.get_text(0), "group_path": meta.get("group_path", "")}
-	_delete_checkbox.visible = true
-	_delete_checkbox.text = "Delete tree file"
-	_delete_dialog.dialog_text = "Do you want to remove \"%s\" tree?" % selected.get_text(0)
-	_delete_dialog.popup_centered()
+	_open_delete_dialog(
+		"Do you want to remove \"%s\" tree?" % selected.get_text(0),
+		"Delete tree file"
+	)
+
+func _open_delete_dialog(message: String, checkbox_text: String) -> void:
+	_delete_dialog = ConfirmationDialog.new()
+	_delete_dialog.title = "Confirm Delete"
+	_delete_dialog.ok_button_text = "Remove"
+	_delete_dialog.cancel_button_text = "Cancel"
+	_delete_dialog.dialog_text = ""
+	_delete_dialog.min_size = Vector2i.ZERO
+	_delete_dialog.unresizable = true
+
+	var margin := MarginContainer.new()
+	margin.name = "Margin"
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	_delete_dialog.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "VBox"
+	vbox.add_theme_constant_override("separation", 10)
+	margin.add_child(vbox)
+
+	var info_label := Label.new()
+	info_label.name = "InfoLabel"
+	info_label.text = message
+	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info_label.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	info_label.add_theme_font_size_override("font_size", 13)
+	info_label.custom_minimum_size = Vector2(360, 0)
+	vbox.add_child(info_label)
+
+	var sep := HSeparator.new()
+	vbox.add_child(sep)
+
+	_delete_checkbox = CheckBox.new()
+	_delete_checkbox.text = checkbox_text
+	_delete_checkbox.button_pressed = true
+	vbox.add_child(_delete_checkbox)
+
+	_delete_dialog.confirmed.connect(_on_delete_confirmed)
+	_delete_dialog.canceled.connect(_cleanup_delete_dialog)
+	_delete_dialog.close_requested.connect(_cleanup_delete_dialog)
+
+	add_child(_delete_dialog)
+
+	if not _delete_dialog.visible:
+		await get_tree().process_frame
+
+	_delete_dialog.popup_centered(Vector2i(420, 180))
+
+func _cleanup_delete_dialog() -> void:
+	_pending_delete = {}
+	if is_instance_valid(_delete_dialog):
+		_delete_dialog.queue_free()
+	_delete_dialog = null
+	_delete_checkbox = null
 
 func _on_delete_confirmed() -> void:
 	if _pending_delete.is_empty():
+		_cleanup_delete_dialog()
 		return
 
-	var delete_files: bool = _delete_checkbox.button_pressed
+	var delete_files: bool = _delete_checkbox.button_pressed if _delete_checkbox else false
 
-	if _pending_delete["type"] == "group":
-		_do_delete_group(_pending_delete, delete_files)
-	elif _pending_delete["type"] == "tree":
-		_do_delete_tree(_pending_delete, delete_files)
-
+	var pending = _pending_delete
 	_pending_delete = {}
+
+	if pending["type"] == "group":
+		_do_delete_group(pending, delete_files)
+	elif pending["type"] == "tree":
+		_do_delete_tree(pending, delete_files)
+
+	_cleanup_delete_dialog()
+
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh()
 
@@ -381,14 +994,14 @@ func _do_delete_group(info: Dictionary, delete_files: bool) -> void:
 		return
 
 	registry.groups.erase(group)
-	Bayterek.save_editor_registry()
+	ResourceSaver.save(registry, Bayterek.get_registry_path())
 
 	if delete_files:
 		for tree: BayterekTree in group.trees:
 			if not tree.resource_path.is_empty():
-				DirAccess.remove_absolute(tree.resource_path)
+				_delete_with_sidecar(tree.resource_path)
 		if not group.resource_path.is_empty():
-			DirAccess.remove_absolute(group.resource_path)
+			_delete_with_sidecar(group.resource_path)
 
 	print("Bayterek: Grup silindi: ", info["name"])
 
@@ -409,11 +1022,19 @@ func _do_delete_tree(info: Dictionary, delete_file: bool) -> void:
 
 	group.trees.erase(target)
 	ResourceSaver.save(group, group.resource_path)
+	ResourceSaver.save(registry, Bayterek.get_registry_path())
 
 	if delete_file:
-		DirAccess.remove_absolute(info["path"])
+		_delete_with_sidecar(info["path"])
 
 	print("Bayterek: Tree silindi: ", info["name"])
+
+func _delete_with_sidecar(path: String) -> void:
+	var uid_path: String = path + ".uid"
+	if FileAccess.file_exists(uid_path):
+		DirAccess.remove_absolute(uid_path)
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
 
 # ============================================================
 # ARAMA / DOCS
@@ -423,6 +1044,9 @@ func _on_search_changed(new_text: String) -> void:
 	var q: String = new_text.strip_edges()
 	var root: TreeItem = _tree.get_root()
 
+	if not root:
+		return
+
 	if q.is_empty():
 		for g in root.get_children():
 			g.visible = true
@@ -431,7 +1055,7 @@ func _on_search_changed(new_text: String) -> void:
 		return
 
 	var fuzzy := BayterekFuzzySearch.new()
-	fuzzy.allow_subsequences = false  # faster / more predictable
+	fuzzy.allow_subsequences = false
 
 	for g in root.get_children():
 		var group_visible := false

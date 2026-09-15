@@ -154,3 +154,15 @@ func _on_editor_dirty_changed(editor: BayterekEditor, dirty: bool) -> void:
 	tab_container.set_tab_title(idx, title)
 
 	dirty_changed.emit(editor, dirty)
+
+# ============================================================
+# RENAME SUPPORT
+# ============================================================
+
+## Returns true if a tree at the given path is currently open in an editor tab.
+func has_open_tree(path: String) -> bool:
+	return _open_editors.has(path)
+
+## Returns all currently open tree paths.
+func get_open_tree_paths() -> Array:
+	return _open_editors.keys()
