@@ -1,7 +1,7 @@
 @tool
 class_name BayterekBrowser
 extends MarginContainer
-## Grup / tree listeleme, oluşturma, silme, yeniden adlandırma.
+## Grup / tree listeleme, oluşturma, silme, yeniden adlandırma, sürükle-bırak.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -97,7 +97,7 @@ func _build_ui() -> void:
 	_search.size_flags_horizontal = SIZE_EXPAND_FILL
 	top.add_child(_search)
 
-	# --- Orta: Tree (sadece bir kere yaratılır) ---
+	# --- Orta: Tree ---
 	_tree = Tree.new()
 	_tree.hide_root = true
 	_tree.size_flags_vertical = SIZE_EXPAND_FILL
@@ -161,6 +161,9 @@ func _connect_signals() -> void:
 	_docs_button.pressed.connect(_on_docs_pressed)
 	_tree_context_menu.id_pressed.connect(_on_tree_context_menu_pressed)
 
+	# Enable drag-drop for tree items
+	_tree.set_drag_forwarding(_tree_get_drag_data, _tree_can_drop_data, _tree_drop_data)
+
 # ============================================================
 # REFRESH
 # ============================================================
@@ -206,11 +209,15 @@ func _do_refresh_ui() -> void:
 
 ## Rebuilds Tree content in place without destroying the Tree control.
 func _rebuild_tree_contents(registry: BayterekRegistry) -> void:
+	if not is_instance_valid(_tree):
+		return
+
 	_tree.clear()
 	_tree.create_item()
 
 	if not registry:
-		_tree.queue_redraw()
+		_tree.hide()
+		_tree.show()
 		return
 
 	var root: TreeItem = _tree.get_root()
@@ -229,7 +236,10 @@ func _rebuild_tree_contents(registry: BayterekRegistry) -> void:
 			t_item.set_icon(0, EditorInterface.get_editor_theme().get_icon(Bayterek.TREE_ICON, Bayterek.ICON_THEME))
 			t_item.set_metadata(0, {"type": "tree", "path": tree.resource_path, "group_path": group.resource_path})
 
-	_tree.queue_redraw()
+	# Godot's Tree doesn't always reflect clear() + create_child() until
+	# the next frame. Toggling visibility forces a full re-render.
+	_tree.hide()
+	_tree.show()
 
 # ============================================================
 # SEÇİM
@@ -734,6 +744,161 @@ func _move_uid_sidecar(old_path: String, new_path: String) -> void:
 		if FileAccess.file_exists(new_uid_file):
 			DirAccess.remove_absolute(new_uid_file)
 		DirAccess.rename_absolute(old_uid_file, new_uid_file)
+
+# ============================================================
+# DRAG & DROP — Move trees between groups
+# ============================================================
+
+## Called when the user starts dragging from the Tree.
+## Returns the dragged TreeItem (must be a tree, not a group).
+func _tree_get_drag_data(at_position: Vector2) -> Variant:
+	var item: TreeItem = _tree.get_item_at_position(at_position)
+	if not item:
+		return null
+	if item.get_parent() == _tree.get_root():
+		return null  # Group items are not draggable
+
+	var meta: Dictionary = item.get_metadata(0)
+	if meta.get("type", "") != "tree":
+		return null
+
+	# Build a small preview
+	var preview := HBoxContainer.new()
+	preview.add_theme_constant_override("separation", 4)
+
+	var icon := TextureRect.new()
+	icon.texture = item.get_icon(0)
+	icon.custom_minimum_size = Vector2(16, 16)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.add_child(icon)
+
+	var label := Label.new()
+	label.text = item.get_text(0)
+	preview.add_child(label)
+
+	set_drag_preview(preview)
+
+	return item
+
+## Called every frame while dragging over the Tree.
+## Returns true if `data` (the dragged TreeItem) can be dropped at `at_position`.
+func _tree_can_drop_data(at_position: Vector2, data: Variant) -> bool:
+	if not data is TreeItem:
+		return false
+
+	var dragged: TreeItem = data
+	var dragged_meta: Dictionary = dragged.get_metadata(0)
+	if dragged_meta.get("type", "") != "tree":
+		return false
+
+	var dragged_path: String = dragged_meta.get("path", "")
+
+	# Cannot move trees that are currently open in an editor
+	if main_screen and main_screen.has_open_tree(dragged_path):
+		return false
+
+	var drop_item: TreeItem = _tree.get_item_at_position(at_position)
+	if not drop_item:
+		return false
+
+	# Drop target must be a group (top-level), not another tree
+	if drop_item.get_parent() != _tree.get_root():
+		return false
+
+	# Cannot drop into the same group it came from
+	var source_group: TreeItem = dragged.get_parent()
+	if source_group == drop_item:
+		return false
+
+	return true
+
+## Called when the user releases the drag over a valid drop target.
+func _tree_drop_data(at_position: Vector2, data: Variant) -> void:
+	if not data is TreeItem:
+		return
+
+	var dragged: TreeItem = data
+	var dragged_meta: Dictionary = dragged.get_metadata(0)
+	if dragged_meta.get("type", "") != "tree":
+		return
+
+	var drop_item: TreeItem = _tree.get_item_at_position(at_position)
+	if not drop_item or drop_item.get_parent() != _tree.get_root():
+		return
+
+	var source_group_item: TreeItem = dragged.get_parent()
+	if source_group_item == drop_item:
+		return
+
+	# Resolve groups from registry by resource_path
+	var registry: BayterekRegistry = Bayterek.get_editor_registry()
+	if not registry:
+		return
+
+	var source_group_path: String = source_group_item.get_metadata(0).get("path", "")
+	var target_group_path: String = drop_item.get_metadata(0).get("path", "")
+	if source_group_path.is_empty() or target_group_path.is_empty():
+		return
+
+	var source_group: BayterekGroup = registry.find_group_by_path(source_group_path)
+	var target_group: BayterekGroup = registry.find_group_by_path(target_group_path)
+	if not source_group or not target_group:
+		return
+
+	var old_path: String = dragged_meta.get("path", "")
+	if old_path.is_empty():
+		return
+
+	# Find the BayterekTree in the source group matching the old path
+	var tree_res: BayterekTree = null
+	for t: BayterekTree in source_group.trees:
+		if t.resource_path == old_path:
+			tree_res = t
+			break
+	if not tree_res:
+		push_warning("Bayterek: Drag-drop — tree bulunamadı: %s" % old_path)
+		return
+
+	# Compute new path inside the target group's folder
+	var target_dir: String = target_group.resource_path.get_base_dir()
+	var old_file_name: String = old_path.get_file()
+	var new_path: String = "%s/%s" % [target_dir, old_file_name]
+
+	# If a file with the same name already exists, find a unique name
+	if FileAccess.file_exists(new_path) and new_path != old_path:
+		var base_name: String = old_file_name.get_basename()
+		var counter: int = 1
+		while FileAccess.file_exists(new_path):
+			new_path = "%s/%s_%d.tres" % [target_dir, base_name, counter]
+			counter += 1
+
+	# Physical move: file + .uid sidecar
+	var rename_err: Error = DirAccess.rename_absolute(old_path, new_path)
+	if rename_err != OK:
+		push_error("Bayterek: Tree taşınamadı (%d)" % rename_err)
+		return
+
+	_move_uid_sidecar(old_path, new_path)
+
+	# Update resource_path and re-save the tree at the new location
+	tree_res.resource_path = new_path
+	ResourceSaver.save(tree_res, new_path, ResourceSaver.FLAG_CHANGE_PATH)
+
+	# Move the tree between the group arrays
+	source_group.trees.erase(tree_res)
+	target_group.trees.append(tree_res)
+
+	ResourceSaver.save(source_group, source_group.resource_path)
+	ResourceSaver.save(target_group, target_group.resource_path)
+	ResourceSaver.save(registry, Bayterek.get_registry_path())
+
+	EditorInterface.get_resource_filesystem().scan()
+	_refresh_ui_only()
+
+	print("Bayterek: Tree taşındı: %s → %s (%s → %s)" % [
+		tree_res.name, target_group.name, old_path, new_path
+	])
 
 # ============================================================
 # DUPLICATE
