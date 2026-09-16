@@ -3,8 +3,6 @@
 
 ## KOLAY
 
-- "shift + left click" ile bağlantı sonrası tıklanan node'a focuslanma
-- attribute name alanına yazarken imleç başa atılıyor
 
 
 ## ORTA

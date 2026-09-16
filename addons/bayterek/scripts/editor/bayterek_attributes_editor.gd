@@ -293,7 +293,14 @@ func _on_name_changed(new_text: String) -> void:
 	if not attr:
 		return
 	attr.name = new_text
-	_refresh()
+
+	# Update only the affected item instead of rebuilding the whole tree.
+	# Rebuilding would reset the LineEdit caret position to 0.
+	if _id_to_item.has(_current_attr_id):
+		var item: TreeItem = _id_to_item[_current_attr_id]
+		if item:
+			item.set_text(0, "%s (%s)" % [new_text, _current_attr_id])
+
 	editor.set_dirty(true)
 	changed.emit()
 	attribute_changed.emit(_current_attr_id)
