@@ -18,11 +18,20 @@ var filter_selections: Dictionary = {}  # Kategori -> Seçili uzantılar
 var save_path: String
 var export_path: String
 
+# Binary (metin olmayan) uzantılar - bunlar asla metin olarak okunmaz
+var binary_extensions = [
+	"png", "jpg", "jpeg", "webp", "bmp", "tga", "gif", "svg",
+	"wav", "ogg", "mp3", "flac",
+	"res", "scn", "ctex", "stex", "fontdata", "ttf", "otf",
+	"glb", "gltf", "obj", "fbx", "dae",
+	"zip", "pck", "exe", "dll", "so", "dylib"
+]
+
 # Filtre kategorileri
 var filter_categories = {
 	"godot": {
 		"label": "Godot",
-		"extensions": ["tres", "tscn", "godot", "res", "uid"]
+		"extensions": ["tres", "tscn", "godot", "uid"]
 	},
 	"scripts": {
 		"label": "Script",
@@ -464,19 +473,27 @@ func _export_files(selected_files: Array):
 	report += "--------------------------------------------\n\n"
 	
 	for file_data in found_files:
-		var file = FileAccess.open(file_data.path, FileAccess.READ)
-		if file:
-			var extension = file_data.path.get_extension().to_lower()
-			report += "=== " + file_data.name + " ===\n\n"
-			
-			# .tres ve .res dosyaları için özel işleme
-			if extension == "tres" or extension == "res":
-				report += _process_tres_file(file_data.path, file)
+		var extension = file_data.path.get_extension().to_lower()
+		
+		report += "=== " + file_data.name + " ===\n\n"
+		
+		# Binary dosyaları metin olarak okuma, direkt bilgi ver
+		if extension in binary_extensions:
+			report += "[BINARY DOSYA - İçerik gösterilmedi]\n"
+			report += "Uzantı: ." + extension + "\n"
+		else:
+			var file = FileAccess.open(file_data.path, FileAccess.READ)
+			if file:
+				# .tres dosyaları için özel işleme
+				if extension == "tres":
+					report += _process_tres_file(file_data.path, file)
+				else:
+					report += file.get_as_text()
+				file.close()
 			else:
-				report += file.get_as_text()
-			
-			report += "\n\n\n"
-			file.close()
+				report += "[DOSYA AÇILAMADI]\n"
+		
+		report += "\n\n\n"
 	
 	report += "=== folder tree ===\n\n"
 	
@@ -496,8 +513,6 @@ func _export_files(selected_files: Array):
 		info_label.text = "❌ Rapor kaydedilemedi!"
 
 func _process_tres_file(path: String, file: FileAccess) -> String:
-	var content = ""
-	
 	file.seek(0)
 	var header = file.get_buffer(4)
 	file.seek(0)
@@ -509,14 +524,13 @@ func _process_tres_file(path: String, file: FileAccess) -> String:
 			break
 	
 	if is_binary:
-		content += "[BINARY FORMAT - Cannot display content]\n"
+		var content = "[BINARY FORMAT - İçerik gösterilemez]\n"
 		content += "File: " + path + "\n"
 		content += "Size: " + str(file.get_length()) + " bytes\n"
+		return content
 	else:
-		content = file.get_as_text()
-		content = _fix_resource_references(content)
-	
-	return content
+		var content = file.get_as_text()
+		return _fix_resource_references(content)
 
 func _fix_resource_references(content: String) -> String:
 	var lines = content.split("\n")

@@ -393,6 +393,10 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 			created_connections.append([from_node.id, node.id])
 
 		if not created_connections.is_empty():
+			# Chain-mode: move selection to the target node so the next
+			# shift+click continues from here (A→B, then B→C, then C→D...).
+			clear_selection()
+			select_node(node)
 			changed.emit()
 		return
 

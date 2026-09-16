@@ -1,8 +1,8 @@
-[gd_resource type="Resource" script_class="BayterekGroup" format=3 uid="uid://bssq10g32deoj"]
+[gd_resource type="Resource" script_class="BayterekGroup" format=3 uid="uid://cj6kbjo5j6pqj"]
 
 [ext_resource type="Script" uid="uid://cv2pfk4jn6sim" path="res://addons/bayterek/scripts/resources/bayterek_group.gd" id="1_fhiwe"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_8p1sp"]
-[ext_resource type="Resource" uid="uid://b6yb5nyvedfkp" path="res://bayterek_data/group_1/tree_1.tres" id="3_8p1sp"]
+[ext_resource type="Resource" uid="uid://dpct2yoh4f760" path="res://bayterek_data/group_1/tree_1.tres" id="3_8p1sp"]
 
 [resource]
 script = ExtResource("1_fhiwe")

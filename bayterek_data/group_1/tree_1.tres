@@ -1,188 +1,29 @@
-[gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://b6yb5nyvedfkp"]
+[gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://dpct2yoh4f760"]
 
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_d7nu5"]
-[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="2_p7r5a"]
+[ext_resource type="Script" uid="uid://hqjiiihenipg" path="res://addons/bayterek/scripts/resources/bayterek_attribute.gd" id="1_y2ort"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_y2ort"]
-[ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_tyv6k"]
 
-[sub_resource type="Resource" id="Resource_s5f85"]
-script = ExtResource("2_p7r5a")
+[sub_resource type="Resource" id="Resource_p7r5a"]
+script = ExtResource("1_y2ort")
+id = "new_attribute"
+name = "New Attribute"
+effect = "Effect #"
+value_count = 1
 
-[sub_resource type="Resource" id="Resource_32bmc"]
-script = ExtResource("1_d7nu5")
-reference_id = "89e3b5d0-6558-45fc-8a8c-b5b18bbac765"
-id = 1
-name = "Small Node"
-position = Vector2(-399.2141, 1)
-line_data = {
-3: SubResource("Resource_s5f85")
-}
-out_nodes = Array[int]([3])
-
-[sub_resource type="Resource" id="Resource_gmi7d"]
-script = ExtResource("1_d7nu5")
-reference_id = "f230f67b-1a8d-4d66-b296-640bec12beba"
-id = 2
-name = "Medium Node"
-type = 1
-position = Vector2(-379.9287, -177.28564)
-in_nodes = Array[int]([3])
-
-[sub_resource type="Resource" id="Resource_4kaxi"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_fi42j"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_8xuuo"]
-script = ExtResource("1_d7nu5")
-reference_id = "a8a74605-37e6-4117-b673-74b1e1ae506f"
-id = 3
-name = "Large Node"
-type = 2
-position = Vector2(-225.8628, -26.89087)
-line_data = {
-2: SubResource("Resource_4kaxi"),
-4: SubResource("Resource_fi42j")
-}
-out_nodes = Array[int]([2, 4])
-in_nodes = Array[int]([1])
-
-[sub_resource type="Resource" id="Resource_l3jbr"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_1jmks"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_hm53d"]
-script = ExtResource("1_d7nu5")
-reference_id = "f230f67b-1a8d-4d66-b296-640bec12beba"
-id = 4
-name = "Medium Node"
-type = 1
-position = Vector2(-53.878662, -31.10962)
-line_data = {
-5: SubResource("Resource_l3jbr"),
-7: SubResource("Resource_1jmks")
-}
-out_nodes = Array[int]([5, 7])
-in_nodes = Array[int]([3])
-
-[sub_resource type="Resource" id="Resource_4qtot"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_stsm4"]
-script = ExtResource("1_d7nu5")
-reference_id = "89e3b5d0-6558-45fc-8a8c-b5b18bbac765"
-id = 5
-name = "Small Node"
-position = Vector2(-73.109375, 100.42847)
-line_data = {
-6: SubResource("Resource_4qtot")
-}
-out_nodes = Array[int]([6])
-in_nodes = Array[int]([4])
-
-[sub_resource type="Resource" id="Resource_b6bgd"]
-script = ExtResource("1_d7nu5")
-reference_id = "89e3b5d0-6558-45fc-8a8c-b5b18bbac765"
-id = 6
-name = "Small Node"
-position = Vector2(111.50586, 85.81348)
-in_nodes = Array[int]([5])
-
-[sub_resource type="Resource" id="Resource_l30q8"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_ev4tw"]
-script = ExtResource("1_d7nu5")
-reference_id = "89e3b5d0-6558-45fc-8a8c-b5b18bbac765"
-id = 7
-name = "Small Node"
-position = Vector2(-34.840332, -185.80225)
-line_data = {
-8: SubResource("Resource_l30q8")
-}
-out_nodes = Array[int]([8])
-in_nodes = Array[int]([4])
-
-[sub_resource type="Resource" id="Resource_govpd"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_s6ywc"]
-script = ExtResource("1_d7nu5")
-reference_id = "a8a74605-37e6-4117-b673-74b1e1ae506f"
-id = 8
-name = "Large Node"
-type = 2
-position = Vector2(-74.84033, -377.80225)
-line_data = {
-9: SubResource("Resource_govpd")
-}
-out_nodes = Array[int]([9])
-in_nodes = Array[int]([7])
-
-[sub_resource type="Resource" id="Resource_gjclu"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_ugvoh"]
-script = ExtResource("1_d7nu5")
-reference_id = "f230f67b-1a8d-4d66-b296-640bec12beba"
-id = 9
-name = "Medium Node"
-type = 1
-position = Vector2(-229.84033, -384.80225)
-line_data = {
-10: SubResource("Resource_gjclu")
-}
-out_nodes = Array[int]([10])
-in_nodes = Array[int]([8])
-
-[sub_resource type="Resource" id="Resource_m21nr"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_x6k2a"]
-script = ExtResource("1_d7nu5")
-reference_id = "89e3b5d0-6558-45fc-8a8c-b5b18bbac765"
-id = 10
-name = "Small Node"
-position = Vector2(-364.84033, -398.80225)
-line_data = {
-11: SubResource("Resource_m21nr")
-}
-out_nodes = Array[int]([11])
-in_nodes = Array[int]([9])
-
-[sub_resource type="Resource" id="Resource_eyrcx"]
-script = ExtResource("1_d7nu5")
-reference_id = "89e3b5d0-6558-45fc-8a8c-b5b18bbac765"
-id = 11
-name = "Small Node"
-position = Vector2(-400, -544)
-in_nodes = Array[int]([10])
-
-[sub_resource type="Resource" id="Resource_3msqw"]
-script = ExtResource("3_tyv6k")
-reference_id = "89e3b5d0-6558-45fc-8a8c-b5b18bbac765"
-node_name = "Small Node"
-
-[sub_resource type="Resource" id="Resource_7nlyo"]
-script = ExtResource("3_tyv6k")
-reference_id = "a8a74605-37e6-4117-b673-74b1e1ae506f"
-node_name = "Large Node"
-type = 2
-
-[sub_resource type="Resource" id="Resource_2levn"]
-script = ExtResource("3_tyv6k")
-reference_id = "f230f67b-1a8d-4d66-b296-640bec12beba"
-node_name = "Medium Node"
-type = 1
+[sub_resource type="Resource" id="Resource_y2ort"]
+script = ExtResource("1_y2ort")
+id = "new_attribute_2"
+name = "ine"
+effect = "Effect #kkklkl"
+value_count = 1
 
 [resource]
 script = ExtResource("2_y2ort")
 id = "tree_1"
 name = "Tree 1"
-id_counter = 11
+bg_color = Color(0, 0, 0, 1)
+id_counter = 9
 icon_sizes = {
 0: Vector2(0, 0),
 1: Vector2(0, 0),
@@ -198,11 +39,9 @@ node_size = {
 1: Vector2(48, 48),
 2: Vector2(64, 64)
 }
-nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_32bmc"), SubResource("Resource_gmi7d"), SubResource("Resource_8xuuo"), SubResource("Resource_hm53d"), SubResource("Resource_stsm4"), SubResource("Resource_b6bgd"), SubResource("Resource_ev4tw"), SubResource("Resource_s6ywc"), SubResource("Resource_ugvoh"), SubResource("Resource_x6k2a"), SubResource("Resource_eyrcx")])
-prefabs = {
-0: [SubResource("Resource_3msqw")],
-1: [SubResource("Resource_2levn")],
-2: [SubResource("Resource_7nlyo")]
+attributes = {
+"new_attribute": SubResource("Resource_p7r5a"),
+"new_attribute_2": SubResource("Resource_y2ort")
 }
-hierarchy_split_offset = -448
+hierarchy_split_offset = -378
 prefabs_split_offset = 259
