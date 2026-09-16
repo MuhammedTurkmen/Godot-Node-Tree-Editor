@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="BayterekRegistry" format=3 uid="uid://bgsdu40628s8t"]
 
 [ext_resource type="Script" uid="uid://cv2pfk4jn6sim" path="res://addons/bayterek/scripts/resources/bayterek_group.gd" id="1_xygjl"]
-[ext_resource type="Resource" uid="uid://bssq10g32deoj" path="res://bayterek_data/yeni/yeni.tres" id="2_bpaod"]
+[ext_resource type="Resource" uid="uid://bssq10g32deoj" path="res://bayterek_data/group_1/group_1.tres" id="2_bpaod"]
 [ext_resource type="Script" uid="uid://h4hgkvn6o0fm" path="res://addons/bayterek/scripts/resources/bayterek_registry.gd" id="2_prq1v"]
 
 [resource]
