@@ -39,7 +39,10 @@ var id: int:
 
 var is_root: bool:
 	get: return node_data.is_root if node_data else false
-	set(v): if node_data: node_data.is_root = v
+	set(v):
+		if node_data:
+			node_data.is_root = v
+			refresh_visuals()
 
 var node_name: String:
 	get: return node_data.name if node_data else ""
@@ -114,26 +117,23 @@ func _build_visuals() -> void:
 	add_child(_select_border)
 
 	# 5) Crown icon (visible only for root nodes)
-	# Positioned ABOVE the node, slightly outside its bounds, centered
-	# horizontally. Uses full-rect anchoring + Y offset for stable centering.
-	# NEAREST filter keeps the glyph crisp when the canvas is zoomed.
+	# Anchored at top-center of the node so node resizes don't shift it.
 	_crown_label = Label.new()
 	_crown_label.name = "Crown"
-	_crown_label.text = "♛"
-	# _crown_label.text = "☼"
+	_crown_label.text = "👑"
 	_crown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_crown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_crown_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	_crown_label.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_crown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_crown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_crown_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
 	_crown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	_crown_label.add_theme_constant_override("outline_size", 2)
 	_crown_label.add_theme_font_size_override("font_size", 18)
-	_crown_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_crown_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_crown_label.offset_left = -20
-	_crown_label.offset_top = -28
+	_crown_label.offset_top = -30
 	_crown_label.offset_right = 20
-	_crown_label.offset_bottom = -2
+	_crown_label.offset_bottom = -6
 	_crown_label.visible = false
 	add_child(_crown_label)
 

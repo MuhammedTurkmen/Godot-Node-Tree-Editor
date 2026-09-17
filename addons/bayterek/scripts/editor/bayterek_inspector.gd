@@ -481,7 +481,8 @@ func _on_root_toggled(pressed: bool) -> void:
 		return
 	if _current_prefab:
 		return
-	_current_node.node_data.is_root = pressed
+	# Use the property setter so refresh_visuals() is triggered automatically.
+	_current_node.is_root = pressed
 	if editor and editor.has_method("notify_node_root_changed"):
 		editor.notify_node_root_changed(_current_node)
 	changed.emit()
