@@ -1370,6 +1370,65 @@ func _create_connection_entry(to_id: int) -> void:
 
 	rev_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
+	# --- Start Arrow ---
+	var start_arrow_row := HBoxContainer.new()
+	content_box.add_child(start_arrow_row)
+	var start_arrow_label := Label.new()
+	start_arrow_label.text = "Start Arrow"
+	start_arrow_label.custom_minimum_size = Vector2(90, 0)
+	start_arrow_row.add_child(start_arrow_label)
+
+	var start_arrow_dropdown := OptionButton.new()
+	start_arrow_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	start_arrow_dropdown.add_item("None", 0)
+	start_arrow_dropdown.add_item("Arrow", 1)
+	start_arrow_dropdown.add_item("T-Bar", 2)
+	start_arrow_dropdown.add_item("Square", 3)
+	start_arrow_dropdown.add_item("Circle", 4)
+	start_arrow_dropdown.add_item("Diamond", 5)
+	start_arrow_dropdown.select(int(line_data.start_arrow))
+	start_arrow_dropdown.item_selected.connect(_on_start_arrow_changed.bind(to_id))
+	start_arrow_row.add_child(start_arrow_dropdown)
+
+	# --- End Arrow ---
+	var end_arrow_row := HBoxContainer.new()
+	content_box.add_child(end_arrow_row)
+	var end_arrow_label := Label.new()
+	end_arrow_label.text = "End Arrow"
+	end_arrow_label.custom_minimum_size = Vector2(90, 0)
+	end_arrow_row.add_child(end_arrow_label)
+
+	var end_arrow_dropdown := OptionButton.new()
+	end_arrow_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	end_arrow_dropdown.add_item("None", 0)
+	end_arrow_dropdown.add_item("Arrow", 1)
+	end_arrow_dropdown.add_item("T-Bar", 2)
+	end_arrow_dropdown.add_item("Square", 3)
+	end_arrow_dropdown.add_item("Circle", 4)
+	end_arrow_dropdown.add_item("Diamond", 5)
+	end_arrow_dropdown.select(int(line_data.end_arrow))
+	end_arrow_dropdown.item_selected.connect(_on_end_arrow_changed.bind(to_id))
+	end_arrow_row.add_child(end_arrow_dropdown)
+
+	# --- Arrow Size ---
+	var arrow_size_row := HBoxContainer.new()
+	content_box.add_child(arrow_size_row)
+	var arrow_size_label := Label.new()
+	arrow_size_label.text = "Arrow Size"
+	arrow_size_label.custom_minimum_size = Vector2(90, 0)
+	arrow_size_row.add_child(arrow_size_label)
+
+	var arrow_size_input := SpinBox.new()
+	arrow_size_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	arrow_size_input.min_value = 2
+	arrow_size_input.max_value = 100
+	arrow_size_input.step = 1
+	arrow_size_input.value = line_data.arrow_size
+	arrow_size_input.value_changed.connect(_on_arrow_size_changed.bind(to_id))
+	arrow_size_row.add_child(arrow_size_input)
+
+	arrow_size_row.visible = (line_data.start_arrow != BayterekLineData.ArrowStyle.NONE or line_data.end_arrow != BayterekLineData.ArrowStyle.NONE)
+
 	# --- Delete Button ---
 	var del_row := HBoxContainer.new()
 	content_box.add_child(del_row)
@@ -1491,6 +1550,50 @@ func _on_reversed_changed(pressed: bool, to_id: int) -> void:
 	if not line_data:
 		return
 	line_data.reversed = pressed
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_start_arrow_changed(index: int, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+	line_data.start_arrow = index as BayterekLineData.ArrowStyle
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	_rebuild_connections_list()
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_end_arrow_changed(index: int, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+	line_data.end_arrow = index as BayterekLineData.ArrowStyle
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	_rebuild_connections_list()
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_arrow_size_changed(value: float, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+	line_data.arrow_size = value
 
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)

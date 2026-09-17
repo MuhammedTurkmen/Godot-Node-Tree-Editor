@@ -11,10 +11,8 @@ extends Control
 ##   - texture tiling along the polyline
 ##   - dash / dot / dash-dot patterns
 ##   - line width, color, and endpoint style
+##   - arrow / t-bar / square endpoints
 ##   - any shape: straight, bezier, arc, step
-##
-## Usage is identical to Line2D: set `points`, `width`, `texture`, and
-## the internal _draw() will render everything.
 
 # --- Line geometry ---
 var points: PackedVector2Array = PackedVector2Array() : set = set_points
@@ -48,6 +46,20 @@ var dash_gap: float = 6.0 : set = set_dash_gap
 var round_joints: bool = false : set = set_round_joints
 ## Round the endpoints (adds small circles at start and end).
 var round_caps: bool = false : set = set_round_caps
+
+# --- Arrow styles ---
+enum ArrowStyle {
+	NONE,
+	ARROW,
+	T_BAR,
+	SQUARE,
+	CIRCLE,
+	DIAMOND,
+}
+
+var start_arrow: ArrowStyle = ArrowStyle.NONE : set = set_start_arrow
+var end_arrow: ArrowStyle = ArrowStyle.NONE : set = set_end_arrow
+var arrow_size: float = 12.0 : set = set_arrow_size
 
 # --- Cache ---
 var _cached_segments: Array = []
@@ -113,6 +125,21 @@ func set_round_caps(value: bool) -> void:
 	queue_redraw()
 
 
+func set_start_arrow(new_style: ArrowStyle) -> void:
+	start_arrow = new_style
+	queue_redraw()
+
+
+func set_end_arrow(new_style: ArrowStyle) -> void:
+	end_arrow = new_style
+	queue_redraw()
+
+
+func set_arrow_size(new_size: float) -> void:
+	arrow_size = max(1.0, new_size)
+	queue_redraw()
+
+
 # ============================================================
 # PUBLIC HELPERS (Line2D-compatible API)
 # ============================================================
@@ -159,6 +186,9 @@ func _draw() -> void:
 	# --- 3. Round joints / caps ---
 	if round_joints or round_caps:
 		_draw_caps(segments)
+
+	# --- 4. Endpoint arrows ---
+	_draw_arrows(segments)
 
 
 func _draw_segment(a: Vector2, b: Vector2) -> void:
@@ -276,6 +306,83 @@ func _draw_caps(segments: Array) -> void:
 		# Draw filled circles at the two endpoints of the whole line
 		draw_circle(segments[0][0], radius, default_color)
 		draw_circle(segments[segments.size() - 1][1], radius, default_color)
+
+
+# ============================================================
+# ARROW DRAWING
+# ============================================================
+
+func _draw_arrows(segments: Array) -> void:
+	if segments.is_empty():
+		return
+
+	var first_seg: Array = segments[0]
+	var last_seg: Array = segments[segments.size() - 1]
+
+	# Start arrow: draws at the very first point, pointing outward (away from
+	# the line). Direction is (first_seg[1] - first_seg[0]).normalized().
+	if start_arrow != ArrowStyle.NONE:
+		var dir: Vector2 = first_seg[1] - first_seg[0]
+		if dir.length() > 0.001:
+			_draw_arrow_at(first_seg[0], -dir.normalized(), start_arrow)
+
+	# End arrow: draws at the very last point, pointing outward.
+	if end_arrow != ArrowStyle.NONE:
+		var dir2: Vector2 = last_seg[1] - last_seg[0]
+		if dir2.length() > 0.001:
+			_draw_arrow_at(last_seg[1], dir2.normalized(), end_arrow)
+
+
+## Draws an endpoint decoration at `tip`. `direction` is the unit vector
+## the decoration should point toward (i.e. it sits on the line and points
+## away from it).
+func _draw_arrow_at(tip: Vector2, direction: Vector2, style: ArrowStyle) -> void:
+	var size: float = arrow_size
+	var perp: Vector2 = Vector2(-direction.y, direction.x)
+	var back: Vector2 = tip - direction * size
+
+	match style:
+		ArrowStyle.ARROW:
+			# Triangle: tip, two back corners
+			var left: Vector2 = back + perp * (size * 0.5)
+			var right: Vector2 = back - perp * (size * 0.5)
+			draw_colored_polygon(
+				PackedVector2Array([tip, left, right]),
+				default_color
+			)
+
+		ArrowStyle.T_BAR:
+			# Perpendicular bar at the tip
+			var half: float = size * 0.5
+			var a: Vector2 = tip + perp * half
+			var b: Vector2 = tip - perp * half
+			draw_line(a, b, default_color, max(2.0, width), true)
+
+		ArrowStyle.SQUARE:
+			# Filled square behind the tip
+			var half_w: float = max(width, size * 0.4) * 0.5
+			var top_left: Vector2 = tip + perp * half_w
+			var top_right: Vector2 = tip - perp * half_w
+			var bottom_left: Vector2 = back + perp * half_w
+			var bottom_right: Vector2 = back - perp * half_w
+			draw_colored_polygon(
+				PackedVector2Array([top_left, top_right, bottom_right, bottom_left]),
+				default_color
+			)
+
+		ArrowStyle.CIRCLE:
+			draw_circle(tip - direction * (size * 0.35), size * 0.5, default_color)
+
+		ArrowStyle.DIAMOND:
+			var center: Vector2 = tip - direction * (size * 0.5)
+			var left: Vector2 = center + perp * (size * 0.5)
+			var right: Vector2 = center - perp * (size * 0.5)
+			var front: Vector2 = tip
+			var back_pt: Vector2 = center - direction * (size * 0.5)
+			draw_colored_polygon(
+				PackedVector2Array([front, left, back_pt, right]),
+				default_color
+			)
 
 
 # ============================================================

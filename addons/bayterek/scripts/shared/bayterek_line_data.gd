@@ -17,6 +17,18 @@ enum LineStyle {
 	DASH_DOT,
 }
 
+## Endpoint decorations for the start / end of a connection.
+## "One-sided arrow"  = START_NONE + END_ARROW
+## "Two-sided arrow"  = START_ARROW + END_ARROW
+enum ArrowStyle {
+	NONE,
+	ARROW,
+	T_BAR,
+	SQUARE,
+	CIRCLE,
+	DIAMOND,
+}
+
 @export var line_type: LineType = LineType.STRAIGHT
 @export var line_style: LineStyle = LineStyle.SOLID
 @export var curve_height: float = 48.0
@@ -35,3 +47,8 @@ enum LineStyle {
 
 ## Gap length in pixels between dash/dot segments.
 @export var dash_gap: float = 6.0
+
+## Endpoint decorations.
+@export var start_arrow: ArrowStyle = ArrowStyle.NONE
+@export var end_arrow: ArrowStyle = ArrowStyle.NONE
+@export var arrow_size: float = 12.0

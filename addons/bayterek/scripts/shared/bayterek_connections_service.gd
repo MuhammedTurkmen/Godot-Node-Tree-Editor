@@ -249,6 +249,11 @@ func _update_line_points(line: BayterekConnection) -> void:
 	line.dash_length = data.dash_length
 	line.dash_gap = data.dash_gap
 
+	# Apply arrow styles
+	line.start_arrow = data.start_arrow as BayterekLine2D.ArrowStyle
+	line.end_arrow = data.end_arrow as BayterekLine2D.ArrowStyle
+	line.arrow_size = data.arrow_size
+
 ## Quadratic Bezier curve
 func _bezier_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:
 	var pts := PackedVector2Array()
