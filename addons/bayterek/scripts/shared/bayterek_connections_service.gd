@@ -59,9 +59,9 @@ func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
 
 	line.width = 4.0
 	line.default_color = Color(0.7, 0.7, 0.7, 0.9)
-	line.texture_mode = Line2D.LINE_TEXTURE_TILE
-	line.joint_mode = Line2D.LINE_JOINT_BEVEL
-	line.antialiased = true
+	line.texture_mode = BayterekLine2D.TextureMode.TILE
+	line.round_joints = true
+	line.round_caps = true
 
 	# Get line data from source node
 	var from_node: BayterekNodeButton = _tree_view.nodes_service.get_node(from_id)
@@ -153,7 +153,7 @@ func refresh_line(from_id: int, to_id: int) -> void:
 		line_changed.emit(from_id, to_id)
 
 # ============================================================
-# ALLOCATION STATE VISUALS (Faz 9)
+# ALLOCATION STATE VISUALS
 # ============================================================
 
 ## Called when a node's allocation state changes.
@@ -231,6 +231,7 @@ func _update_line_points(line: BayterekConnection) -> void:
 	if not data:
 		data = BayterekLineData.new()
 
+	# Shape
 	match data.line_type:
 		BayterekLineData.LineType.STRAIGHT:
 			line.clear_points()
@@ -242,6 +243,11 @@ func _update_line_points(line: BayterekConnection) -> void:
 			line.points = _arc_points(p0, p2, data)
 		BayterekLineData.LineType.STEP:
 			line.points = _step_points(p0, p2, data)
+
+	# Apply line style (dash pattern) to the BayterekLine2D
+	line.dash_style = data.line_style as BayterekLine2D.DashStyle
+	line.dash_length = data.dash_length
+	line.dash_gap = data.dash_gap
 
 ## Quadratic Bezier curve
 func _bezier_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:

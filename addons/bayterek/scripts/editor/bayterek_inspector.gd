@@ -1223,6 +1223,7 @@ func _create_connection_entry(to_id: int) -> void:
 		header_capture.text = ("▼ Node %d" % tid_capture) if pressed else ("▶ Node %d" % tid_capture)
 	)
 
+	# --- Line Type ---
 	var type_row := HBoxContainer.new()
 	content_box.add_child(type_row)
 	var type_label := Label.new()
@@ -1240,6 +1241,63 @@ func _create_connection_entry(to_id: int) -> void:
 	type_dropdown.item_selected.connect(_on_line_type_changed.bind(to_id))
 	type_row.add_child(type_dropdown)
 
+	# --- Line Style (Solid / Dashed / Dotted / Dash-Dot) ---
+	var style_row := HBoxContainer.new()
+	content_box.add_child(style_row)
+	var style_label := Label.new()
+	style_label.text = "Line Style"
+	style_label.custom_minimum_size = Vector2(90, 0)
+	style_row.add_child(style_label)
+
+	var style_dropdown := OptionButton.new()
+	style_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	style_dropdown.add_item("Solid", 0)
+	style_dropdown.add_item("Dashed", 1)
+	style_dropdown.add_item("Dotted", 2)
+	style_dropdown.add_item("Dash-Dot", 3)
+	style_dropdown.select(int(line_data.line_style))
+	style_dropdown.item_selected.connect(_on_line_style_changed.bind(to_id))
+	style_row.add_child(style_dropdown)
+
+	# --- Dash Length (Dashed / Dotted / Dash-Dot) ---
+	var dash_len_row := HBoxContainer.new()
+	content_box.add_child(dash_len_row)
+	var dash_len_label := Label.new()
+	dash_len_label.text = "Dash Len"
+	dash_len_label.custom_minimum_size = Vector2(90, 0)
+	dash_len_row.add_child(dash_len_label)
+
+	var dash_len_input := SpinBox.new()
+	dash_len_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	dash_len_input.min_value = 1
+	dash_len_input.max_value = 100
+	dash_len_input.step = 1
+	dash_len_input.value = line_data.dash_length
+	dash_len_input.value_changed.connect(_on_dash_length_changed.bind(to_id))
+	dash_len_row.add_child(dash_len_input)
+
+	dash_len_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
+
+	# --- Dash Gap (Dashed / Dotted / Dash-Dot) ---
+	var dash_gap_row := HBoxContainer.new()
+	content_box.add_child(dash_gap_row)
+	var dash_gap_label := Label.new()
+	dash_gap_label.text = "Dash Gap"
+	dash_gap_label.custom_minimum_size = Vector2(90, 0)
+	dash_gap_row.add_child(dash_gap_label)
+
+	var dash_gap_input := SpinBox.new()
+	dash_gap_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	dash_gap_input.min_value = 1
+	dash_gap_input.max_value = 100
+	dash_gap_input.step = 1
+	dash_gap_input.value = line_data.dash_gap
+	dash_gap_input.value_changed.connect(_on_dash_gap_changed.bind(to_id))
+	dash_gap_row.add_child(dash_gap_input)
+
+	dash_gap_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
+
+	# --- Curve Height (Bezier only) ---
 	var curve_row := HBoxContainer.new()
 	content_box.add_child(curve_row)
 	var curve_label := Label.new()
@@ -1277,6 +1335,7 @@ func _create_connection_entry(to_id: int) -> void:
 
 	step_row.visible = (line_data.line_type == BayterekLineData.LineType.STEP)
 
+	# --- Segments (Bezier / Arc only) ---
 	var seg_row := HBoxContainer.new()
 	content_box.add_child(seg_row)
 	var seg_label := Label.new()
@@ -1293,8 +1352,9 @@ func _create_connection_entry(to_id: int) -> void:
 	seg_input.value_changed.connect(_on_segments_changed.bind(to_id))
 	seg_row.add_child(seg_input)
 
-	seg_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT and line_data.line_type != BayterekLineData.LineType.STEP)
+	seg_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
+	# --- Reversed (Bezier / Arc only) ---
 	var rev_row := HBoxContainer.new()
 	content_box.add_child(rev_row)
 	var rev_label := Label.new()
@@ -1310,6 +1370,7 @@ func _create_connection_entry(to_id: int) -> void:
 
 	rev_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
+	# --- Delete Button ---
 	var del_row := HBoxContainer.new()
 	content_box.add_child(del_row)
 	var del_spacer := Control.new()
@@ -1334,6 +1395,50 @@ func _on_line_type_changed(index: int, to_id: int) -> void:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
 
 	_rebuild_connections_list()
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_line_style_changed(index: int, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+
+	line_data.line_style = index as BayterekLineData.LineStyle
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	_rebuild_connections_list()
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_dash_length_changed(value: float, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+	line_data.dash_length = value
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_dash_gap_changed(value: float, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+	line_data.dash_gap = value
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
 	editor.set_dirty(true)
 	changed.emit()
 
