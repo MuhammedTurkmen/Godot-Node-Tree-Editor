@@ -120,6 +120,7 @@ func _build_visuals() -> void:
 	_crown_label = Label.new()
 	_crown_label.name = "Crown"
 	_crown_label.text = "♛"
+	# _crown_label.text = "☼"
 	_crown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_crown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_crown_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
