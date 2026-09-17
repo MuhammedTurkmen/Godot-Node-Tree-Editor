@@ -60,6 +60,9 @@ func init(p_tree_view: BayterekTreeView) -> void:
 		tree_view.node_deleted.connect(_on_node_deleted)
 		tree_view.selection_changed.connect(_on_selection_changed)
 
+	if editor:
+		editor.node_root_changed.connect(_on_node_root_changed)
+
 	_refresh()
 
 func _refresh() -> void:
@@ -107,8 +110,18 @@ func _add_node_item(node: BayterekNodeButton) -> void:
 		return
 
 	var item := _nodes_item.create_child()
-	item.set_text(0, "Node %d — %s" % [node.id, node.node_name])
+
+	var prefix: String = ""
+	if node.node_data.is_root:
+		prefix = "★  "
+
+	item.set_text(0, "%sNode %d — %s" % [prefix, node.id, node.node_name])
 	item.set_metadata(0, node.id)
+
+	if node.node_data.is_root:
+		item.set_custom_color(0, Color(1.0, 0.85, 0.4))
+	else:
+		item.set_custom_color(0, Color(0.85, 0.85, 0.85))
 
 	var theme := EditorInterface.get_editor_theme()
 	var lock_icon_name: String = "Lock" if node.node_data.locked else "Unlock"
@@ -130,6 +143,25 @@ func _remove_item_for_node(node_id: int) -> void:
 		item.free()
 	_id_to_item.erase(node_id)
 	_update_header()
+
+func _update_item_root_visual(node: BayterekNodeButton) -> void:
+	if not node or not _id_to_item.has(node.id):
+		return
+
+	var item: TreeItem = _id_to_item[node.id]
+	if not item:
+		return
+
+	var prefix: String = ""
+	if node.node_data.is_root:
+		prefix = "★  "
+
+	item.set_text(0, "%sNode %d — %s" % [prefix, node.id, node.node_name])
+
+	if node.node_data.is_root:
+		item.set_custom_color(0, Color(1.0, 0.85, 0.4))
+	else:
+		item.set_custom_color(0, Color(0.85, 0.85, 0.85))
 
 # ============================================================
 # SELECTION SYNC
@@ -254,3 +286,10 @@ func _do_delete_node(node: BayterekNodeButton) -> void:
 
 	_remove_item_for_node(node.id)
 	changed.emit()
+
+# ============================================================
+# ROOT VISUAL SYNC
+# ============================================================
+
+func _on_node_root_changed(node: BayterekNodeButton) -> void:
+	_update_item_root_visual(node)

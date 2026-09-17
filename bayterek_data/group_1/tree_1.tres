@@ -1,9 +1,17 @@
 [gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://b6yb5nyvedfkp"]
 
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_d7nu5"]
+[ext_resource type="Script" uid="uid://hqjiiihenipg" path="res://addons/bayterek/scripts/resources/bayterek_attribute.gd" id="1_tyv6k"]
 [ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="2_p7r5a"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_y2ort"]
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_p7r5a"]
+
+[sub_resource type="Resource" id="Resource_3msqw"]
+script = ExtResource("1_tyv6k")
+id = "new_attribute"
+name = "New Attribute"
+effect = "Effect #"
+value_count = 1
 
 [sub_resource type="Resource" id="Resource_tyv6k"]
 script = ExtResource("2_p7r5a")
@@ -40,6 +48,9 @@ name = "Large Node"
 type = 2
 position = Vector2(-29, -29)
 in_nodes = Array[int]([2, 7])
+attributes = {
+"new_attribute": [0]
+}
 
 [sub_resource type="Resource" id="Resource_fi42j"]
 script = ExtResource("2_p7r5a")
@@ -96,7 +107,7 @@ reference_id = "b2f3b664-b50d-4fa0-9922-a9049bda0963"
 id = 7
 name = "Large Node"
 type = 2
-position = Vector2(87.025635, -242.23706)
+position = Vector2(96, -240)
 line_data = {
 3: SubResource("Resource_4qtot"),
 6: SubResource("Resource_stsm4"),
@@ -178,6 +189,9 @@ node_size = {
 nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_s5f85"), SubResource("Resource_gmi7d"), SubResource("Resource_4kaxi"), SubResource("Resource_8xuuo"), SubResource("Resource_1jmks"), SubResource("Resource_hm53d"), SubResource("Resource_ev4tw"), SubResource("Resource_s6ywc"), SubResource("Resource_ugvoh"), SubResource("Resource_m21nr"), SubResource("Resource_x6k2a")])
 prefabs = {
 2: [SubResource("Resource_eyrcx")]
+}
+attributes = {
+"new_attribute": SubResource("Resource_3msqw")
 }
 hierarchy_split_offset = -359
 prefabs_split_offset = 259

@@ -28,6 +28,7 @@ var _icon_rect: TextureRect
 var _icon_fallback: ColorRect
 var _border_rect: TextureRect
 var _select_border: Panel
+var _crown_label: Label
 
 var _is_dragging: bool = false
 var _press_pos: Vector2 = Vector2.ZERO
@@ -112,6 +113,29 @@ func _build_visuals() -> void:
 	_select_border.visible = false
 	add_child(_select_border)
 
+	# 5) Crown icon (visible only for root nodes)
+	# Positioned ABOVE the node, slightly outside its bounds, centered
+	# horizontally. Uses full-rect anchoring + Y offset for stable centering.
+	# NEAREST filter keeps the glyph crisp when the canvas is zoomed.
+	_crown_label = Label.new()
+	_crown_label.name = "Crown"
+	_crown_label.text = "♛"
+	_crown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_crown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_crown_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_crown_label.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_crown_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
+	_crown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_crown_label.add_theme_constant_override("outline_size", 2)
+	_crown_label.add_theme_font_size_override("font_size", 18)
+	_crown_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_crown_label.offset_left = -20
+	_crown_label.offset_top = -28
+	_crown_label.offset_right = 20
+	_crown_label.offset_bottom = -2
+	_crown_label.visible = false
+	add_child(_crown_label)
+
 # ============================================================
 # VISUAL UPDATE
 # ============================================================
@@ -138,6 +162,10 @@ func refresh_visuals() -> void:
 		_icon_rect.visible = false
 		_icon_fallback.visible = true
 		_icon_fallback.color = _get_type_color(node_data.type)
+
+	# Crown — visible only for root nodes
+	if _crown_label:
+		_crown_label.visible = node_data.is_root
 
 	# Border — based on allocation state
 	_apply_state_border()

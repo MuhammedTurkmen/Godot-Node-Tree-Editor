@@ -482,6 +482,8 @@ func _on_root_toggled(pressed: bool) -> void:
 	if _current_prefab:
 		return
 	_current_node.node_data.is_root = pressed
+	if editor and editor.has_method("notify_node_root_changed"):
+		editor.notify_node_root_changed(_current_node)
 	changed.emit()
 	_notify_editor_dirty()
 

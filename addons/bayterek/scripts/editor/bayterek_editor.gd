@@ -5,6 +5,7 @@ extends Control
 
 signal closed
 signal dirty_changed(editor: BayterekEditor, dirty: bool)
+signal node_root_changed(node: BayterekNodeButton)
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -816,6 +817,11 @@ func _on_selection_changed(selected: Array) -> void:
 		inspector.inspect(selected[0])
 	else:
 		inspector.inspect(null)
+
+## Called by the inspector when a node's "is_root" flag is toggled.
+func notify_node_root_changed(node: BayterekNodeButton) -> void:
+	if node:
+		node_root_changed.emit(node)
 
 func _on_node_moved(node: BayterekNodeButton) -> void:
 	if not inspector or not node:

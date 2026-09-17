@@ -1,16 +1,17 @@
 
 # Bugs
 
-## KOLAY
+## EASY
 
 
 
-## ORTA
+## MEDIUM
 
-- duplicate yaptıktan sonra kapatıp açıldığında 
+ 
 
-## ZOR
+## HARD
 
-- tooltip geliştirilecek
-	- attributes için format alanı ekleriz tooltip içinde nasıl gözükeceği yazılır
-	- bunu localization ile birleştiririz
+- tooltip
+	- node name horizontal alignment 
+	- attribute value formatting 
+	- connect with localization
