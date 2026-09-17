@@ -224,12 +224,37 @@ func _update_line_points(line: BayterekConnection) -> void:
 	if not from_node or not to_node:
 		return
 
-	var p0: Vector2 = from_node.position + (from_node.size * 0.5)
-	var p2: Vector2 = to_node.position + (to_node.size * 0.5)
+	# Node centers
+	var from_center: Vector2 = from_node.position + (from_node.size * 0.5)
+	var to_center: Vector2 = to_node.position + (to_node.size * 0.5)
+
+	# Node half-extents (for edge intersection when arrow is present)
+	var from_half: Vector2 = from_node.size * 0.5
+	var to_half: Vector2 = to_node.size * 0.5
 
 	var data: BayterekLineData = line.line_data
 	if not data:
 		data = BayterekLineData.new()
+
+	# Start point:
+	#   - Arrow at start → line starts OUTSIDE the node so the arrow is visible.
+	#   - No arrow       → line starts at the node CENTER (hidden behind the node).
+	var p0: Vector2
+	if data.start_arrow != BayterekLineData.ArrowStyle.NONE:
+		var start_padding: float = data.arrow_size * 0.5 + 4.0
+		p0 = _edge_point(from_center, to_center, from_half, start_padding)
+	else:
+		p0 = from_center
+
+	# End point:
+	#   - Arrow at end → line ends OUTSIDE the node.
+	#   - No arrow     → line ends at the node CENTER.
+	var p2: Vector2
+	if data.end_arrow != BayterekLineData.ArrowStyle.NONE:
+		var end_padding: float = data.arrow_size * 0.5 + 4.0
+		p2 = _edge_point(to_center, from_center, to_half, end_padding)
+	else:
+		p2 = to_center
 
 	# Shape
 	match data.line_type:
@@ -253,6 +278,35 @@ func _update_line_points(line: BayterekConnection) -> void:
 	line.start_arrow = data.start_arrow as BayterekLine2D.ArrowStyle
 	line.end_arrow = data.end_arrow as BayterekLine2D.ArrowStyle
 	line.arrow_size = data.arrow_size
+
+## Returns the point where a line from `source_center` towards
+## `target_center` exits a node whose bounding box has the given
+## `half_extents`, offset outward by `padding` pixels.
+##
+## Used so connection lines, arrowheads and dash patterns don't hide
+## behind nodes.
+func _edge_point(source_center: Vector2, target_center: Vector2, half_extents: Vector2, padding: float = 0.0) -> Vector2:
+	var dir: Vector2 = target_center - source_center
+	if dir.length_squared() < 0.0001:
+		return source_center
+
+	# Expand the bounding box by `padding` in every direction.
+	var expanded_half: Vector2 = half_extents + Vector2(padding, padding)
+
+	# Slab method: for each axis, find t where the ray hits the box.
+	var t_x: float = INF
+	var t_y: float = INF
+
+	if absf(dir.x) > 0.0001:
+		t_x = expanded_half.x / absf(dir.x)
+
+	if absf(dir.y) > 0.0001:
+		t_y = expanded_half.y / absf(dir.y)
+
+	# The exit point is at the smaller t (the axis the ray hits first).
+	var t: float = min(t_x, t_y)
+
+	return source_center + dir * t
 
 ## Quadratic Bezier curve
 func _bezier_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:
