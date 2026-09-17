@@ -1235,6 +1235,7 @@ func _create_connection_entry(to_id: int) -> void:
 	type_dropdown.add_item("Straight", 0)
 	type_dropdown.add_item("Bezier", 1)
 	type_dropdown.add_item("Arc", 2)
+	type_dropdown.add_item("Step", 3)
 	type_dropdown.select(int(line_data.line_type))
 	type_dropdown.item_selected.connect(_on_line_type_changed.bind(to_id))
 	type_row.add_child(type_dropdown)
@@ -1257,6 +1258,25 @@ func _create_connection_entry(to_id: int) -> void:
 
 	curve_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER)
 
+	# --- Step Distance (STEP only) ---
+	var step_row := HBoxContainer.new()
+	content_box.add_child(step_row)
+	var step_label := Label.new()
+	step_label.text = "Step"
+	step_label.custom_minimum_size = Vector2(90, 0)
+	step_row.add_child(step_label)
+
+	var step_input := SpinBox.new()
+	step_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	step_input.min_value = 8
+	step_input.max_value = 500
+	step_input.step = 1
+	step_input.value = line_data.step_distance
+	step_input.value_changed.connect(_on_step_distance_changed.bind(to_id))
+	step_row.add_child(step_input)
+
+	step_row.visible = (line_data.line_type == BayterekLineData.LineType.STEP)
+
 	var seg_row := HBoxContainer.new()
 	content_box.add_child(seg_row)
 	var seg_label := Label.new()
@@ -1273,7 +1293,7 @@ func _create_connection_entry(to_id: int) -> void:
 	seg_input.value_changed.connect(_on_segments_changed.bind(to_id))
 	seg_row.add_child(seg_input)
 
-	seg_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT)
+	seg_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT and line_data.line_type != BayterekLineData.LineType.STEP)
 
 	var rev_row := HBoxContainer.new()
 	content_box.add_child(rev_row)
@@ -1288,7 +1308,7 @@ func _create_connection_entry(to_id: int) -> void:
 	rev_check.toggled.connect(_on_reversed_changed.bind(to_id))
 	rev_row.add_child(rev_check)
 
-	rev_row.visible = (line_data.line_type != BayterekLineData.LineType.STRAIGHT)
+	rev_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
 	var del_row := HBoxContainer.new()
 	content_box.add_child(del_row)
@@ -1324,6 +1344,20 @@ func _on_curve_height_changed(value: float, to_id: int) -> void:
 	if not line_data:
 		return
 	line_data.curve_height = value
+
+	if editor and editor.tree_view:
+		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
+
+	editor.set_dirty(true)
+	changed.emit()
+
+func _on_step_distance_changed(value: float, to_id: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	var line_data = _current_node.node_data.line_data.get(to_id, null)
+	if not line_data:
+		return
+	line_data.step_distance = value
 
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)

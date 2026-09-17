@@ -240,6 +240,8 @@ func _update_line_points(line: BayterekConnection) -> void:
 			line.points = _bezier_points(p0, p2, data)
 		BayterekLineData.LineType.ARC:
 			line.points = _arc_points(p0, p2, data)
+		BayterekLineData.LineType.STEP:
+			line.points = _step_points(p0, p2, data)
 
 ## Quadratic Bezier curve
 func _bezier_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:
@@ -288,6 +290,40 @@ func _arc_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVect
 	for i in range(segments + 1):
 		var angle: float = sign * step * float(i)
 		pts[i] = center + (p0 - center).rotated(angle)
+
+	return pts
+
+## Step / square (orthogonal) line: exits the source node, makes one 90°
+## turn at `step_distance`, then goes straight into the target node.
+##
+## If the nodes are horizontally further apart than they are vertically,
+## the line exits horizontally first. Otherwise it exits vertically first.
+func _step_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+
+	var dx: float = p2.x - p0.x
+	var dy: float = p2.y - p0.y
+
+	# Dead-zone: if nodes overlap on one axis, collapse that axis.
+	var step: float = max(8.0, data.step_distance)
+
+	# Choose orientation: primary axis is the one with the larger delta.
+	if absf(dx) >= absf(dy):
+		# Exit horizontally, then turn vertically, then enter horizontally.
+		var mid_x: float = p0.x + signf(dx) * min(step, absf(dx) * 0.5)
+
+		pts.push_back(p0)
+		pts.push_back(Vector2(mid_x, p0.y))
+		pts.push_back(Vector2(mid_x, p2.y))
+		pts.push_back(p2)
+	else:
+		# Exit vertically, then turn horizontally, then enter vertically.
+		var mid_y: float = p0.y + signf(dy) * min(step, absf(dy) * 0.5)
+
+		pts.push_back(p0)
+		pts.push_back(Vector2(p0.x, mid_y))
+		pts.push_back(Vector2(p2.x, mid_y))
+		pts.push_back(p2)
 
 	return pts
 

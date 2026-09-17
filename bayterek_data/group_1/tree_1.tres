@@ -15,6 +15,7 @@ value_count = 1
 
 [sub_resource type="Resource" id="Resource_tyv6k"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_s5f85"]
 script = ExtResource("1_d7nu5")
@@ -28,6 +29,7 @@ out_nodes = Array[int]([2])
 
 [sub_resource type="Resource" id="Resource_32bmc"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_gmi7d"]
 script = ExtResource("1_d7nu5")
@@ -54,6 +56,7 @@ attributes = {
 
 [sub_resource type="Resource" id="Resource_fi42j"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_8xuuo"]
 script = ExtResource("1_d7nu5")
@@ -67,6 +70,7 @@ out_nodes = Array[int]([5])
 
 [sub_resource type="Resource" id="Resource_l3jbr"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_1jmks"]
 script = ExtResource("1_d7nu5")
@@ -90,15 +94,19 @@ in_nodes = Array[int]([5, 7])
 
 [sub_resource type="Resource" id="Resource_4qtot"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_stsm4"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_l30q8"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_b6bgd"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_ev4tw"]
 script = ExtResource("1_d7nu5")
@@ -118,6 +126,7 @@ out_nodes = Array[int]([3, 6, 9, 8])
 
 [sub_resource type="Resource" id="Resource_govpd"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_s6ywc"]
 script = ExtResource("1_d7nu5")
@@ -133,6 +142,7 @@ in_nodes = Array[int]([7])
 
 [sub_resource type="Resource" id="Resource_gjclu"]
 script = ExtResource("2_p7r5a")
+step_distance = null
 
 [sub_resource type="Resource" id="Resource_ugvoh"]
 script = ExtResource("1_d7nu5")
