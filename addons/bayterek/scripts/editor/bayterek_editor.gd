@@ -52,6 +52,12 @@ var _last_click_pos: Vector2 = Vector2.ZERO
 var _last_save_time: int = 0
 var _resize_debounce: float = 0.0
 
+## Chain-connection mode.
+## When enabled, shift+click connection creation moves selection to the
+## target node, so the next shift+click continues from there (A→B→C→D...).
+## Toggled with the "C" key.
+var chain_connection_mode: bool = false
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -139,6 +145,28 @@ func _connect_split_signals() -> void:
 		h_split.dragged.connect(_on_h_split_dragged)
 	if center_v_split:
 		center_v_split.dragged.connect(_on_bottom_split_dragged)
+
+# ============================================================
+# CHAIN-CONNECTION MODE
+# ============================================================
+
+## Public getter — read by BayterekTreeView without knowing internals.
+func get_chain_connection_mode() -> bool:
+	return chain_connection_mode
+
+## Toggles chain mode on/off and shows a fade-out notification.
+func _toggle_chain_connection_mode() -> void:
+	chain_connection_mode = not chain_connection_mode
+	_show_chain_mode_notification()
+
+func _show_chain_mode_notification() -> void:
+	var status: String = "ON" if chain_connection_mode else "OFF"
+	var message: String = "Chain Mode: [b]%s[/b]" % status
+
+	if chain_connection_mode:
+		BayterekToast.success(tree_view, message)
+	else:
+		BayterekToast.error(tree_view, message)
 
 # ============================================================
 # UI SETUP
@@ -487,6 +515,13 @@ func _on_delete_confirmed() -> void:
 	set_dirty(true)
 	_refresh_prefabs_panels()
 
+	var action_label: String = "Deleted prefab"
+	match mode:
+		0: action_label = "Orphaned nodes from prefab"
+		1: action_label = "Deleted prefab and its nodes"
+		2: action_label = "Made prefab nodes unique"
+	BayterekToast.success(tree_view, action_label)
+
 func _on_delete_option_changed(index: int) -> void:
 	_update_delete_description(index)
 
@@ -678,23 +713,35 @@ func _cleanup_orphan_prefabs() -> void:
 	if count > 0:
 		_refresh_prefabs_panels()
 		set_dirty(true)
+		BayterekToast.success(tree_view, "Cleaned up %d orphan prefab%s" % [count, "s" if count > 1 else ""])
 		print("Bayterek: %d orphan prefab cleaned up." % count)
+	else:
+		BayterekToast.info(tree_view, "No orphan prefabs found")
 
 func _save_selected_as_prefab(is_copy: bool) -> void:
 	if not tree_view or not tree_view.prefabs_service:
 		return
 	if tree_view.selected_nodes.is_empty():
 		return
+
+	var count: int = 0
 	for node in tree_view.selected_nodes:
 		if not is_instance_valid(node):
 			continue
 		tree_view.prefabs_service.create_prefab(node, is_copy)
+		count += 1
+
 	_refresh_prefabs_panels()
 	set_dirty(true)
 	if prefabs_bar and not tree_view.selected_nodes.is_empty():
 		var node = tree_view.selected_nodes[0]
 		var tab_idx: int = _node_type_to_panel_index(node.node_data.type)
 		prefabs_bar.current_tab = tab_idx
+
+	if count > 0:
+		var label: String = "copy" if is_copy else "prefab"
+		var plural: String = "s" if count > 1 else ""
+		BayterekToast.success(tree_view, "Saved %d %s%s" % [count, label, plural])
 
 func _node_type_to_panel_index(t: BayterekNode.NodeType) -> int:
 	match t:
@@ -707,15 +754,30 @@ func _node_type_to_panel_index(t: BayterekNode.NodeType) -> int:
 func _make_selected_unique() -> void:
 	if not tree_view or not tree_view.prefabs_service:
 		return
+
+	var count: int = 0
 	for node in tree_view.selected_nodes:
 		if is_instance_valid(node):
 			tree_view.prefabs_service.make_unique(node)
+			count += 1
+
 	_refresh_prefabs_panels()
 	set_dirty(true)
+	if count > 0:
+		var plural: String = "s" if count > 1 else ""
+		BayterekToast.success(tree_view, "Made %d node%s unique" % [count, plural])
 
 func _delete_selected() -> void:
-	if tree_view:
-		tree_view.delete_selected()
+	if not tree_view:
+		return
+	var count: int = 0
+	for n in tree_view.selected_nodes:
+		if is_instance_valid(n) and not n.node_data.locked:
+			count += 1
+	tree_view.delete_selected()
+	if count > 0:
+		var plural: String = "s" if count > 1 else ""
+		BayterekToast.info(tree_view, "Deleted %d node%s" % [count, plural])
 
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
@@ -738,6 +800,9 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif ctrl and key == KEY_D:
 		duplicate_selected_nodes()
+		get_viewport().set_input_as_handled()
+	elif key == KEY_C and not ctrl and not shift:
+		_toggle_chain_connection_mode()
 		get_viewport().set_input_as_handled()
 
 # ============================================================
@@ -863,8 +928,19 @@ func _on_new_node_type_selected(id: int) -> void:
 	undo_redo.commit_action()
 
 func _do_create_node(pos_in_tree: Vector2, node_type: BayterekNode.NodeType) -> void:
-	tree_view.nodes_service.create_node(pos_in_tree, node_type)
+	var node: BayterekNodeButton = tree_view.nodes_service.create_node(pos_in_tree, node_type)
 	set_dirty(true)
+	if node and tree_view:
+		var type_name: String = _node_type_to_string(node_type)
+		BayterekToast.info(tree_view, "Created %s node" % type_name)
+
+func _node_type_to_string(t: BayterekNode.NodeType) -> String:
+	match t:
+		BayterekNode.NodeType.SMALL: return "small"
+		BayterekNode.NodeType.MEDIUM: return "medium"
+		BayterekNode.NodeType.LARGE: return "large"
+		BayterekNode.NodeType.DECORATION: return "decoration"
+	return "node"
 
 func _undo_create_node() -> void:
 	var all_nodes: Array = tree_view.nodes_service.get_all_nodes()
@@ -887,6 +963,10 @@ func _do_create_node_from_prefab(prefab: BayterekPrefab, pos_in_tree: Vector2) -
 		return
 	tree_view.nodes_service.create_from_prefab(pos_in_tree, prefab)
 	set_dirty(true)
+	if prefab and not prefab.node_name.is_empty():
+		BayterekToast.info(tree_view, "Added prefab \"%s\"" % prefab.node_name)
+	else:
+		BayterekToast.info(tree_view, "Added prefab")
 
 # ============================================================
 # MENU
@@ -912,11 +992,15 @@ func do_undo() -> void:
 	if undo_redo and undo_redo.has_undo():
 		undo_redo.undo()
 		set_dirty(true)
+		if tree_view:
+			BayterekToast.info(tree_view, "Undo")
 
 func do_redo() -> void:
 	if undo_redo and undo_redo.has_redo():
 		undo_redo.redo()
 		set_dirty(true)
+		if tree_view:
+			BayterekToast.info(tree_view, "Redo")
 
 # ============================================================
 # SAVE / STATE
@@ -931,9 +1015,13 @@ func save_tree() -> void:
 	var err: Error = ResourceSaver.save(tree, tree_path)
 	if err != OK:
 		push_error("Bayterek: Tree save failed (%d)" % err)
+		if tree_view:
+			BayterekToast.error(tree_view, "Save failed (err %d)" % err)
 		return
 	_last_save_time = Time.get_ticks_msec()
 	set_dirty(false)
+	if tree_view:
+		BayterekToast.success(tree_view, "Tree saved")
 	print("Bayterek: Tree saved: ", tree_path)
 
 func set_dirty(is_dirty: bool) -> void:
@@ -1007,6 +1095,10 @@ func duplicate_selected_nodes() -> void:
 		if is_instance_valid(node):
 			tree_view.select_node(node, true)
 
+	if created_nodes.size() > 0:
+		var plural: String = "s" if created_nodes.size() > 1 else ""
+		BayterekToast.success(tree_view, "Duplicated %d node%s" % [created_nodes.size(), plural])
+
 	set_dirty(true)
 
 func _do_restore_duplicate(node: BayterekNodeButton) -> void:
@@ -1022,3 +1114,5 @@ func _do_remove_duplicate(node: BayterekNodeButton) -> void:
 		tree_view.connections_service.remove_all_connections_of(node)
 	tree_view.nodes_service.delete_node(node)
 	set_dirty(true)
+	if tree_view:
+		BayterekToast.info(tree_view, "Undo: removed node")

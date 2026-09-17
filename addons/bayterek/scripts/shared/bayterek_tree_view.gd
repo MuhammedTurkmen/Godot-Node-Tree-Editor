@@ -393,14 +393,24 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 			created_connections.append([from_node.id, node.id])
 
 		if not created_connections.is_empty():
-			# Chain-mode: move selection to the target node so the next
-			# shift+click continues from here (A→B, then B→C, then C→D...).
-			clear_selection()
-			select_node(node)
+			# Chain-connection mode: move selection to the target node so the
+			# next shift+click continues from here (A→B, then B→C, then C→D...).
+			# Only active when BayterekEditor.chain_connection_mode is true.
+			if _is_chain_mode_active():
+				clear_selection()
+				select_node(node)
 			changed.emit()
 		return
 
 	select_node(node, additive)
+
+## Returns true when the editor's chain-connection mode is enabled.
+## The tree view doesn't own this flag — it lives on the editor and is read
+## through the undo_redo_provider, which is set to the editor instance.
+func _is_chain_mode_active() -> bool:
+	if undo_redo_provider and undo_redo_provider.has_method("get_chain_connection_mode"):
+		return undo_redo_provider.get_chain_connection_mode()
+	return false
 
 func _is_allocation_active() -> bool:
 	return _tree_data != null and _tree_data.allocation and not Engine.is_editor_hint()
