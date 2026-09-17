@@ -986,7 +986,10 @@ func duplicate_selected_nodes() -> void:
 		if original.node_data and original.node_data.locked:
 			continue
 
-		# Create a duplicate via nodes_service
+		# Create a duplicate via nodes_service.
+		# NOTE: duplicate_node() does NOT register the node in tree.nodes.
+		# That registration happens via _do_restore_duplicate() below,
+		# which runs immediately when commit_action() executes.
 		var duplicate: BayterekNodeButton = tree_view.nodes_service.duplicate_node(original, offset)
 		if not duplicate:
 			continue

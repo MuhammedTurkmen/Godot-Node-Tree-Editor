@@ -165,6 +165,13 @@ func restore_node(node: BayterekNodeButton, node_data: BayterekNode, index: int 
 	else:
 		node.visible = true
 
+	# Guard: never append the same node_data twice. Duplicate flow relies on
+	# this being the single entry point for adding a node to the tree array.
+	if _tree_data.nodes.has(node_data):
+		node.refresh_visuals()
+		node_created.emit(node)
+		return
+
 	if index >= 0 and index <= _tree_data.nodes.size():
 		_tree_data.nodes.insert(index, node_data)
 	else:
@@ -364,6 +371,11 @@ func _on_node_drag_ended(node: BayterekNodeButton) -> void:
 ## Creates a copy of the given node with an offset.
 ## The duplicate keeps attributes, prefab reference, borders, icon, etc.
 ## Does NOT copy connections.
+##
+## IMPORTANT: This function does NOT append node_data to _tree_data.nodes.
+## The UndoRedo commit flow in BayterekEditor calls restore_node() immediately
+## after, which is the single entry point for adding a node to the tree array.
+## Appending here would duplicate the entry and corrupt save files.
 func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 20)) -> BayterekNodeButton:
 	if not original or not original.node_data:
 		return null
@@ -405,7 +417,8 @@ func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 
 	_tree_view.nodes_container.add_child(node)
 	_nodes[node_data.id] = node
 
-	_tree_data.nodes.append(node_data)
+	# NOTE: _tree_data.nodes.append(node_data) is intentionally NOT called here.
+	# The editor's undo/redo flow handles that via restore_node().
 
 	# Connect signals
 	node.pressed.connect(_on_node_pressed.bind(node))
