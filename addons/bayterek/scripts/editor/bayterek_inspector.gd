@@ -30,11 +30,14 @@ var _name_input: LineEdit
 var _description_input: TextEdit
 var _max_alloc_panel: HBoxContainer
 var _max_alloc_input: SpinBox
+var _group_display: Label
 
 var _prereq_panel: HBoxContainer
 var _prereq_dropdown: OptionButton
 var _prereq_count_panel: HBoxContainer
 var _prereq_count_input: SpinBox
+var _prereq_group_panel: HBoxContainer
+var _prereq_group_dropdown: OptionButton
 
 var _transform_panel: VBoxContainer
 var _pos_x_input: SpinBox
@@ -205,6 +208,22 @@ func _build_ui() -> void:
 	_max_alloc_input.value_changed.connect(_on_max_alloc_changed)
 	_max_alloc_panel.add_child(_max_alloc_input)
 
+	# --- Group display row ---
+	var group_row := HBoxContainer.new()
+	_info_panel.add_child(group_row)
+
+	var group_label := Label.new()
+	group_label.text = "Group"
+	group_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	group_label.tooltip_text = "Node group"
+	group_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	group_row.add_child(group_label)
+
+	_group_display = Label.new()
+	_group_display.size_flags_horizontal = SIZE_EXPAND_FILL
+	_group_display.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+	group_row.add_child(_group_display)
+
 	# --- Prerequisite ---
 	_prereq_panel = HBoxContainer.new()
 	_info_panel.add_child(_prereq_panel)
@@ -220,6 +239,7 @@ func _build_ui() -> void:
 	_prereq_dropdown.add_item("Any (1+)", 0)
 	_prereq_dropdown.add_item("Count", 1)
 	_prereq_dropdown.add_item("All", 2)
+	_prereq_dropdown.add_item("Group Complete", 3)
 	_prereq_dropdown.select(0)
 	_prereq_dropdown.item_selected.connect(_on_prereq_mode_changed)
 	_prereq_panel.add_child(_prereq_dropdown)
@@ -242,6 +262,20 @@ func _build_ui() -> void:
 	_prereq_count_input.allow_greater = true
 	_prereq_count_input.value_changed.connect(_on_prereq_count_changed)
 	_prereq_count_panel.add_child(_prereq_count_input)
+
+	_prereq_group_panel = HBoxContainer.new()
+	_info_panel.add_child(_prereq_group_panel)
+	var prereq_group_label := Label.new()
+	prereq_group_label.text = "  Prereq Group"
+	prereq_group_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	prereq_group_label.tooltip_text = "Which group must be complete?"
+	prereq_group_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	_prereq_group_panel.add_child(prereq_group_label)
+
+	_prereq_group_dropdown = OptionButton.new()
+	_prereq_group_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	_prereq_group_dropdown.item_selected.connect(_on_prereq_group_changed)
+	_prereq_group_panel.add_child(_prereq_group_dropdown)
 
 	# --- Transform ---
 	_transform_panel = VBoxContainer.new()
@@ -351,7 +385,6 @@ func _build_ui() -> void:
 # ============================================================
 
 func _build_visuals_ui() -> void:
-	# Icon textures
 	var icon_tex_fold := FoldableContainer.new()
 	icon_tex_fold.title = "Icon Textures"
 	icon_tex_fold.folded = true
@@ -366,7 +399,6 @@ func _build_visuals_ui() -> void:
 	_icon_tex_hover = _make_visual_texture_input(icon_tex_inner, "Hover")
 	_icon_tex_max_level = _make_visual_texture_input(icon_tex_inner, "Max Level")
 
-	# Icon colors
 	var icon_col_fold := FoldableContainer.new()
 	icon_col_fold.title = "Icon Colors"
 	icon_col_fold.folded = true
@@ -385,7 +417,6 @@ func _build_visuals_ui() -> void:
 	_icon_col_allocatable = _make_visual_color_row(icon_col_inner, "Allocatable")
 	_icon_col_not_allocatable = _make_visual_color_row(icon_col_inner, "Not Allocatable")
 
-	# Border textures
 	var border_tex_fold := FoldableContainer.new()
 	border_tex_fold.title = "Border Textures"
 	border_tex_fold.folded = true
@@ -400,7 +431,6 @@ func _build_visuals_ui() -> void:
 	_border_tex_hover = _make_visual_texture_input(border_tex_inner, "Hover")
 	_border_tex_max_level = _make_visual_texture_input(border_tex_inner, "Max Level")
 
-	# Border colors
 	var border_col_fold := FoldableContainer.new()
 	border_col_fold.title = "Border Colors"
 	border_col_fold.folded = true
@@ -442,23 +472,20 @@ func _make_visual_color_row(parent: Control, label: String) -> ColorPickerButton
 	return picker
 
 # ============================================================
-# INIT — connect all visual signal handlers
+# INIT
 # ============================================================
 
 func init(tree_view: BayterekTreeView) -> void:
-	# Icon textures
 	_connect_texture_signal(_icon_tex_locked, _on_icon_tex_changed.bind("locked"))
 	_connect_texture_signal(_icon_tex_normal, _on_icon_tex_changed.bind("normal"))
 	_connect_texture_signal(_icon_tex_hover, _on_icon_tex_changed.bind("hover"))
 	_connect_texture_signal(_icon_tex_max_level, _on_icon_tex_changed.bind("max_level"))
 
-	# Border textures
 	_connect_texture_signal(_border_tex_locked, _on_border_tex_changed.bind("locked"))
 	_connect_texture_signal(_border_tex_normal, _on_border_tex_changed.bind("normal"))
 	_connect_texture_signal(_border_tex_hover, _on_border_tex_changed.bind("hover"))
 	_connect_texture_signal(_border_tex_max_level, _on_border_tex_changed.bind("max_level"))
 
-	# Icon colors
 	_connect_color_signal(_icon_col_locked, _on_icon_col_changed.bind("locked"))
 	_connect_color_signal(_icon_col_normal, _on_icon_col_changed.bind("normal"))
 	_connect_color_signal(_icon_col_hover, _on_icon_col_changed.bind("hover"))
@@ -468,7 +495,6 @@ func init(tree_view: BayterekTreeView) -> void:
 	_connect_color_signal(_icon_col_allocatable, _on_icon_col_changed.bind("allocatable"))
 	_connect_color_signal(_icon_col_not_allocatable, _on_icon_col_changed.bind("not_allocatable"))
 
-	# Border colors
 	_connect_color_signal(_border_col_locked, _on_border_col_changed.bind("locked"))
 	_connect_color_signal(_border_col_normal, _on_border_col_changed.bind("normal"))
 	_connect_color_signal(_border_col_hover, _on_border_col_changed.bind("hover"))
@@ -555,12 +581,19 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_max_alloc_panel.visible = editor and editor.tree and editor.tree.multiallocation
 
+	# Group display
+	_update_group_display(node.node_data.group_id)
+
 	var show_prereq: bool = not node.node_data.is_root
 	_prereq_panel.visible = show_prereq
 	_prereq_count_panel.visible = show_prereq and node.node_data.prerequisite_mode == BayterekNode.PrerequisiteMode.COUNT
+	_prereq_group_panel.visible = show_prereq and node.node_data.prerequisite_mode == BayterekNode.PrerequisiteMode.GROUP_COMPLETE
 	if show_prereq:
 		_prereq_dropdown.select(int(node.node_data.prerequisite_mode))
 		_prereq_count_input.set_value_no_signal(node.node_data.prerequisite_count)
+		if _prereq_group_panel.visible:
+			_rebuild_prereq_group_dropdown()
+			_select_prereq_group(node.node_data.prerequisite_group_id)
 
 	_load_visuals(node.node_data)
 
@@ -568,6 +601,21 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_rebuild_attributes_list()
 	_rebuild_connections_list()
+
+func _update_group_display(group_id: String) -> void:
+	if not _group_display:
+		return
+	if group_id.is_empty():
+		_group_display.text = "(none)"
+		_group_display.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+		return
+	var grp: BayterekNodeGroup = editor.tree.get_group_by_id(group_id) if editor and editor.tree else null
+	if grp:
+		_group_display.text = grp.name
+		_group_display.add_theme_color_override("font_color", grp.color)
+	else:
+		_group_display.text = "(missing)"
+		_group_display.add_theme_color_override("font_color", Color(1, 0.4, 0.4))
 
 # ============================================================
 # INSPECT PREFAB
@@ -592,6 +640,7 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_max_alloc_panel.visible = false
 	_prereq_panel.visible = false
 	_prereq_count_panel.visible = false
+	_prereq_group_panel.visible = false
 
 	_updating_ui = true
 
@@ -626,25 +675,20 @@ func update_position_only(pos: Vector2) -> void:
 # LOAD VISUALS
 # ============================================================
 
-## Accepts either a BayterekNode or a BayterekPrefab — both expose the
-## same visual field names.
 func _load_visuals(source) -> void:
 	if not source:
 		return
 
-	# Icon textures
 	_set_input_texture(_icon_tex_locked, source.icon_texture_locked)
 	_set_input_texture(_icon_tex_normal, source.icon_texture_normal)
 	_set_input_texture(_icon_tex_hover, source.icon_texture_hover)
 	_set_input_texture(_icon_tex_max_level, source.icon_texture_max_level)
 
-	# Border textures
 	_set_input_texture(_border_tex_locked, source.border_texture_locked)
 	_set_input_texture(_border_tex_normal, source.border_texture_normal)
 	_set_input_texture(_border_tex_hover, source.border_texture_hover)
 	_set_input_texture(_border_tex_max_level, source.border_texture_max_level)
 
-	# Icon colors
 	_icon_col_locked.color = source.icon_color_locked
 	_icon_col_normal.color = source.icon_color_normal
 	_icon_col_hover.color = source.icon_color_hover
@@ -654,7 +698,6 @@ func _load_visuals(source) -> void:
 	_icon_col_allocatable.color = source.icon_color_allocatable
 	_icon_col_not_allocatable.color = source.icon_color_not_allocatable
 
-	# Border colors
 	_border_col_locked.color = source.border_color_locked
 	_border_col_normal.color = source.border_color_normal
 	_border_col_hover.color = source.border_color_hover
@@ -758,10 +801,6 @@ func _on_border_col_changed(color: Color, key: String) -> void:
 	changed.emit()
 	_notify_editor_dirty()
 
-## Sets a visual field on a node, refreshing its visuals.
-## Node properties are the authoritative source for visuals; prefab nodes
-## just mirror their prefab's current values, so overriding a field
-## directly on the node is the way to go.
 func _apply_visual_to_node(node: BayterekNodeButton, field: String, value: Variant) -> void:
 	if not node or not node.node_data:
 		return
@@ -784,6 +823,7 @@ func _on_root_toggled(pressed: bool) -> void:
 	var show_prereq: bool = not _current_node.node_data.is_root
 	_prereq_panel.visible = show_prereq
 	_prereq_count_panel.visible = show_prereq and _current_node.node_data.prerequisite_mode == BayterekNode.PrerequisiteMode.COUNT
+	_prereq_group_panel.visible = show_prereq and _current_node.node_data.prerequisite_mode == BayterekNode.PrerequisiteMode.GROUP_COMPLETE
 
 	changed.emit()
 	_notify_editor_dirty()
@@ -806,7 +846,6 @@ func _on_name_changed(new_text: String) -> void:
 	else:
 		_current_node.node_data.name = new_text
 
-	# Ask the editor to refresh the hierarchy display.
 	if editor and editor.has_method("notify_node_display_changed"):
 		editor.notify_node_display_changed(_current_node)
 
@@ -831,9 +870,6 @@ func _on_description_changed() -> void:
 	else:
 		_current_node.node_data.description = _description_input.text
 
-	# Notify the editor so the hierarchy display stays consistent.
-	# (Description itself doesn't show in hierarchy, but this keeps
-	# the pattern uniform with name changes.)
 	if editor and editor.has_method("notify_node_display_changed"):
 		editor.notify_node_display_changed(_current_node)
 
@@ -896,6 +932,12 @@ func _on_prereq_mode_changed(index: int) -> void:
 		return
 	_current_node.node_data.prerequisite_mode = index as BayterekNode.PrerequisiteMode
 	_prereq_count_panel.visible = (index == BayterekNode.PrerequisiteMode.COUNT)
+	_prereq_group_panel.visible = (index == BayterekNode.PrerequisiteMode.GROUP_COMPLETE)
+
+	if _prereq_group_panel.visible:
+		_rebuild_prereq_group_dropdown()
+		_select_prereq_group(_current_node.node_data.prerequisite_group_id)
+
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -908,8 +950,47 @@ func _on_prereq_count_changed(value: float) -> void:
 	changed.emit()
 	_notify_editor_dirty()
 
+func _rebuild_prereq_group_dropdown() -> void:
+	_prereq_group_dropdown.clear()
+	if not editor or not editor.tree:
+		return
+
+	_prereq_group_dropdown.add_item("(none)", 0)
+
+	var idx: int = 1
+	for group in editor.tree.node_groups:
+		if group:
+			_prereq_group_dropdown.add_item(group.name, idx)
+			_prereq_group_dropdown.set_item_metadata(idx, group.id)
+			idx += 1
+
+func _select_prereq_group(group_id: String) -> void:
+	for i in _prereq_group_dropdown.item_count:
+		var meta = _prereq_group_dropdown.get_item_metadata(i)
+		if i == 0 and group_id.is_empty():
+			_prereq_group_dropdown.select(0)
+			return
+		if meta == group_id:
+			_prereq_group_dropdown.select(i)
+			return
+	_prereq_group_dropdown.select(0)
+
+func _on_prereq_group_changed(index: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	if _current_prefab:
+		return
+	var gid: String = ""
+	if index > 0:
+		var meta = _prereq_group_dropdown.get_item_metadata(index)
+		if typeof(meta) == TYPE_STRING:
+			gid = meta
+	_current_node.node_data.prerequisite_group_id = gid
+	changed.emit()
+	_notify_editor_dirty()
+
 # ============================================================
-# ICON PICKER (unchanged from before)
+# ICON PICKER
 # ============================================================
 
 func _on_icon_picker_pressed() -> void:
@@ -937,7 +1018,6 @@ func _selected_node_valid() -> bool:
 		return true
 	return _current_node != null
 
-## Legacy single-icon handler — kept for the icon selector callback.
 func _on_icon_texture_changed(path: String) -> void:
 	if _updating_ui:
 		return
@@ -1030,7 +1110,7 @@ func _on_icon_selected(node_type: int, texture: Texture2D, region: Vector2) -> v
 	_notify_editor_dirty()
 
 # ============================================================
-# ATTRIBUTES (unchanged)
+# ATTRIBUTES
 # ============================================================
 
 func _rebuild_attributes_list() -> void:
@@ -1339,7 +1419,7 @@ func _on_attr_value_changed(value: float, attr_id: String, index: int, level: in
 	changed.emit()
 
 # ============================================================
-# CONNECTIONS (unchanged)
+# CONNECTIONS
 # ============================================================
 
 func _rebuild_connections_list() -> void:

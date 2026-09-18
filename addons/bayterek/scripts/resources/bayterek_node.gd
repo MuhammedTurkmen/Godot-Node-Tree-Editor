@@ -16,6 +16,7 @@ enum PrerequisiteMode {
 	ANY,
 	COUNT,
 	ALL,
+	GROUP_COMPLETE,
 }
 
 @export_storage var is_root: bool = false
@@ -38,6 +39,13 @@ enum PrerequisiteMode {
 # Prerequisite rules (only applies to non-root nodes)
 @export_storage var prerequisite_mode: PrerequisiteMode = PrerequisiteMode.ANY
 @export_storage var prerequisite_count: int = 1
+
+## GROUP_COMPLETE modunda kullanılır. Bu gruptaki tüm node'lar aktifse
+## bu node allocatable olur.
+@export_storage var prerequisite_group_id: String = ""
+
+## Bu node'un bağlı olduğu grubun ID'si. Boş = gruplanmamış.
+@export_storage var group_id: String = ""
 
 # ============================================================
 # VISUALS — Border
@@ -78,8 +86,6 @@ enum PrerequisiteMode {
 # ============================================================
 # LEGACY ALIAS — `icon` = `icon_texture_normal`
 # ============================================================
-## Eski kod `node_data.icon` çağırıyordu. Yeni görsel sistemde base icon
-## `icon_texture_normal` oldu. Alias ile geriye dönük uyumluluk sağlıyoruz.
 
 var icon: Texture2D:
 	get:
@@ -109,20 +115,15 @@ func clear_all_attribute_overrides() -> void:
 # DEFAULTS
 # ============================================================
 
-## Copies the given tree's default visual settings into this node.
-## Called when a node is created, so it inherits the project's look
-## automatically. Users can then override any value per node.
 func apply_defaults_from_tree(tree: BayterekTree) -> void:
 	if not tree:
 		return
 
-	# Border textures
 	border_texture_locked = tree.default_border_texture_locked
 	border_texture_normal = tree.default_border_texture_normal
 	border_texture_hover = tree.default_border_texture_hover
 	border_texture_max_level = tree.default_border_texture_max_level
 
-	# Border colors
 	border_color_locked = tree.default_border_color_locked
 	border_color_normal = tree.default_border_color_normal
 	border_color_hover = tree.default_border_color_hover
@@ -132,13 +133,11 @@ func apply_defaults_from_tree(tree: BayterekTree) -> void:
 	border_color_allocatable = tree.default_border_color_allocatable
 	border_color_not_allocatable = tree.default_border_color_not_allocatable
 
-	# Icon textures
 	icon_texture_locked = tree.default_icon_texture_locked
 	icon_texture_normal = tree.default_icon_texture_normal
 	icon_texture_hover = tree.default_icon_texture_hover
 	icon_texture_max_level = tree.default_icon_texture_max_level
 
-	# Icon colors
 	icon_color_locked = tree.default_icon_color_locked
 	icon_color_normal = tree.default_icon_color_normal
 	icon_color_hover = tree.default_icon_color_hover

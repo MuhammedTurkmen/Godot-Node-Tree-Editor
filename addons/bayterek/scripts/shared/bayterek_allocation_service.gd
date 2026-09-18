@@ -273,6 +273,20 @@ func _is_prerequisite_satisfied(node: BayterekNode, active_ids: Array, exclude_i
 					return false
 			return true
 
+		BayterekNode.PrerequisiteMode.GROUP_COMPLETE:
+			if node.prerequisite_group_id.is_empty():
+				return true   # No group restriction
+			var group: BayterekNodeGroup = _tree_data.get_group_by_id(node.prerequisite_group_id) if _tree_data else null
+			if not group:
+				return true   # Group missing — no restriction
+			# All members of the group must be active
+			for member_id in group.node_ids:
+				if exclude_ids.has(member_id):
+					continue
+				if not active_ids.has(member_id):
+					return false
+			return true
+
 	return true
 
 # ============================================================

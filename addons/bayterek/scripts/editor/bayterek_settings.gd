@@ -14,6 +14,7 @@ signal revealed_changed
 signal allocation_changed
 signal preallocation_changed
 signal multiallocation_changed
+signal chain_connection_mode_changed
 signal texture_filter_changed
 
 var editor: BayterekEditor
@@ -54,6 +55,7 @@ var _revealed_check: CheckBox
 var _allocation_check: CheckBox
 var _preallocation_check: CheckBox
 var _multiallocation_check: CheckBox
+var _chain_connection_check: CheckBox
 
 # --- Default node visuals ---
 # Border textures
@@ -247,6 +249,14 @@ func _build_ui() -> void:
 
 	_multiallocation_check = _make_check_row(_content, "Multi-allocation", "Level-based allocation")
 	_multiallocation_check.toggled.connect(_on_multiallocation_changed)
+
+	_chain_connection_check = _make_check_row(
+		_content,
+		"Chain Connection Mode",
+		"After connecting, keep the target node selected so the next shift+click continues from there. Toggle anytime with C."
+	)
+	_chain_connection_check.button_pressed = true
+	_chain_connection_check.toggled.connect(_on_chain_connection_mode_changed)
 
 # ============================================================
 # DEFAULT VISUAL GROUPS
@@ -501,6 +511,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_allocation_check.button_pressed = tree_data.allocation
 	_preallocation_check.button_pressed = tree_data.preallocation
 	_multiallocation_check.button_pressed = tree_data.multiallocation
+	_chain_connection_check.button_pressed = tree_data.chain_connection_mode
 
 	_updating_ui = false
 
@@ -804,6 +815,14 @@ func _on_multiallocation_changed(pressed: bool) -> void:
 		return
 	editor.tree.multiallocation = pressed
 	multiallocation_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_chain_connection_mode_changed(pressed: bool) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.chain_connection_mode = pressed
+	chain_connection_mode_changed.emit()
 	changed.emit()
 	_notify_dirty()
 

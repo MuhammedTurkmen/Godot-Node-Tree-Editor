@@ -447,6 +447,17 @@ func _compute_allocatable(node: BayterekNodeButton, active_ids: Array) -> bool:
 					return false
 			return true
 
+		BayterekNode.PrerequisiteMode.GROUP_COMPLETE:
+			if nd.prerequisite_group_id.is_empty():
+				return true
+			var group: BayterekNodeGroup = _tree_data.get_group_by_id(nd.prerequisite_group_id)
+			if not group:
+				return true
+			for member_id in group.node_ids:
+				if not active_ids.has(member_id):
+					return false
+			return true
+
 	return false
 
 # ============================================================

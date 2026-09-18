@@ -10,6 +10,7 @@ extends Resource
 @export_storage var allocation: bool = true
 @export_storage var preallocation: bool = true
 @export_storage var multiallocation: bool = false
+@export_storage var chain_connection_mode: bool = true
 
 @export_storage var size: Vector2 = Vector2(5000, 5000)
 @export_storage var bg_color: Color = Color(0.1, 0.1, 0.1)
@@ -32,6 +33,9 @@ extends Resource
 @export_storage var decorations: Array[BayterekNode] = []
 @export_storage var prefabs: Dictionary = {}
 @export_storage var attributes: Dictionary = {}
+
+## Node groups (visual + logical prerequisite grouping)
+@export_storage var node_groups: Array[BayterekNodeGroup] = []
 
 # Editor layout
 @export_storage var hierarchy_split_offset: int = 200
@@ -81,6 +85,7 @@ func _init() -> void:
 	decorations = []
 	prefabs = {}
 	attributes = {}
+	node_groups = []
 	icon_sizes = {
 		BayterekNode.NodeType.SMALL: Vector2.ZERO,
 		BayterekNode.NodeType.MEDIUM: Vector2.ZERO,
@@ -114,3 +119,34 @@ func get_godot_texture_filter() -> int:
 	match texture_filter:
 		1: return CanvasItem.TEXTURE_FILTER_NEAREST
 		_: return CanvasItem.TEXTURE_FILTER_LINEAR
+
+# ============================================================
+# GROUP HELPERS
+# ============================================================
+
+func get_group_by_id(group_id: String) -> BayterekNodeGroup:
+	if group_id.is_empty():
+		return null
+	for g in node_groups:
+		if g and g.id == group_id:
+			return g
+	return null
+
+func add_group(group: BayterekNodeGroup) -> void:
+	if not group:
+		return
+	if group.id.is_empty():
+		group.id = BayterekNodeGroup.generate_id()
+	node_groups.append(group)
+
+func remove_group(group: BayterekNodeGroup) -> void:
+	node_groups.erase(group)
+
+## Returns the group a node belongs to, or null if ungrouped.
+func get_group_of_node(node_id: int) -> BayterekNodeGroup:
+	for node_data in nodes:
+		if node_data.id == node_id:
+			if node_data.group_id.is_empty():
+				return null
+			return get_group_by_id(node_data.group_id)
+	return null

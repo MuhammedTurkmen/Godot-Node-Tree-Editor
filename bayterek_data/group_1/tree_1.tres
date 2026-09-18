@@ -1,69 +1,66 @@
 [gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://b6yb5nyvedfkp"]
 
-[ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_d7nu5"]
-[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="2_p7r5a"]
-[ext_resource type="Texture2D" uid="uid://brdob75d0ryhu" path="res://assets/medium_border.png" id="2_tyv6k"]
-[ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_y2ort"]
-
-[sub_resource type="Resource" id="Resource_p7r5a"]
-script = ExtResource("2_p7r5a")
+[ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_y2ort"]
+[ext_resource type="Script" uid="uid://de6ng2pbq3gss" path="res://addons/bayterek/scripts/resources/bayterek_node_group.gd" id="2_p7r5a"]
+[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="3_p7r5a"]
+[ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="3_tyv6k"]
 
 [sub_resource type="Resource" id="Resource_tyv6k"]
-script = ExtResource("1_d7nu5")
-is_root = true
-id = 13
-name = "değiştirildi"
-description = "açıklama ekleniyor"
-type = 2
-position = Vector2(-278.21558, -73.93945)
-line_data = {
-14: SubResource("Resource_p7r5a")
-}
-out_nodes = Array[int]([14])
-border_texture_locked = ExtResource("2_tyv6k")
-border_texture_normal = ExtResource("2_tyv6k")
-border_texture_hover = ExtResource("2_tyv6k")
-border_texture_max_level = ExtResource("2_tyv6k")
+script = ExtResource("2_p7r5a")
+id = "7619c936-ecfa-4686-9b39-bf44e86c78fb"
+name = "Attack Damage"
+color = Color(1, 0.25915527, 0.203125, 1)
+node_ids = Array[int]([2, 3, 4])
 
 [sub_resource type="Resource" id="Resource_s5f85"]
-script = ExtResource("2_p7r5a")
+script = ExtResource("3_p7r5a")
 
 [sub_resource type="Resource" id="Resource_32bmc"]
-script = ExtResource("1_d7nu5")
-id = 14
-name = "denemee"
-type = 1
-position = Vector2(-233.47876, -182.88696)
+script = ExtResource("1_y2ort")
+is_root = true
+id = 2
+name = "Large Node"
+type = 2
+position = Vector2(-338.49976, -20.888672)
 line_data = {
-15: SubResource("Resource_s5f85")
+3: SubResource("Resource_s5f85")
 }
-out_nodes = Array[int]([15])
-in_nodes = Array[int]([13])
-border_texture_locked = ExtResource("2_tyv6k")
-border_texture_normal = ExtResource("2_tyv6k")
-border_texture_hover = ExtResource("2_tyv6k")
-border_texture_max_level = ExtResource("2_tyv6k")
+out_nodes = Array[int]([3])
+group_id = "7619c936-ecfa-4686-9b39-bf44e86c78fb"
 
 [sub_resource type="Resource" id="Resource_gmi7d"]
-script = ExtResource("1_d7nu5")
-id = 15
-name = "Yeni isim"
-position = Vector2(-194.53125, -284.9922)
-in_nodes = Array[int]([14])
-border_texture_locked = ExtResource("2_tyv6k")
-border_texture_normal = ExtResource("2_tyv6k")
-border_texture_hover = ExtResource("2_tyv6k")
-border_texture_max_level = ExtResource("2_tyv6k")
+script = ExtResource("3_p7r5a")
+
+[sub_resource type="Resource" id="Resource_4kaxi"]
+script = ExtResource("1_y2ort")
+id = 3
+name = "Medium Node"
+type = 1
+position = Vector2(-236.59546, -135.09595)
+line_data = {
+4: SubResource("Resource_gmi7d")
+}
+out_nodes = Array[int]([4])
+in_nodes = Array[int]([2])
+group_id = "7619c936-ecfa-4686-9b39-bf44e86c78fb"
+
+[sub_resource type="Resource" id="Resource_fi42j"]
+script = ExtResource("1_y2ort")
+id = 4
+name = "Small Node"
+position = Vector2(-121.59497, -208.66748)
+in_nodes = Array[int]([3])
+group_id = "7619c936-ecfa-4686-9b39-bf44e86c78fb"
 
 [resource]
-script = ExtResource("2_y2ort")
+script = ExtResource("3_tyv6k")
 id = "tree_1"
 name = "Tree 1"
-id_counter = 18
+id_counter = 4
 icon_sizes = {
-0: Vector2(25, 25),
-1: Vector2(45, 45),
-2: Vector2(60, 60)
+0: Vector2(0, 0),
+1: Vector2(0, 0),
+2: Vector2(0, 0)
 }
 icons = {
 0: null,
@@ -75,10 +72,7 @@ node_size = {
 1: Vector2(48, 48),
 2: Vector2(64, 64)
 }
-nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_tyv6k"), SubResource("Resource_32bmc"), SubResource("Resource_gmi7d")])
-hierarchy_split_offset = -338
-prefabs_split_offset = 119
-default_border_texture_locked = ExtResource("2_tyv6k")
-default_border_texture_normal = ExtResource("2_tyv6k")
-default_border_texture_hover = ExtResource("2_tyv6k")
-default_border_texture_max_level = ExtResource("2_tyv6k")
+nodes = Array[ExtResource("1_y2ort")]([SubResource("Resource_32bmc"), SubResource("Resource_4kaxi"), SubResource("Resource_fi42j")])
+node_groups = Array[ExtResource("2_p7r5a")]([SubResource("Resource_tyv6k")])
+hierarchy_split_offset = -366
+prefabs_split_offset = 144
