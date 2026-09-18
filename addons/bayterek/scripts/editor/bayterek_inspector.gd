@@ -806,6 +806,10 @@ func _on_name_changed(new_text: String) -> void:
 	else:
 		_current_node.node_data.name = new_text
 
+	# Ask the editor to refresh the hierarchy display.
+	if editor and editor.has_method("notify_node_display_changed"):
+		editor.notify_node_display_changed(_current_node)
+
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -826,6 +830,12 @@ func _on_description_changed() -> void:
 		_current_node.prefab.set_description(_description_input.text)
 	else:
 		_current_node.node_data.description = _description_input.text
+
+	# Notify the editor so the hierarchy display stays consistent.
+	# (Description itself doesn't show in hierarchy, but this keeps
+	# the pattern uniform with name changes.)
+	if editor and editor.has_method("notify_node_display_changed"):
+		editor.notify_node_display_changed(_current_node)
 
 	changed.emit()
 	_notify_editor_dirty()

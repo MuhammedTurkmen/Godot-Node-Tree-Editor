@@ -90,6 +90,56 @@ func _update_header() -> void:
 	pass
 
 # ============================================================
+# DISPLAY HELPERS
+# ============================================================
+
+## Builds the display text for a node in the hierarchy.
+## Format: "[★ ]<name>" where name falls back to "Node <id>".
+func _build_node_label(node: BayterekNodeButton) -> String:
+	if not node or not node.node_data:
+		return "Node ?"
+
+	var prefix: String = ""
+	if node.node_data.is_root:
+		prefix = "★  "
+
+	var display_name: String = node.node_data.name.strip_edges()
+	if display_name.is_empty():
+		display_name = "Node %d" % node.id
+
+	return "%s%s" % [prefix, display_name]
+
+## Sets the tooltip text on a hierarchy item from the node's description.
+## Falls back to the node name if description is empty.
+func _apply_item_tooltip(item: TreeItem, node: BayterekNodeButton) -> void:
+	if not item or not node or not node.node_data:
+		return
+
+	var tooltip: String = node.node_data.description.strip_edges()
+	if tooltip.is_empty():
+		item.set_tooltip_text(0, "")
+	else:
+		item.set_tooltip_text(0, tooltip)
+
+## Refreshes text + color of an existing hierarchy item for a node.
+func _update_item_visual(node: BayterekNodeButton) -> void:
+	if not node or not _id_to_item.has(node.id):
+		return
+
+	var item: TreeItem = _id_to_item[node.id]
+	if not item:
+		return
+
+	item.set_text(0, _build_node_label(node))
+
+	if node.node_data and node.node_data.is_root:
+		item.set_custom_color(0, Color(1.0, 0.85, 0.4))
+	else:
+		item.set_custom_color(0, Color(0.85, 0.85, 0.85))
+
+	_apply_item_tooltip(item, node)
+
+# ============================================================
 # NODE ADD / REMOVE
 # ============================================================
 
@@ -110,18 +160,15 @@ func _add_node_item(node: BayterekNodeButton) -> void:
 		return
 
 	var item := _nodes_item.create_child()
-
-	var prefix: String = ""
-	if node.node_data.is_root:
-		prefix = "★  "
-
-	item.set_text(0, "%sNode %d — %s" % [prefix, node.id, node.node_name])
+	item.set_text(0, _build_node_label(node))
 	item.set_metadata(0, node.id)
 
-	if node.node_data.is_root:
+	if node.node_data and node.node_data.is_root:
 		item.set_custom_color(0, Color(1.0, 0.85, 0.4))
 	else:
 		item.set_custom_color(0, Color(0.85, 0.85, 0.85))
+
+	_apply_item_tooltip(item, node)
 
 	var theme := EditorInterface.get_editor_theme()
 	var lock_icon_name: String = "Lock" if node.node_data.locked else "Unlock"
@@ -144,24 +191,19 @@ func _remove_item_for_node(node_id: int) -> void:
 	_id_to_item.erase(node_id)
 	_update_header()
 
-func _update_item_root_visual(node: BayterekNodeButton) -> void:
-	if not node or not _id_to_item.has(node.id):
-		return
+# ============================================================
+# PUBLIC REFRESH API
+# ============================================================
 
-	var item: TreeItem = _id_to_item[node.id]
-	if not item:
-		return
+## Called by the editor when a node's name or other display-affecting
+## property changes.
+func refresh_node_display(node: BayterekNodeButton) -> void:
+	_update_item_visual(node)
 
-	var prefix: String = ""
-	if node.node_data.is_root:
-		prefix = "★  "
-
-	item.set_text(0, "%sNode %d — %s" % [prefix, node.id, node.node_name])
-
-	if node.node_data.is_root:
-		item.set_custom_color(0, Color(1.0, 0.85, 0.4))
-	else:
-		item.set_custom_color(0, Color(0.85, 0.85, 0.85))
+## Called by the editor when the whole hierarchy needs to rebuild
+## (e.g. after a large structural change).
+func refresh_all() -> void:
+	_refresh()
 
 # ============================================================
 # SELECTION SYNC
@@ -292,4 +334,4 @@ func _do_delete_node(node: BayterekNodeButton) -> void:
 # ============================================================
 
 func _on_node_root_changed(node: BayterekNodeButton) -> void:
-	_update_item_root_visual(node)
+	_update_item_visual(node)

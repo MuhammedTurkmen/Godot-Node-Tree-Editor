@@ -38,6 +38,7 @@ var prefabs_panel: Control
 var context_menu: PopupMenu
 var validator: BayterekValidator
 var icon_selector: BayterekIconSelector
+var rename_dialog: BayterekRenameDialog
 
 # Tooltip menu reference
 var _tooltip_menu: PopupMenu
@@ -123,6 +124,7 @@ func load_tree(path: String) -> void:
 	_create_prefabs_bar()
 	_create_context_menu()
 	_create_delete_dialog()
+	_create_rename_dialog() 
 	_create_icon_selector()
 	_create_validator()
 
@@ -545,6 +547,54 @@ func _update_delete_description(index: int) -> void:
 		2:
 			delete_desc_label.text = "Nodes will stay on the canvas and keep their current values as independent copies."
 
+func _create_rename_dialog() -> void:
+	rename_dialog = BayterekRenameDialog.new()
+	rename_dialog.name = "RenameDialog"
+	rename_dialog.applied.connect(_on_rename_applied)
+	add_child(rename_dialog)
+
+func _on_rename_applied(new_name: String, new_description: String) -> void:
+	if not tree_view:
+		return
+	if tree_view.selected_nodes.is_empty():
+		return
+
+	# Only edit the first selected node (multi-select is ambiguous here).
+	var node: BayterekNodeButton = tree_view.selected_nodes[0]
+	if not is_instance_valid(node) or not node.node_data:
+		return
+
+	# Locked nodes cannot be edited.
+	if node.node_data.locked:
+		BayterekToast.warning(tree_view, "Node is locked. Unlock it first.")
+		return
+
+	# If the node is a prefab reference, edit the prefab (so all its
+	# linked nodes get the change). Otherwise edit the node directly.
+	var display_name: String = new_name
+	if display_name.is_empty():
+		display_name = "Node %d" % node.id
+
+	if node.prefab:
+		node.prefab.set_node_name(display_name)
+		node.prefab.set_description(new_description)
+	else:
+		node.node_data.name = display_name
+		node.node_data.description = new_description
+
+	# Refresh hierarchy display + inspector + visuals.
+	if hierarchy:
+		hierarchy.refresh_node_display(node)
+
+	if inspector and inspector._current_node == node:
+		inspector.inspect(node)
+
+	if node.has_method("refresh_visuals"):
+		node.refresh_visuals()
+
+	set_dirty(true)
+	BayterekToast.success(tree_view, "Node updated")
+
 # ============================================================
 # PREFAB SIGNAL HANDLERS
 # ============================================================
@@ -584,6 +634,8 @@ func _on_prefab_name_changed(prefab: BayterekPrefab) -> void:
 	for node in affected:
 		node.node_data.name = prefab.node_name
 		node.node_data.external_id = prefab.id
+		if hierarchy:
+			hierarchy.refresh_node_display(node)
 	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
@@ -660,6 +712,8 @@ func _create_context_menu() -> void:
 	context_menu.add_separator()
 	context_menu.add_item("Make Root", 150)
 	context_menu.add_separator()
+	context_menu.add_item("Duplicate", 151)
+	context_menu.add_separator()
 	context_menu.add_item("Save as Prefab", 100)
 	context_menu.add_item("Save as Copy", 101)
 	context_menu.add_item("Make Unique", 102)
@@ -720,6 +774,7 @@ func _update_context_menu_state() -> void:
 	_set_item_disabled_by_id(101, not has_selection)
 	_set_item_disabled_by_id(102, not has_selection)
 	_set_item_disabled_by_id(103, not has_selection)
+	_set_item_disabled_by_id(151, not has_selection)
 
 	if has_selection:
 		var any_prefab: bool = false
@@ -748,6 +803,7 @@ func _on_context_menu_pressed(id: int) -> void:
 		102: _make_selected_unique()
 		103: _delete_selected()
 		150: _make_selected_root()
+		151: duplicate_selected_nodes()
 		200: _cleanup_orphan_prefabs()
 
 func _cleanup_orphan_prefabs() -> void:
@@ -859,6 +915,26 @@ func _make_selected_root() -> void:
 		BayterekToast.success(tree_view, "Marked %d node%s as root" % [count, plural])
 		set_dirty(true)
 
+func _open_rename_dialog() -> void:
+	if not tree_view or tree_view.selected_nodes.is_empty():
+		BayterekToast.info(tree_view, "Select a node first")
+		return
+
+	var node: BayterekNodeButton = tree_view.selected_nodes[0]
+	if not is_instance_valid(node) or not node.node_data:
+		return
+
+	if node.node_data.locked:
+		BayterekToast.warning(tree_view, "Node is locked. Unlock it first.")
+		return
+
+	if not rename_dialog:
+		return
+
+	var display_name: String = node.node_data.name
+	var display_desc: String = node.node_data.description
+	rename_dialog.open_for(display_name, display_desc)
+
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
@@ -884,6 +960,9 @@ func _input(event: InputEvent) -> void:
 	elif key == KEY_C and not ctrl and not shift:
 		_toggle_chain_connection_mode()
 		get_viewport().set_input_as_handled()
+	elif key == KEY_F2:
+		_open_rename_dialog()
+		get_viewport().set_input_as_handled()
 
 # ============================================================
 # SELECTION
@@ -901,6 +980,13 @@ func _on_selection_changed(selected: Array) -> void:
 func notify_node_root_changed(node: BayterekNodeButton) -> void:
 	if node:
 		node_root_changed.emit(node)
+
+## Called by the inspector when a node's name or other display-affecting
+## property changes. Refreshes the hierarchy item's label.
+func notify_node_display_changed(node: BayterekNodeButton) -> void:
+	if not node or not hierarchy:
+		return
+	hierarchy.refresh_node_display(node)
 
 func _on_node_moved(node: BayterekNodeButton) -> void:
 	if not inspector or not node:
