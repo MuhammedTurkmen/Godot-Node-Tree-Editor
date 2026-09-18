@@ -55,12 +55,37 @@ func create_prefab(node: BayterekNodeButton, is_copy: bool = false) -> BayterekP
 	prefab.type = node.node_data.type
 	prefab.node_name = node.node_data.name
 	prefab.description = node.node_data.description
-	prefab.icon = node.node_data.icon
-	prefab.border_normal = node.node_data.border_normal
-	prefab.border_intermediate = node.node_data.border_intermediate
-	prefab.border_active = node.node_data.border_active
 	prefab.attributes = node.node_data.attributes.duplicate(true)
 	prefab.max_allocations = node.node_data.max_allocations
+
+	# Copy visuals from the source node
+	prefab.border_texture_locked = node.node_data.border_texture_locked
+	prefab.border_texture_normal = node.node_data.border_texture_normal
+	prefab.border_texture_hover = node.node_data.border_texture_hover
+	prefab.border_texture_max_level = node.node_data.border_texture_max_level
+
+	prefab.border_color_locked = node.node_data.border_color_locked
+	prefab.border_color_normal = node.node_data.border_color_normal
+	prefab.border_color_hover = node.node_data.border_color_hover
+	prefab.border_color_allocate = node.node_data.border_color_allocate
+	prefab.border_color_refund = node.node_data.border_color_refund
+	prefab.border_color_max_level = node.node_data.border_color_max_level
+	prefab.border_color_allocatable = node.node_data.border_color_allocatable
+	prefab.border_color_not_allocatable = node.node_data.border_color_not_allocatable
+
+	prefab.icon_texture_locked = node.node_data.icon_texture_locked
+	prefab.icon_texture_normal = node.node_data.icon_texture_normal
+	prefab.icon_texture_hover = node.node_data.icon_texture_hover
+	prefab.icon_texture_max_level = node.node_data.icon_texture_max_level
+
+	prefab.icon_color_locked = node.node_data.icon_color_locked
+	prefab.icon_color_normal = node.node_data.icon_color_normal
+	prefab.icon_color_hover = node.node_data.icon_color_hover
+	prefab.icon_color_allocate = node.node_data.icon_color_allocate
+	prefab.icon_color_refund = node.node_data.icon_color_refund
+	prefab.icon_color_max_level = node.node_data.icon_color_max_level
+	prefab.icon_color_allocatable = node.node_data.icon_color_allocatable
+	prefab.icon_color_not_allocatable = node.node_data.icon_color_not_allocatable
 
 	if not is_copy:
 		prefab.reference_id = BayterekUUIDGenerator.v4()
@@ -95,7 +120,7 @@ func make_unique(node: BayterekNodeButton) -> void:
 	node.node_data.clear_all_attribute_overrides()
 
 # ============================================================
-# FAZ 8f — PREFAB SİLME
+# PREFAB SİLME
 # ============================================================
 
 enum DeleteMode {
@@ -169,7 +194,7 @@ func cleanup_orphan_prefabs() -> int:
 	return orphans.size()
 
 # ============================================================
-# FAZ 8e — RESET TO PREFAB
+# RESET TO PREFAB
 # ============================================================
 
 ## Node'un tüm verisini prefab default'una döndür
@@ -181,13 +206,38 @@ func reset_node_to_prefab_defaults(node: BayterekNodeButton) -> void:
 
 	node.node_data.name = prefab.node_name
 	node.node_data.description = prefab.description
-	node.node_data.icon = prefab.icon
-	node.node_data.border_normal = prefab.border_normal
-	node.node_data.border_intermediate = prefab.border_intermediate
-	node.node_data.border_active = prefab.border_active
 	node.node_data.attributes = prefab.attributes.duplicate(true)
 	node.node_data.max_allocations = prefab.max_allocations
 	node.node_data.clear_all_attribute_overrides()
+
+	# Reset visuals
+	node.node_data.border_texture_locked = prefab.border_texture_locked
+	node.node_data.border_texture_normal = prefab.border_texture_normal
+	node.node_data.border_texture_hover = prefab.border_texture_hover
+	node.node_data.border_texture_max_level = prefab.border_texture_max_level
+
+	node.node_data.border_color_locked = prefab.border_color_locked
+	node.node_data.border_color_normal = prefab.border_color_normal
+	node.node_data.border_color_hover = prefab.border_color_hover
+	node.node_data.border_color_allocate = prefab.border_color_allocate
+	node.node_data.border_color_refund = prefab.border_color_refund
+	node.node_data.border_color_max_level = prefab.border_color_max_level
+	node.node_data.border_color_allocatable = prefab.border_color_allocatable
+	node.node_data.border_color_not_allocatable = prefab.border_color_not_allocatable
+
+	node.node_data.icon_texture_locked = prefab.icon_texture_locked
+	node.node_data.icon_texture_normal = prefab.icon_texture_normal
+	node.node_data.icon_texture_hover = prefab.icon_texture_hover
+	node.node_data.icon_texture_max_level = prefab.icon_texture_max_level
+
+	node.node_data.icon_color_locked = prefab.icon_color_locked
+	node.node_data.icon_color_normal = prefab.icon_color_normal
+	node.node_data.icon_color_hover = prefab.icon_color_hover
+	node.node_data.icon_color_allocate = prefab.icon_color_allocate
+	node.node_data.icon_color_refund = prefab.icon_color_refund
+	node.node_data.icon_color_max_level = prefab.icon_color_max_level
+	node.node_data.icon_color_allocatable = prefab.icon_color_allocatable
+	node.node_data.icon_color_not_allocatable = prefab.icon_color_not_allocatable
 
 	if node.has_method("refresh_visuals"):
 		node.refresh_visuals()

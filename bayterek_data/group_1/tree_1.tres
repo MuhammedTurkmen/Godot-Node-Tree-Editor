@@ -2,116 +2,63 @@
 
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_d7nu5"]
 [ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="2_p7r5a"]
+[ext_resource type="Texture2D" uid="uid://brdob75d0ryhu" path="res://assets/medium_border.png" id="2_tyv6k"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="2_y2ort"]
 
-[sub_resource type="Resource" id="Resource_tyv6k"]
-script = ExtResource("2_p7r5a")
-
 [sub_resource type="Resource" id="Resource_s5f85"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_32bmc"]
-script = ExtResource("1_d7nu5")
-is_root = true
-id = 1
-name = "Large Node"
-type = 2
-position = Vector2(-100.00049, 23.571533)
-line_data = {
-2: SubResource("Resource_tyv6k"),
-4: SubResource("Resource_s5f85")
-}
-out_nodes = Array[int]([2, 4])
-
-[sub_resource type="Resource" id="Resource_gmi7d"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_4kaxi"]
-script = ExtResource("1_d7nu5")
-id = 2
-name = "Medium Node"
-type = 1
-position = Vector2(3.2336426, -37.973877)
-line_data = {
-3: SubResource("Resource_gmi7d")
-}
-out_nodes = Array[int]([3])
-in_nodes = Array[int]([1])
-
-[sub_resource type="Resource" id="Resource_fi42j"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_8xuuo"]
-script = ExtResource("1_d7nu5")
-id = 3
-name = "Small Node"
-position = Vector2(48.999268, -187.14307)
-line_data = {
-8: SubResource("Resource_fi42j")
-}
-out_nodes = Array[int]([8])
-in_nodes = Array[int]([2])
-
-[sub_resource type="Resource" id="Resource_l3jbr"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_1jmks"]
-script = ExtResource("2_p7r5a")
-
-[sub_resource type="Resource" id="Resource_hm53d"]
 script = ExtResource("1_d7nu5")
 id = 4
-name = "Medium Node"
-type = 1
-position = Vector2(-214.28589, -62.96704)
-line_data = {
-5: SubResource("Resource_l3jbr"),
-9: SubResource("Resource_1jmks")
-}
-out_nodes = Array[int]([5, 9])
-in_nodes = Array[int]([1])
-
-[sub_resource type="Resource" id="Resource_4qtot"]
-script = ExtResource("1_d7nu5")
-id = 5
 name = "Small Node"
-position = Vector2(-320.0005, -126.42871)
-in_nodes = Array[int]([4])
+position = Vector2(-210.38867, -254.76709)
+in_nodes = Array[int]([5])
+border_texture_locked = ExtResource("2_tyv6k")
+border_texture_normal = ExtResource("2_tyv6k")
+border_texture_hover = ExtResource("2_tyv6k")
+border_texture_max_level = ExtResource("2_tyv6k")
 
-[sub_resource type="Resource" id="Resource_stsm4"]
-script = ExtResource("1_d7nu5")
-id = 8
-name = "Small Node"
-position = Vector2(11.65625, -273.85596)
-in_nodes = Array[int]([3])
-
-[sub_resource type="Resource" id="Resource_b6bgd"]
+[sub_resource type="Resource" id="Resource_32bmc"]
 script = ExtResource("2_p7r5a")
 
-[sub_resource type="Resource" id="Resource_l30q8"]
+[sub_resource type="Resource" id="Resource_gmi7d"]
 script = ExtResource("1_d7nu5")
-id = 9
+id = 5
 name = "Medium Node"
 type = 1
-position = Vector2(-220.00024, -173.6814)
+position = Vector2(-255.33105, -148.18945)
 line_data = {
-10: SubResource("Resource_b6bgd")
+4: SubResource("Resource_32bmc")
 }
-out_nodes = Array[int]([10])
-in_nodes = Array[int]([4])
+out_nodes = Array[int]([4])
+in_nodes = Array[int]([6])
+border_texture_locked = ExtResource("2_tyv6k")
+border_texture_normal = ExtResource("2_tyv6k")
+border_texture_hover = ExtResource("2_tyv6k")
+border_texture_max_level = ExtResource("2_tyv6k")
 
-[sub_resource type="Resource" id="Resource_ev4tw"]
+[sub_resource type="Resource" id="Resource_4kaxi"]
+script = ExtResource("2_p7r5a")
+
+[sub_resource type="Resource" id="Resource_fi42j"]
 script = ExtResource("1_d7nu5")
-id = 10
-name = "Small Node"
-position = Vector2(-239.28613, -291.4287)
-in_nodes = Array[int]([9])
+is_root = true
+id = 6
+name = "Large Node"
+type = 2
+position = Vector2(-298.00024, -25.333496)
+line_data = {
+5: SubResource("Resource_4kaxi")
+}
+out_nodes = Array[int]([5])
+border_texture_locked = ExtResource("2_tyv6k")
+border_texture_normal = ExtResource("2_tyv6k")
+border_texture_hover = ExtResource("2_tyv6k")
+border_texture_max_level = ExtResource("2_tyv6k")
 
 [resource]
 script = ExtResource("2_y2ort")
 id = "tree_1"
 name = "Tree 1"
-id_counter = 10
+id_counter = 6
 icon_sizes = {
 0: Vector2(0, 0),
 1: Vector2(0, 0),
@@ -127,6 +74,10 @@ node_size = {
 1: Vector2(48, 48),
 2: Vector2(64, 64)
 }
-nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_32bmc"), SubResource("Resource_4kaxi"), SubResource("Resource_8xuuo"), SubResource("Resource_hm53d"), SubResource("Resource_4qtot"), SubResource("Resource_stsm4"), SubResource("Resource_l30q8"), SubResource("Resource_ev4tw")])
-hierarchy_split_offset = -407
-prefabs_split_offset = 213
+nodes = Array[ExtResource("1_d7nu5")]([SubResource("Resource_s5f85"), SubResource("Resource_gmi7d"), SubResource("Resource_fi42j")])
+hierarchy_split_offset = -338
+prefabs_split_offset = 119
+default_border_texture_locked = ExtResource("2_tyv6k")
+default_border_texture_normal = ExtResource("2_tyv6k")
+default_border_texture_hover = ExtResource("2_tyv6k")
+default_border_texture_max_level = ExtResource("2_tyv6k")

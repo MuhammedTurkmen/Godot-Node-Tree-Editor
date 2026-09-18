@@ -23,9 +23,13 @@ var _top_bar: HBoxContainer
 var _tree_container: Control
 var _tree_view: BayterekTreeView
 var _refund_btn: Button
+var _confirm_btn: Button
+
+## --- HUD (selection counter toast) -----------------------------
+var _hud_panel: PanelContainer
+var _hud_label: RichTextLabel
 
 ## --- State -----------------------------------------------------
-## Set when a tree is opened, cleared when returning to the browser.
 var _current_group_name: String = ""
 var _current_tree_name: String = ""
 
@@ -159,11 +163,12 @@ func _build_tree_screen() -> void:
 	refund_all_btn.pressed.connect(_on_refund_all_pressed)
 	_top_bar.add_child(refund_all_btn)
 
-	var confirm_btn := Button.new()
-	confirm_btn.name = "ConfirmButton"
-	confirm_btn.text = "Confirm (Enter)"
-	confirm_btn.pressed.connect(_on_confirm_pressed)
-	_top_bar.add_child(confirm_btn)
+	_confirm_btn = Button.new()
+	_confirm_btn.name = "ConfirmButton"
+	_confirm_btn.text = "Confirm (Enter)"
+	_confirm_btn.disabled = true
+	_confirm_btn.pressed.connect(_on_confirm_pressed)
+	_top_bar.add_child(_confirm_btn)
 
 	var clear_btn := Button.new()
 	clear_btn.name = "ClearButton"
@@ -208,6 +213,84 @@ func _build_tree_screen() -> void:
 	_tree_container.offset_top = 50
 	_tree_screen.add_child(_tree_container)
 
+	# --- HUD (selection counter toast) ---
+	_build_hud()
+
+# --- HUD --------------------------------------------------------
+
+func _build_hud() -> void:
+	_hud_panel = PanelContainer.new()
+	_hud_panel.name = "HUD"
+	_hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_panel.visible = false
+
+	# Anchor: top-left, below the toolbar
+	_hud_panel.anchor_left = 0.0
+	_hud_panel.anchor_top = 0.0
+	_hud_panel.anchor_right = 0.0
+	_hud_panel.anchor_bottom = 0.0
+	_hud_panel.offset_left = 12
+	_hud_panel.offset_top = 56
+	_hud_panel.offset_right = 12
+	_hud_panel.offset_bottom = 56
+	_hud_panel.grow_horizontal = Control.GROW_DIRECTION_END
+	_hud_panel.grow_vertical = Control.GROW_DIRECTION_END
+	_tree_screen.add_child(_hud_panel)
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.08, 0.10, 0.92)
+	style.border_color = Color(0.4, 0.7, 1.0, 0.9)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	style.content_margin_top = 5
+	style.content_margin_bottom = 5
+	_hud_panel.add_theme_stylebox_override("panel", style)
+
+	_hud_label = RichTextLabel.new()
+	_hud_label.bbcode_enabled = true
+	_hud_label.fit_content = true
+	_hud_label.scroll_active = false
+	_hud_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_hud_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_label.custom_minimum_size = Vector2(180, 0)
+	_hud_panel.add_child(_hud_label)
+
+# ============================================================
+# PROCESS — HUD update
+# ============================================================
+
+func _process(_delta: float) -> void:
+	_update_hud()
+	_update_confirm_button_state()
+
+func _update_hud() -> void:
+	if not _hud_panel or not _tree_screen or not _tree_screen.visible:
+		return
+
+	if not _tree_view or not _tree_view.allocation_service:
+		_hud_panel.visible = false
+		return
+
+	var svc = _tree_view.allocation_service
+	var refund_count: int = svc.get_refund_count()
+	var pre_count: int = svc.get_preallocated_count()
+
+	var text: String = ""
+	var visible_state: bool = false
+
+	if svc.is_refund_mode() and refund_count > 0:
+		text = "[color=#ff8080]Refund selected: [b]%d[/b][/color]" % refund_count
+		visible_state = true
+	elif not svc.is_refund_mode() and pre_count > 0:
+		text = "[color=#ffdd66]Preallocated: [b]%d[/b][/color]" % pre_count
+		visible_state = true
+
+	_hud_panel.visible = visible_state
+	if visible_state:
+		_hud_label.text = text
+
 # ============================================================
 # BROWSER LOGIC
 # ============================================================
@@ -229,6 +312,10 @@ func _show_browser() -> void:
 	if _refund_btn:
 		_refund_btn.text = "Enter Refund Mode (R)"
 		_refund_btn.button_pressed = false
+	if _confirm_btn:
+		_confirm_btn.disabled = true
+	if _hud_panel:
+		_hud_panel.visible = false
 
 	# Switch screens
 	_browser_screen.visible = true
@@ -337,6 +424,7 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 	_browser_screen.visible = false
 	_tree_screen.visible = true
 	_update_refund_button_text()
+	_update_confirm_button_state()
 
 # ============================================================
 # CALLBACKS
@@ -349,28 +437,23 @@ func _on_node_deallocated(node: BayterekNode) -> void:
 	print("Test: Node deallocated → %s" % node.name)
 
 func _on_refund_button_pressed() -> void:
-	print("[TEST] _on_refund_button_pressed called")
-	if not _tree_view:
-		print("[TEST] _tree_view is NULL")
-		return
-	if not _tree_view.allocation_service:
-		print("[TEST] allocation_service is NULL")
+	if not _tree_view or not _tree_view.allocation_service:
 		return
 
-	print("[TEST] is_refund_mode before = ", _tree_view.allocation_service.is_refund_mode())
 	if _tree_view.allocation_service.is_refund_mode():
 		_tree_view.allocation_service.exit_refund_mode()
 	else:
 		_tree_view.allocation_service.enter_refund_mode()
-	print("[TEST] is_refund_mode after = ", _tree_view.allocation_service.is_refund_mode())
 
 	_update_refund_button_text()
+	_update_confirm_button_state()
 
 func _on_refund_all_pressed() -> void:
 	if not _tree_view or not _tree_view.allocation_service:
 		return
 	_tree_view.allocation_service.stage_all_for_refund()
 	_update_refund_button_text()
+	_update_confirm_button_state()
 
 func _on_confirm_pressed() -> void:
 	if not _tree_view or not _tree_view.allocation_service:
@@ -382,6 +465,7 @@ func _on_confirm_pressed() -> void:
 		_tree_view.allocation_service.confirm_preallocations()
 
 	_update_refund_button_text()
+	_update_confirm_button_state()
 
 func _on_clear_pressed() -> void:
 	if not _tree_view or not _tree_view.allocation_service:
@@ -393,6 +477,7 @@ func _on_clear_pressed() -> void:
 		_tree_view.allocation_service.clear_preallocations()
 
 	_update_refund_button_text()
+	_update_confirm_button_state()
 
 func _on_center_pressed() -> void:
 	if _tree_view:
@@ -436,6 +521,21 @@ func _update_refund_button_text() -> void:
 	else:
 		_refund_btn.text = "Enter Refund Mode (R)"
 
+func _update_confirm_button_state() -> void:
+	if not _confirm_btn:
+		return
+
+	if not _tree_view or not _tree_view.allocation_service:
+		_confirm_btn.disabled = true
+		return
+
+	var svc = _tree_view.allocation_service
+
+	if svc.is_refund_mode():
+		_confirm_btn.disabled = svc.get_refund_count() == 0
+	else:
+		_confirm_btn.disabled = svc.get_preallocated_count() == 0
+
 # ============================================================
 # INPUT
 # ============================================================
@@ -452,7 +552,8 @@ func _input(event: InputEvent) -> void:
 		_on_refund_button_pressed()
 		get_viewport().set_input_as_handled()
 	elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-		_on_confirm_pressed()
+		if not _confirm_btn.disabled:
+			_on_confirm_pressed()
 		get_viewport().set_input_as_handled()
 	elif event.keycode == KEY_ESCAPE:
 		_on_clear_pressed()

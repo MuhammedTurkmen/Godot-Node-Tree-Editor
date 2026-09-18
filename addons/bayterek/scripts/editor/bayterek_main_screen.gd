@@ -88,10 +88,35 @@ func open_tree(path: String) -> void:
 		tab_container.current_tab = tab_container.get_tab_idx_from_control(existing)
 		return
 
-	var editor: BayterekEditor = BayterekEditor.new()
-	if not editor:
-		push_error("Bayterek: Editor oluşturulamadı.")
+	print("[BayterekMainScreen] open_tree: BayterekEditor sınıfını kontrol ediyorum...")
+
+	# --- DEBUG: BayterekEditor global sınıfı kayıtlı mı? ---
+	var editor_script = load("res://addons/bayterek/scripts/editor/bayterek_editor.gd")
+	if not editor_script:
+		push_error("[BayterekMainScreen] bayterek_editor.gd YÜKLENEMEDİ — dosyada parse hatası var!")
 		return
+	print("[BayterekMainScreen] bayterek_editor.gd yüklendi: ", editor_script)
+
+	if not editor_script is GDScript:
+		push_error("[BayterekMainScreen] bayterek_editor.gd bir GDScript değil!")
+		return
+
+	# Script'in parse edilip edilmediğini kontrol et
+	var script_can_instantiate: bool = editor_script.can_instantiate()
+	if not script_can_instantiate:
+		push_error("[BayterekMainScreen] bayterek_editor.gd PARSE EDİLEMEDİ! Godot editöründe bu dosyayı aç, alt panelde parse error göreceksin.")
+		return
+
+	var editor: Control = editor_script.new()
+	if not editor:
+		push_error("[BayterekMainScreen] BayterekEditor instantiate edilemedi!")
+		return
+
+	if not editor is BayterekEditor:
+		push_error("[BayterekMainScreen] instantiate edilen obje BayterekEditor değil: ", editor.get_class())
+		return
+
+	print("[BayterekMainScreen] BayterekEditor başarıyla oluşturuldu.")
 
 	editor.name = path.get_file().get_basename()
 	editor.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -159,10 +184,8 @@ func _on_editor_dirty_changed(editor: BayterekEditor, dirty: bool) -> void:
 # RENAME SUPPORT
 # ============================================================
 
-## Returns true if a tree at the given path is currently open in an editor tab.
 func has_open_tree(path: String) -> bool:
 	return _open_editors.has(path)
 
-## Returns all currently open tree paths.
 func get_open_tree_paths() -> Array:
 	return _open_editors.keys()

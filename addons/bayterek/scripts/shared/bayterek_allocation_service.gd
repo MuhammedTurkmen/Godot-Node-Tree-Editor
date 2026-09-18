@@ -51,6 +51,16 @@ func load_tree(tree_data: BayterekTree) -> void:
 		node_allocated.emit(node)
 
 # ============================================================
+# PUBLIC GETTERS (for HUD / test scenes)
+# ============================================================
+
+func get_preallocated_count() -> int:
+	return _preallocated_nodes.size()
+
+func get_refund_count() -> int:
+	return _refund_nodes.size()
+
+# ============================================================
 # MAIN ENTRY — NODE PRESSED
 # ============================================================
 
@@ -380,12 +390,6 @@ func _is_valid_deallocation(node: BayterekNodeButton, remaining: Array[int], for
 # CLOSURE COMPUTATION
 # ============================================================
 
-## Returns the set of node IDs that MUST be refunded together with `start_id`
-## because deallocating `start_id` (and, transitively, its closure) would
-## either break prerequisites OR disconnect other nodes from a root.
-##
-## Already-staged refund nodes (`_refund_nodes`) are treated as if they were
-## already removed, so repeated clicks stack cleanly.
 func _get_refund_closure(start_id: int) -> Array[int]:
 	var closure: Array[int] = [start_id]
 	var changed: bool = true
@@ -393,13 +397,10 @@ func _get_refund_closure(start_id: int) -> Array[int]:
 	while changed:
 		changed = false
 
-		# Current remaining = allocated minus closure minus already-staged refunds
 		var active_remaining: Array = _allocated_nodes.filter(
 			func(id): return not closure.has(id) and not _refund_nodes.has(id)
 		)
 
-		# 1) Prerequisite breaks: any remaining node whose prerequisite is
-		#    no longer satisfied (but was satisfied in the full set).
 		for other_id in active_remaining:
 			if closure.has(other_id):
 				continue
@@ -411,7 +412,6 @@ func _get_refund_closure(start_id: int) -> Array[int]:
 					closure.append(other_id)
 					changed = true
 
-		# 2) Connectivity breaks: any remaining node not reachable from a root.
 		var visited: Dictionary = {}
 		var stack: Array = []
 		for node_id in active_remaining:
@@ -440,7 +440,6 @@ func _get_refund_closure(start_id: int) -> Array[int]:
 
 	return closure
 
-## Same as _get_refund_closure but for preallocated nodes.
 func _get_unpreallocation_closure(start_id: int) -> Array[int]:
 	var active: Array = _get_active_nodes()
 	var closure: Array[int] = [start_id]
@@ -492,7 +491,6 @@ func _get_unpreallocation_closure(start_id: int) -> Array[int]:
 
 	return closure
 
-## Same as _get_refund_closure but for direct (non-preallocation) clicks.
 func _get_deallocation_closure(start_id: int) -> Array[int]:
 	var closure: Array[int] = [start_id]
 	var changed: bool = true
@@ -547,15 +545,10 @@ func _get_deallocation_closure(start_id: int) -> Array[int]:
 # CLOSURE VALIDITY
 # ============================================================
 
-## Checks whether the given closure can be removed while keeping the
-## remaining graph valid. Nodes already staged in `_refund_nodes` are
-## treated as if they were also part of the removal set, so stacking
-## multiple stage operations behaves correctly.
 func _is_closure_valid_for_refund(closure: Array[int]) -> bool:
 	if closure.is_empty():
 		return false
 
-	# Remaining = allocated minus closure minus already-staged refunds.
 	var remaining: Array[int] = _allocated_nodes.filter(
 		func(id): return not closure.has(id) and not _refund_nodes.has(id)
 	)
@@ -563,7 +556,6 @@ func _is_closure_valid_for_refund(closure: Array[int]) -> bool:
 	if remaining.is_empty():
 		return true
 
-	# 1) Connectivity check
 	var visited: Dictionary = {}
 	var stack: Array = []
 	for node_id in remaining:
@@ -589,7 +581,6 @@ func _is_closure_valid_for_refund(closure: Array[int]) -> bool:
 		if not visited.has(node_id):
 			return false
 
-	# 2) Prerequisite check
 	for node_id in remaining:
 		var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if not n:

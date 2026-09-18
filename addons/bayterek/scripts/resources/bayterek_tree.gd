@@ -38,6 +38,42 @@ extends Resource
 @export_storage var prefabs_split_offset: int = -180
 @export_storage var inspector_split_offset: int = -320
 
+# ============================================================
+# DEFAULT NODE VISUALS — used when creating new nodes
+# ============================================================
+
+# Border textures
+@export_storage var default_border_texture_locked: Texture2D = null
+@export_storage var default_border_texture_normal: Texture2D = null
+@export_storage var default_border_texture_hover: Texture2D = null
+@export_storage var default_border_texture_max_level: Texture2D = null
+
+# Border colors
+@export_storage var default_border_color_locked: Color = Color(0.5, 0.5, 0.5, 1.0)
+@export_storage var default_border_color_normal: Color = Color(1, 1, 1, 1)
+@export_storage var default_border_color_hover: Color = Color(1.2, 1.2, 1.2, 1)
+@export_storage var default_border_color_allocate: Color = Color(1.0, 0.9, 0.3, 1)
+@export_storage var default_border_color_refund: Color = Color(1.0, 0.4, 0.4, 1)
+@export_storage var default_border_color_max_level: Color = Color(1.0, 0.85, 0.2, 1)
+@export_storage var default_border_color_allocatable: Color = Color(0.6, 1.0, 0.6, 1)
+@export_storage var default_border_color_not_allocatable: Color = Color(0.6, 0.6, 0.6, 1)
+
+# Icon textures
+@export_storage var default_icon_texture_locked: Texture2D = null
+@export_storage var default_icon_texture_normal: Texture2D = null
+@export_storage var default_icon_texture_hover: Texture2D = null
+@export_storage var default_icon_texture_max_level: Texture2D = null
+
+# Icon colors
+@export_storage var default_icon_color_locked: Color = Color(0.5, 0.5, 0.5, 1.0)
+@export_storage var default_icon_color_normal: Color = Color(1, 1, 1, 1)
+@export_storage var default_icon_color_hover: Color = Color(1.2, 1.2, 1.2, 1)
+@export_storage var default_icon_color_allocate: Color = Color(1.0, 0.9, 0.3, 1)
+@export_storage var default_icon_color_refund: Color = Color(1.0, 0.4, 0.4, 1)
+@export_storage var default_icon_color_max_level: Color = Color(1.0, 0.85, 0.2, 1)
+@export_storage var default_icon_color_allocatable: Color = Color(0.6, 1.0, 0.6, 1)
+@export_storage var default_icon_color_not_allocatable: Color = Color(0.6, 0.6, 0.6, 1)
+
 var tree_state: BayterekTreeState
 
 func _init() -> void:

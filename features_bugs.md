@@ -3,6 +3,11 @@
 
 ## EASY
 [] first created node will be root
+[] border system will be updated
+	[] color based 
+		- one texture and colors for other states
+	[] texture based
+		- texture for all type of states
 
 ## MEDIUM
 

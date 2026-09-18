@@ -73,8 +73,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 # CAMERA CENTERING
 # ============================================================
 
-## Centers the camera on the centroid of all nodes.
-## Call this after load_tree() when the layout is ready.
 func center_camera_on_content() -> void:
 	if not camera or not nodes_service:
 		return
@@ -99,7 +97,7 @@ func center_camera_on_content() -> void:
 	camera.focus_on(centroid, 1.0)
 
 # ============================================================
-# TOOLTIP — CREATION
+# TOOLTIP
 # ============================================================
 
 func _create_tooltip() -> void:
@@ -133,7 +131,6 @@ func _create_tooltip() -> void:
 
 	add_child(_tooltip)
 
-	# Stylebox
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
 	style.border_color = Color(0.3, 0.3, 0.3, 0.9)
@@ -142,65 +139,55 @@ func _create_tooltip() -> void:
 	_tooltip.add_theme_stylebox_override("panel", style)
 
 # ============================================================
-# TOOLTIP CONFIGURATION (public API)
+# TOOLTIP CONFIGURATION
 # ============================================================
 
-## NEAR_NODE: tooltip to the right of node (default)
 func set_tooltip_near_node_right() -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
 		_tooltip.set_position_right()
 
-## NEAR_NODE: tooltip to the left of node
 func set_tooltip_near_node_left() -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
 		_tooltip.set_position_left()
 
-## NEAR_NODE: tooltip above node
 func set_tooltip_near_node_top() -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
 		_tooltip.set_position_top()
 
-## NEAR_NODE: tooltip below node
 func set_tooltip_near_node_bottom() -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
 		_tooltip.set_position_bottom()
 
-## NEAR_NODE with custom offset
 func set_tooltip_near_node_offset(offset: Vector2) -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
 		_tooltip.position_mode = BayterekTooltip.PositionMode.NEAR_NODE
 		_tooltip.node_offset = offset
 
-## FIXED_CORNER: top-left of tree view
 func set_tooltip_corner_top_left() -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
 		_tooltip.set_corner_top_left()
 
-## FIXED_CORNER: top-right of tree view
 func set_tooltip_corner_top_right() -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
 		_tooltip.set_corner_top_right()
 
-## FIXED_CORNER: bottom-left of tree view
 func set_tooltip_corner_bottom_left() -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
 		_tooltip.set_corner_bottom_left()
 
-## FIXED_CORNER: bottom-right of tree view
 func set_tooltip_corner_bottom_right() -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
 		_tooltip.set_corner_bottom_right()
 
-## FIXED_CORNER with custom corner and margin
 func set_tooltip_fixed_corner(corner: int, margin: Vector2 = Vector2(20, 20)) -> void:
 	if _tooltip:
 		_tooltip.tree_view = self
@@ -216,7 +203,6 @@ func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
 	if not _tooltip:
 		return
 
-	# Ignore decorations
 	if node and node.type == BayterekNode.NodeType.DECORATION:
 		return
 
@@ -228,7 +214,6 @@ func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
 			_hovered_node = null
 		_tooltip.reset()
 
-## Called when node moves while hovered — keeps tooltip aligned.
 func refresh_tooltip_position() -> void:
 	if _tooltip and _tooltip.visible and _hovered_node:
 		_tooltip.update_position_for(_hovered_node)
@@ -307,6 +292,7 @@ func delete_selected() -> void:
 				connections_service.remove_all_connections_of(node)
 				nodes_service.delete_node(node)
 				node_deleted.emit(node)
+		_refresh_all_allocatable_flags()
 		changed.emit()
 		return
 
@@ -341,6 +327,7 @@ func _do_delete_nodes(nodes: Array) -> void:
 			connections_service.remove_all_connections_of(node)
 			nodes_service.delete_node(node)
 			node_deleted.emit(node)
+	_refresh_all_allocatable_flags()
 
 func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connections: Array) -> void:
 	for i in range(nodes.size()):
@@ -352,6 +339,8 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 		var to_node: BayterekNodeButton = nodes_service.get_node(conn["to_id"])
 		if from_node and to_node:
 			connections_service.create_connection(from_node, to_node)
+
+	_refresh_all_allocatable_flags()
 
 # ============================================================
 # CONNECTION CREATION (Shift + Click)
@@ -366,6 +355,7 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 	# === RUNTIME: allocation takes priority ===
 	if _is_allocation_active():
 		allocation_service.on_node_pressed(node)
+		_refresh_all_allocatable_flags()
 		return
 
 	# === EDITOR: connection or selection ===
@@ -393,9 +383,6 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 			created_connections.append([from_node.id, node.id])
 
 		if not created_connections.is_empty():
-			# Chain-connection mode: move selection to the target node so the
-			# next shift+click continues from here (A→B, then B→C, then C→D...).
-			# Only active when BayterekEditor.chain_connection_mode is true.
 			if _is_chain_mode_active():
 				clear_selection()
 				select_node(node)
@@ -404,9 +391,6 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 
 	select_node(node, additive)
 
-## Returns true when the editor's chain-connection mode is enabled.
-## The tree view doesn't own this flag — it lives on the editor and is read
-## through the undo_redo_provider, which is set to the editor instance.
 func _is_chain_mode_active() -> bool:
 	if undo_redo_provider and undo_redo_provider.has_method("get_chain_connection_mode"):
 		return undo_redo_provider.get_chain_connection_mode()
@@ -417,9 +401,11 @@ func _is_allocation_active() -> bool:
 
 func _do_create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButton) -> void:
 	connections_service.create_connection(from_node, to_node)
+	_refresh_all_allocatable_flags()
 
 func _do_remove_connection(from_id: int, to_id: int) -> void:
 	connections_service.remove_connection(from_id, to_id)
+	_refresh_all_allocatable_flags()
 
 # ============================================================
 # MOVEMENT
@@ -682,6 +668,17 @@ func _create_services() -> void:
 
 	allocation_service.load_tree(_tree_data)
 
+	# Initial allocatable flags
+	_refresh_all_allocatable_flags()
+
+	# Keep flags fresh after any allocation change
+	allocation_service.node_allocated.connect(func(_n): _refresh_all_allocatable_flags())
+	allocation_service.node_deallocated.connect(func(_n): _refresh_all_allocatable_flags())
+	allocation_service.node_preallocated.connect(func(_n): _refresh_all_allocatable_flags())
+	allocation_service.node_unpreallocated.connect(func(_n): _refresh_all_allocatable_flags())
+	allocation_service.node_refund_added.connect(func(_n): _refresh_all_allocatable_flags())
+	allocation_service.node_refund_removed.connect(func(_n): _refresh_all_allocatable_flags())
+
 func _create_selection_box() -> void:
 	if not Engine.is_editor_hint():
 		return
@@ -690,6 +687,25 @@ func _create_selection_box() -> void:
 	selection_box.set_view(self)
 	selection_box.selected.connect(_on_selection_box_selected)
 	add_child(selection_box)
+
+# ============================================================
+# ALLOCATABLE FLAGS
+# ============================================================
+
+func _refresh_all_allocatable_flags() -> void:
+	if not nodes_service or not _tree_data:
+		return
+
+	var active_ids: Array = []
+	if _tree_data.tree_state:
+		active_ids = _tree_data.tree_state.allocated_nodes.duplicate()
+
+	if allocation_service:
+		for nid in allocation_service._preallocated_nodes:
+			if not active_ids.has(nid):
+				active_ids.append(nid)
+
+	nodes_service.refresh_allocatable_flags(active_ids)
 
 # ============================================================
 # COORDINATE HELPERS

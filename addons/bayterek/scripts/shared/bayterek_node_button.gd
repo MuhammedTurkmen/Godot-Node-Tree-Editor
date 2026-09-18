@@ -24,6 +24,11 @@ var refund: bool = false
 var allocation_level: int = 0
 var state: Bayterek.AllocationState = Bayterek.AllocationState.NORMAL
 
+## Global "can this node be allocated right now" flag, computed by the
+## tree view after each allocation/preallocation/refund change.
+## Used by `_apply_visuals()` to pick allocatable/not_allocatable color.
+var is_allocatable: bool = false
+
 var _icon_rect: TextureRect
 var _icon_fallback: ColorRect
 var _border_rect: TextureRect
@@ -117,7 +122,6 @@ func _build_visuals() -> void:
 	add_child(_select_border)
 
 	# 5) Crown icon (visible only for root nodes)
-	# Anchored at top-center of the node so node resizes don't shift it.
 	_crown_label = Label.new()
 	_crown_label.name = "Crown"
 	_crown_label.text = "👑"
@@ -138,6 +142,151 @@ func _build_visuals() -> void:
 	add_child(_crown_label)
 
 # ============================================================
+# VISUAL STATE RESOLUTION
+# ============================================================
+
+## Returns which visual "state key" this node should use right now.
+## Priority:
+##   1. LOCKED
+##   2. REFUND
+##   3. ALLOCATE (preallocated — preallocation mode only)
+##   4. MAX_LEVEL
+##   5. HOVER
+##   6. ALLOCATABLE
+##   7. NOT_ALLOCATABLE
+##   8. NORMAL
+func _resolve_visual_state() -> String:
+	if node_data == null:
+		return "normal"
+
+	# 1) Locked takes top priority.
+	if node_data.locked:
+		return "locked"
+
+	# 2) Refund: this node is currently staged for refund.
+	if refund:
+		return "refund"
+
+	# 3) Allocate: preallocation mode, node is staged for allocation.
+	if preallocated:
+		return "allocate"
+
+	# 4) Max level: allocated and at maximum level.
+	if allocated and node_data.max_allocations > 0 and allocation_level >= node_data.max_allocations:
+		return "max_level"
+
+	# 5) Hover: mouse is over the node.
+	if is_mouse_over:
+		return "hover"
+
+	# 6) Allocatable: node is not yet allocated but CAN be allocated right now.
+	if tree_data and tree_data.allocation and not allocated:
+		if is_allocatable:
+			return "allocatable"
+		else:
+			return "not_allocatable"
+
+	# 7) Fallback.
+	return "normal"
+
+## Resolves the border texture for the current visual state.
+## Falls back gracefully: if the state has no dedicated texture, uses
+## `normal`, then `hover`, then any other populated one, then null.
+func _resolve_border_texture(state_key: String) -> Texture2D:
+	if node_data == null:
+		return null
+
+	# 1. Direct match for the state
+	match state_key:
+		"locked":
+			if node_data.border_texture_locked:
+				return node_data.border_texture_locked
+		"normal":
+			if node_data.border_texture_normal:
+				return node_data.border_texture_normal
+		"hover":
+			if node_data.border_texture_hover:
+				return node_data.border_texture_hover
+		"max_level":
+			if node_data.border_texture_max_level:
+				return node_data.border_texture_max_level
+
+	# 2. Fallback chain: normal → hover → locked → max_level
+	if node_data.border_texture_normal:
+		return node_data.border_texture_normal
+	if node_data.border_texture_hover:
+		return node_data.border_texture_hover
+	if node_data.border_texture_locked:
+		return node_data.border_texture_locked
+	if node_data.border_texture_max_level:
+		return node_data.border_texture_max_level
+
+	# 3. Nothing set
+	return null
+
+## Resolves the icon texture for the current visual state.
+## Falls back to `icon_texture_normal` (base icon) when nothing set.
+func _resolve_icon_texture(state_key: String) -> Texture2D:
+	if node_data == null:
+		return null
+
+	match state_key:
+		"locked":
+			if node_data.icon_texture_locked:
+				return node_data.icon_texture_locked
+		"normal":
+			if node_data.icon_texture_normal:
+				return node_data.icon_texture_normal
+		"hover":
+			if node_data.icon_texture_hover:
+				return node_data.icon_texture_hover
+		"max_level":
+			if node_data.icon_texture_max_level:
+				return node_data.icon_texture_max_level
+
+	# Fallback to base icon
+	if node_data.icon_texture_normal:
+		return node_data.icon_texture_normal
+	if node_data.icon_texture_hover:
+		return node_data.icon_texture_hover
+	if node_data.icon_texture_locked:
+		return node_data.icon_texture_locked
+	if node_data.icon_texture_max_level:
+		return node_data.icon_texture_max_level
+
+	return null
+
+## Looks up the current border color for the given state key.
+func _border_color_for(state_key: String) -> Color:
+	if node_data == null:
+		return Color.WHITE
+	match state_key:
+		"locked":          return node_data.border_color_locked
+		"normal":          return node_data.border_color_normal
+		"hover":           return node_data.border_color_hover
+		"allocate":        return node_data.border_color_allocate
+		"refund":          return node_data.border_color_refund
+		"max_level":       return node_data.border_color_max_level
+		"allocatable":     return node_data.border_color_allocatable
+		"not_allocatable": return node_data.border_color_not_allocatable
+	return Color.WHITE
+
+## Looks up the current icon color for the given state key.
+func _icon_color_for(state_key: String) -> Color:
+	if node_data == null:
+		return Color.WHITE
+	match state_key:
+		"locked":          return node_data.icon_color_locked
+		"normal":          return node_data.icon_color_normal
+		"hover":           return node_data.icon_color_hover
+		"allocate":        return node_data.icon_color_allocate
+		"refund":          return node_data.icon_color_refund
+		"max_level":       return node_data.icon_color_max_level
+		"allocatable":     return node_data.icon_color_allocatable
+		"not_allocatable": return node_data.icon_color_not_allocatable
+	return Color.WHITE
+
+# ============================================================
 # VISUAL UPDATE
 # ============================================================
 
@@ -153,90 +302,42 @@ func refresh_visuals() -> void:
 		if _border_rect:
 			_border_rect.texture_filter = filter
 
-	# Icon
-	if node_data.icon:
-		_icon_rect.texture = node_data.icon
+	var state_key: String = _resolve_visual_state()
+
+	# --- Icon layer ---
+	var icon_tex: Texture2D = _resolve_icon_texture(state_key)
+
+	if icon_tex:
+		_icon_rect.texture = icon_tex
 		_icon_rect.visible = true
 		_icon_fallback.visible = false
+		_icon_rect.modulate = _icon_color_for(state_key)
 	else:
 		_icon_rect.texture = null
 		_icon_rect.visible = false
 		_icon_fallback.visible = true
 		_icon_fallback.color = _get_type_color(node_data.type)
+		_icon_fallback.modulate = _icon_color_for(state_key)
+
+	# --- Border layer ---
+	var border_tex: Texture2D = _resolve_border_texture(state_key)
+	var border_color: Color = _border_color_for(state_key)
+
+	if border_tex:
+		_border_rect.texture = border_tex
+		_border_rect.modulate = border_color
+		_border_rect.visible = true
+		modulate = Color.WHITE  # don't double-tint the whole node
+	else:
+		_border_rect.texture = null
+		_border_rect.visible = false
+		# If there's no border texture, tint the whole node so state is
+		# still visible. This is the "color only" fallback.
+		modulate = border_color
 
 	# Crown — visible only for root nodes
 	if _crown_label:
 		_crown_label.visible = node_data.is_root
-
-	# Border — based on allocation state
-	_apply_state_border()
-
-	# Locked → semi transparent
-	if node_data.locked:
-		modulate.a = 0.5
-	else:
-		modulate.a = 1.0
-
-func _apply_state_border() -> void:
-	if not node_data:
-		return
-
-	match state:
-		Bayterek.AllocationState.NORMAL:
-			_update_border(node_data.border_normal, Color.WHITE)
-		Bayterek.AllocationState.INTERMEDIATE:
-			_update_border(node_data.border_intermediate, Color.WHITE)
-		Bayterek.AllocationState.ACTIVE:
-			_update_border(node_data.border_active, Color.WHITE)
-		Bayterek.AllocationState.PREALLOCATED_INTERMEDIATE:
-			_update_border(node_data.border_intermediate, Color(1, 0.8, 0))
-		Bayterek.AllocationState.PREALLOCATED_ACTIVE:
-			_update_border(node_data.border_active, Color(1, 0.8, 0))
-		Bayterek.AllocationState.REFUND:
-			_update_border(node_data.border_active, Color(1, 0, 0))
-		_:
-			_update_border(node_data.border_normal, Color.WHITE)
-
-	# Fallback: if no border texture, use icon modulate to show state
-	if not _border_rect or not _border_rect.texture:
-		_apply_state_fallback()
-
-## Fallback visual when no border textures are assigned.
-## Tints the whole node so allocation state is always visible.
-func _apply_state_fallback() -> void:
-	var tint: Color = Color.WHITE
-
-	match state:
-		Bayterek.AllocationState.NORMAL:
-			tint = Color(0.55, 0.55, 0.55)
-		Bayterek.AllocationState.INTERMEDIATE:
-			tint = Color(0.85, 0.85, 0.85)
-		Bayterek.AllocationState.ACTIVE:
-			tint = Color.WHITE
-		Bayterek.AllocationState.PREALLOCATED_INTERMEDIATE:
-			tint = Color(1.0, 0.95, 0.6)
-		Bayterek.AllocationState.PREALLOCATED_ACTIVE:
-			tint = Color(1.0, 0.85, 0.3)
-		Bayterek.AllocationState.REFUND:
-			tint = Color(1.0, 0.4, 0.4)
-
-	if _icon_rect:
-		_icon_rect.modulate = tint
-	if _icon_fallback:
-		_icon_fallback.modulate = tint
-
-	# Node-level tint so state is visible even when the icon texture is
-	# already colored. Skip if a border texture carries the state instead.
-	if not _border_rect or not _border_rect.texture:
-		modulate = tint
-
-func _update_border(texture: Texture2D, color: Color = Color.WHITE) -> void:
-	if not _border_rect:
-		return
-
-	_border_rect.texture = texture
-	_border_rect.modulate = color
-	_border_rect.visible = texture != null
 
 func _get_type_color(t: BayterekNode.NodeType) -> Color:
 	match t:
@@ -252,7 +353,7 @@ func _get_type_color(t: BayterekNode.NodeType) -> Color:
 
 func set_state(new_state: Bayterek.AllocationState) -> void:
 	state = new_state
-	_apply_state_border()
+	refresh_visuals()
 
 func set_selected(value: bool) -> void:
 	selected = value
@@ -294,10 +395,12 @@ func _gui_input(event: InputEvent) -> void:
 
 func _on_mouse_entered() -> void:
 	is_mouse_over = true
+	refresh_visuals()
 	node_hovered.emit(self, true)
 
 func _on_mouse_exited() -> void:
 	is_mouse_over = false
+	refresh_visuals()
 	node_hovered.emit(self, false)
 
 # ============================================================
@@ -321,8 +424,6 @@ func format_tooltip() -> String:
 	else:
 		text += "[b][color=#f9e6ca]%s[/color][/b]\n\n" % display_name
 
-	# Prerequisite requirement (only shown for non-root nodes with
-	# a non-default prerequisite mode).
 	if not node_data.is_root and node_data.prerequisite_mode != BayterekNode.PrerequisiteMode.ANY:
 		var mode_text: String = ""
 		match node_data.prerequisite_mode:
