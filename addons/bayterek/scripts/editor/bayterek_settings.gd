@@ -212,36 +212,28 @@ func _build_ui() -> void:
 
 func _connect_texture_signals() -> void:
 	if _bg_texture_input:
-		if not _bg_texture_input._load_button.pressed.is_connected(_on_bg_texture_picker):
-			_bg_texture_input._load_button.pressed.connect(_on_bg_texture_picker)
-		if not _bg_texture_input._clear_button.pressed.is_connected(_on_bg_texture_cleared):
-			_bg_texture_input._clear_button.pressed.connect(_on_bg_texture_cleared)
 		if not _bg_texture_input.texture_dropped.is_connected(_on_bg_texture_changed):
 			_bg_texture_input.texture_dropped.connect(_on_bg_texture_changed)
+		if not _bg_texture_input.cleared.is_connected(_on_bg_texture_cleared):
+			_bg_texture_input.cleared.connect(_on_bg_texture_cleared)
 
 	if _line_normal_input:
-		if not _line_normal_input._load_button.pressed.is_connected(_on_line_normal_picker):
-			_line_normal_input._load_button.pressed.connect(_on_line_normal_picker)
-		if not _line_normal_input._clear_button.pressed.is_connected(_on_line_normal_cleared):
-			_line_normal_input._clear_button.pressed.connect(_on_line_normal_cleared)
 		if not _line_normal_input.texture_dropped.is_connected(_on_line_normal_changed):
 			_line_normal_input.texture_dropped.connect(_on_line_normal_changed)
+		if not _line_normal_input.cleared.is_connected(_on_line_normal_cleared):
+			_line_normal_input.cleared.connect(_on_line_normal_cleared)
 
 	if _line_intermediate_input:
-		if not _line_intermediate_input._load_button.pressed.is_connected(_on_line_intermediate_picker):
-			_line_intermediate_input._load_button.pressed.connect(_on_line_intermediate_picker)
-		if not _line_intermediate_input._clear_button.pressed.is_connected(_on_line_intermediate_cleared):
-			_line_intermediate_input._clear_button.pressed.connect(_on_line_intermediate_cleared)
 		if not _line_intermediate_input.texture_dropped.is_connected(_on_line_intermediate_changed):
 			_line_intermediate_input.texture_dropped.connect(_on_line_intermediate_changed)
+		if not _line_intermediate_input.cleared.is_connected(_on_line_intermediate_cleared):
+			_line_intermediate_input.cleared.connect(_on_line_intermediate_cleared)
 
 	if _line_active_input:
-		if not _line_active_input._load_button.pressed.is_connected(_on_line_active_picker):
-			_line_active_input._load_button.pressed.connect(_on_line_active_picker)
-		if not _line_active_input._clear_button.pressed.is_connected(_on_line_active_cleared):
-			_line_active_input._clear_button.pressed.connect(_on_line_active_cleared)
 		if not _line_active_input.texture_dropped.is_connected(_on_line_active_changed):
 			_line_active_input.texture_dropped.connect(_on_line_active_changed)
+		if not _line_active_input.cleared.is_connected(_on_line_active_cleared):
+			_line_active_input.cleared.connect(_on_line_active_cleared)
 
 # ============================================================
 # TREE LOAD
@@ -261,14 +253,11 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_border_scale_input.set_value_no_signal(tree_data.border_scale)
 	_bg_color_picker.color = tree_data.bg_color
 
-	# Texture filter
 	if _texture_filter_dropdown:
 		_texture_filter_dropdown.select(tree_data.texture_filter)
 
-	# Background texture
 	_set_input_texture(_bg_texture_input, tree_data.bg_texture)
 
-	# Icon sizes
 	var small_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.SMALL, Vector2.ZERO)
 	var medium_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.MEDIUM, Vector2.ZERO)
 	var large_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.LARGE, Vector2.ZERO)
@@ -279,7 +268,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_large_icon_x.set_value_no_signal(large_icon.x)
 	_large_icon_y.set_value_no_signal(large_icon.y)
 
-	# Node sizes
 	var small_size: Vector2 = tree_data.node_size.get(BayterekNode.NodeType.SMALL, Vector2(27, 27))
 	var medium_size: Vector2 = tree_data.node_size.get(BayterekNode.NodeType.MEDIUM, Vector2(48, 48))
 	var large_size: Vector2 = tree_data.node_size.get(BayterekNode.NodeType.LARGE, Vector2(64, 64))
@@ -290,12 +278,10 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_large_size_x.set_value_no_signal(large_size.x)
 	_large_size_y.set_value_no_signal(large_size.y)
 
-	# Line textures
 	_set_input_texture(_line_normal_input, tree_data.line_texture_normal)
 	_set_input_texture(_line_intermediate_input, tree_data.line_texture_intermediate)
 	_set_input_texture(_line_active_input, tree_data.line_texture_active)
 
-	# Interaction
 	_revealed_check.button_pressed = tree_data.revealed
 	_allocation_check.button_pressed = tree_data.allocation
 	_preallocation_check.button_pressed = tree_data.preallocation
@@ -366,9 +352,6 @@ func _on_bg_color_changed(color: Color) -> void:
 	changed.emit()
 	_notify_dirty()
 
-func _on_bg_texture_picker() -> void:
-	EditorInterface.popup_quick_open(_on_bg_texture_changed, ["Texture2D"])
-
 func _on_bg_texture_changed(path: String) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
@@ -436,9 +419,6 @@ func _on_large_size_changed(_value: float) -> void:
 	changed.emit()
 	_notify_dirty()
 
-func _on_line_normal_picker() -> void:
-	EditorInterface.popup_quick_open(_on_line_normal_changed, ["Texture2D"])
-
 func _on_line_normal_changed(path: String) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
@@ -458,9 +438,6 @@ func _on_line_normal_cleared() -> void:
 	changed.emit()
 	_notify_dirty()
 
-func _on_line_intermediate_picker() -> void:
-	EditorInterface.popup_quick_open(_on_line_intermediate_changed, ["Texture2D"])
-
 func _on_line_intermediate_changed(path: String) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
@@ -479,9 +456,6 @@ func _on_line_intermediate_cleared() -> void:
 	line_texture_changed.emit()
 	changed.emit()
 	_notify_dirty()
-
-func _on_line_active_picker() -> void:
-	EditorInterface.popup_quick_open(_on_line_active_changed, ["Texture2D"])
 
 func _on_line_active_changed(path: String) -> void:
 	if _updating_ui or not editor or not editor.tree:

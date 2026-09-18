@@ -101,7 +101,6 @@ func set_texture(texture: Texture2D) -> void:
 		_empty_label.visible = false
 		_clear_button.visible = true
 		_load_button.visible = true
-		texture_dropped.emit(texture.resource_path if texture else "")
 	else:
 		_empty_label.visible = true
 		_clear_button.visible = false
@@ -117,7 +116,7 @@ func get_texture() -> Texture2D:
 func _on_load_pressed() -> void:
 	if not Engine.is_editor_hint():
 		return
-	EditorInterface.popup_quick_open(_on_file_selected, ["Texture2D"])
+	BayterekPicker.pick_texture(_on_file_selected, "texture_input")
 
 func _on_clear_pressed() -> void:
 	set_texture(null)

@@ -30,6 +30,7 @@ var _name_input: LineEdit
 var _description_input: TextEdit
 var _max_alloc_panel: HBoxContainer
 var _max_alloc_input: SpinBox
+
 var _prereq_panel: HBoxContainer
 var _prereq_dropdown: OptionButton
 var _prereq_count_panel: HBoxContainer
@@ -178,7 +179,7 @@ func _build_ui() -> void:
 	_max_alloc_input.value_changed.connect(_on_max_alloc_changed)
 	_max_alloc_panel.add_child(_max_alloc_input)
 
-	# --- Prerequisite (non-root nodes only) ---
+	# --- Prerequisite ---
 	_prereq_panel = HBoxContainer.new()
 	_info_panel.add_child(_prereq_panel)
 	var prereq_label := Label.new()
@@ -334,39 +335,31 @@ func _build_ui() -> void:
 	_connections_panel.add_child(_connections_list)
 
 func init(tree_view: BayterekTreeView) -> void:
-	# Connect icon picker — use internal button references
+	# Icon input: only listen to result signals — the widget opens its own
+	# picker via its built-in load button.
 	if _icon_input:
-		if not _icon_input._load_button.pressed.is_connected(_on_icon_picker_pressed):
-			_icon_input._load_button.pressed.connect(_on_icon_picker_pressed)
-		if not _icon_input._clear_button.pressed.is_connected(_on_icon_texture_cleared):
-			_icon_input._clear_button.pressed.connect(_on_icon_texture_cleared)
 		if not _icon_input.texture_dropped.is_connected(_on_icon_texture_changed):
 			_icon_input.texture_dropped.connect(_on_icon_texture_changed)
+		if not _icon_input.cleared.is_connected(_on_icon_texture_cleared):
+			_icon_input.cleared.connect(_on_icon_texture_cleared)
 
-	# Border inputs
 	if _border_normal_input:
-		if not _border_normal_input._load_button.pressed.is_connected(_on_border_normal_picker_pressed):
-			_border_normal_input._load_button.pressed.connect(_on_border_normal_picker_pressed)
-		if not _border_normal_input._clear_button.pressed.is_connected(_on_border_normal_cleared):
-			_border_normal_input._clear_button.pressed.connect(_on_border_normal_cleared)
 		if not _border_normal_input.texture_dropped.is_connected(_on_border_normal_changed):
 			_border_normal_input.texture_dropped.connect(_on_border_normal_changed)
+		if not _border_normal_input.cleared.is_connected(_on_border_normal_cleared):
+			_border_normal_input.cleared.connect(_on_border_normal_cleared)
 
 	if _border_intermediate_input:
-		if not _border_intermediate_input._load_button.pressed.is_connected(_on_border_intermediate_picker_pressed):
-			_border_intermediate_input._load_button.pressed.connect(_on_border_intermediate_picker_pressed)
-		if not _border_intermediate_input._clear_button.pressed.is_connected(_on_border_intermediate_cleared):
-			_border_intermediate_input._clear_button.pressed.connect(_on_border_intermediate_cleared)
 		if not _border_intermediate_input.texture_dropped.is_connected(_on_border_intermediate_changed):
 			_border_intermediate_input.texture_dropped.connect(_on_border_intermediate_changed)
+		if not _border_intermediate_input.cleared.is_connected(_on_border_intermediate_cleared):
+			_border_intermediate_input.cleared.connect(_on_border_intermediate_cleared)
 
 	if _border_active_input:
-		if not _border_active_input._load_button.pressed.is_connected(_on_border_active_picker_pressed):
-			_border_active_input._load_button.pressed.connect(_on_border_active_picker_pressed)
-		if not _border_active_input._clear_button.pressed.is_connected(_on_border_active_cleared):
-			_border_active_input._clear_button.pressed.connect(_on_border_active_cleared)
 		if not _border_active_input.texture_dropped.is_connected(_on_border_active_changed):
 			_border_active_input.texture_dropped.connect(_on_border_active_changed)
+		if not _border_active_input.cleared.is_connected(_on_border_active_cleared):
+			_border_active_input.cleared.connect(_on_border_active_cleared)
 
 # ============================================================
 # PUBLIC
@@ -434,7 +427,6 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_max_alloc_panel.visible = editor and editor.tree and editor.tree.multiallocation
 
-	# Prerequisite UI: shown only for non-root nodes
 	var show_prereq: bool = not node.node_data.is_root
 	_prereq_panel.visible = show_prereq
 	_prereq_count_panel.visible = show_prereq and node.node_data.prerequisite_mode == BayterekNode.PrerequisiteMode.COUNT
@@ -533,12 +525,10 @@ func _on_root_toggled(pressed: bool) -> void:
 		return
 	if _current_prefab:
 		return
-	# Use the property setter so refresh_visuals() is triggered automatically.
 	_current_node.is_root = pressed
 	if editor and editor.has_method("notify_node_root_changed"):
 		editor.notify_node_root_changed(_current_node)
 
-	# Update prerequisite panel visibility based on new root status
 	var show_prereq: bool = not _current_node.node_data.is_root
 	_prereq_panel.visible = show_prereq
 	_prereq_count_panel.visible = show_prereq and _current_node.node_data.prerequisite_mode == BayterekNode.PrerequisiteMode.COUNT
@@ -638,7 +628,7 @@ func _on_position_changed(_value: float) -> void:
 	_notify_editor_dirty()
 
 # ============================================================
-# ICON PICKER (spritesheet-based)
+# ICON PICKER
 # ============================================================
 
 func _on_icon_picker_pressed() -> void:
@@ -658,11 +648,10 @@ func _on_icon_picker_pressed() -> void:
 		icon_selector.load_icons(node_type)
 		icon_selector.popup_centered()
 	else:
-		# Fallback: deferred quick-open
 		call_deferred("_open_quick_open_for_icon")
 
 func _open_quick_open_for_icon() -> void:
-	EditorInterface.popup_quick_open(_on_icon_texture_changed, ["Texture2D"])
+	BayterekPicker.pick_texture(_on_icon_texture_changed, "icon")
 
 func _selected_node_valid() -> bool:
 	if _current_prefab:
@@ -684,7 +673,6 @@ func _on_icon_texture_changed(path: String) -> void:
 	if not tex:
 		return
 
-	# Prefab mode
 	if _current_prefab:
 		_current_prefab.set_icon(tex)
 		_set_input_texture(_icon_input, tex)
@@ -731,7 +719,6 @@ func _on_icon_texture_cleared() -> void:
 	changed.emit()
 	_notify_editor_dirty()
 
-## Called by BayterekIconSelector when a region is selected
 func _on_icon_selected(node_type: int, texture: Texture2D, region: Vector2) -> void:
 	if not texture:
 		return
@@ -767,19 +754,6 @@ func _on_icon_selected(node_type: int, texture: Texture2D, region: Vector2) -> v
 	_set_input_texture(_icon_input, atlas)
 	changed.emit()
 	_notify_editor_dirty()
-
-# ============================================================
-# BORDER — PICKER HANDLERS
-# ============================================================
-
-func _on_border_normal_picker_pressed() -> void:
-	EditorInterface.popup_quick_open(_on_border_normal_changed, ["Texture2D"])
-
-func _on_border_intermediate_picker_pressed() -> void:
-	EditorInterface.popup_quick_open(_on_border_intermediate_changed, ["Texture2D"])
-
-func _on_border_active_picker_pressed() -> void:
-	EditorInterface.popup_quick_open(_on_border_active_changed, ["Texture2D"])
 
 # ============================================================
 # BORDER — TEXTURE HANDLERS
@@ -919,6 +893,29 @@ func _on_border_active_cleared() -> void:
 	_notify_editor_dirty()
 
 # ============================================================
+# PREREQUISITE HANDLERS
+# ============================================================
+
+func _on_prereq_mode_changed(index: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	if _current_prefab:
+		return
+	_current_node.node_data.prerequisite_mode = index as BayterekNode.PrerequisiteMode
+	_prereq_count_panel.visible = (index == BayterekNode.PrerequisiteMode.COUNT)
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_prereq_count_changed(value: float) -> void:
+	if _updating_ui or not _current_node:
+		return
+	if _current_prefab:
+		return
+	_current_node.node_data.prerequisite_count = int(value)
+	changed.emit()
+	_notify_editor_dirty()
+
+# ============================================================
 # ATTRIBUTES
 # ============================================================
 
@@ -943,7 +940,6 @@ func _rebuild_attributes_list() -> void:
 	var ids: Array = tree_attrs.keys()
 	ids.sort()
 
-	# ===== PREFAB MODE =====
 	if _current_prefab:
 		for attr_id in ids:
 			var attr: BayterekAttribute = tree_attrs[attr_id]
@@ -968,7 +964,6 @@ func _rebuild_attributes_list() -> void:
 				block.add_child(info)
 		return
 
-	# ===== NODE MODE =====
 	for attr_id in ids:
 		var attr: BayterekAttribute = tree_attrs[attr_id]
 
@@ -1282,7 +1277,6 @@ func _create_connection_entry(to_id: int) -> void:
 		header_capture.text = ("▼ Node %d" % tid_capture) if pressed else ("▶ Node %d" % tid_capture)
 	)
 
-	# --- Line Type ---
 	var type_row := HBoxContainer.new()
 	content_box.add_child(type_row)
 	var type_label := Label.new()
@@ -1300,7 +1294,6 @@ func _create_connection_entry(to_id: int) -> void:
 	type_dropdown.item_selected.connect(_on_line_type_changed.bind(to_id))
 	type_row.add_child(type_dropdown)
 
-	# --- Line Style (Solid / Dashed / Dotted / Dash-Dot) ---
 	var style_row := HBoxContainer.new()
 	content_box.add_child(style_row)
 	var style_label := Label.new()
@@ -1318,7 +1311,6 @@ func _create_connection_entry(to_id: int) -> void:
 	style_dropdown.item_selected.connect(_on_line_style_changed.bind(to_id))
 	style_row.add_child(style_dropdown)
 
-	# --- Dash Length (Dashed / Dotted / Dash-Dot) ---
 	var dash_len_row := HBoxContainer.new()
 	content_box.add_child(dash_len_row)
 	var dash_len_label := Label.new()
@@ -1337,7 +1329,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	dash_len_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
 
-	# --- Dash Gap (Dashed / Dotted / Dash-Dot) ---
 	var dash_gap_row := HBoxContainer.new()
 	content_box.add_child(dash_gap_row)
 	var dash_gap_label := Label.new()
@@ -1356,7 +1347,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	dash_gap_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
 
-	# --- Curve Height (Bezier only) ---
 	var curve_row := HBoxContainer.new()
 	content_box.add_child(curve_row)
 	var curve_label := Label.new()
@@ -1375,7 +1365,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	curve_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER)
 
-	# --- Step Distance (STEP only) ---
 	var step_row := HBoxContainer.new()
 	content_box.add_child(step_row)
 	var step_label := Label.new()
@@ -1394,7 +1383,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	step_row.visible = (line_data.line_type == BayterekLineData.LineType.STEP)
 
-	# --- Segments (Bezier / Arc only) ---
 	var seg_row := HBoxContainer.new()
 	content_box.add_child(seg_row)
 	var seg_label := Label.new()
@@ -1413,7 +1401,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	seg_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
-	# --- Reversed (Bezier / Arc only) ---
 	var rev_row := HBoxContainer.new()
 	content_box.add_child(rev_row)
 	var rev_label := Label.new()
@@ -1429,7 +1416,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	rev_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
-	# --- Start Arrow ---
 	var start_arrow_row := HBoxContainer.new()
 	content_box.add_child(start_arrow_row)
 	var start_arrow_label := Label.new()
@@ -1449,7 +1435,6 @@ func _create_connection_entry(to_id: int) -> void:
 	start_arrow_dropdown.item_selected.connect(_on_start_arrow_changed.bind(to_id))
 	start_arrow_row.add_child(start_arrow_dropdown)
 
-	# --- End Arrow ---
 	var end_arrow_row := HBoxContainer.new()
 	content_box.add_child(end_arrow_row)
 	var end_arrow_label := Label.new()
@@ -1469,7 +1454,6 @@ func _create_connection_entry(to_id: int) -> void:
 	end_arrow_dropdown.item_selected.connect(_on_end_arrow_changed.bind(to_id))
 	end_arrow_row.add_child(end_arrow_dropdown)
 
-	# --- Arrow Size ---
 	var arrow_size_row := HBoxContainer.new()
 	content_box.add_child(arrow_size_row)
 	var arrow_size_label := Label.new()
@@ -1488,7 +1472,6 @@ func _create_connection_entry(to_id: int) -> void:
 
 	arrow_size_row.visible = (line_data.start_arrow != BayterekLineData.ArrowStyle.NONE or line_data.end_arrow != BayterekLineData.ArrowStyle.NONE)
 
-	# --- Delete Button ---
 	var del_row := HBoxContainer.new()
 	content_box.add_child(del_row)
 	var del_spacer := Control.new()
@@ -1738,22 +1721,3 @@ func _on_reset_attr_pressed(attr_id: String) -> void:
 	_rebuild_attributes_list()
 	editor.set_dirty(true)
 	changed.emit()
-
-func _on_prereq_mode_changed(index: int) -> void:
-	if _updating_ui or not _current_node:
-		return
-	if _current_prefab:
-		return
-	_current_node.node_data.prerequisite_mode = index as BayterekNode.PrerequisiteMode
-	_prereq_count_panel.visible = (index == BayterekNode.PrerequisiteMode.COUNT)
-	changed.emit()
-	_notify_editor_dirty()
-
-func _on_prereq_count_changed(value: float) -> void:
-	if _updating_ui or not _current_node:
-		return
-	if _current_prefab:
-		return
-	_current_node.node_data.prerequisite_count = int(value)
-	changed.emit()
-	_notify_editor_dirty()

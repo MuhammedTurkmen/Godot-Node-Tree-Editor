@@ -233,7 +233,7 @@ func _on_browse_pressed() -> void:
 	call_deferred("_open_texture_picker")
 
 func _open_texture_picker() -> void:
-	EditorInterface.popup_quick_open(_on_texture_picked, ["Texture2D"])
+	BayterekPicker.pick_texture(_on_texture_picked, "icon_selector_spritesheet")
 
 func _on_texture_picked(path: String) -> void:
 	if path.is_empty():

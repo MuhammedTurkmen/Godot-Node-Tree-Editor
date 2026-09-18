@@ -1,10 +1,8 @@
 
-# Bugs
+# Features
 
 ## EASY
-
 [] first created node will be root
-[] border için texture seçici hata veriyor
 
 ## MEDIUM
 
@@ -12,6 +10,16 @@
 
 ## HARD
 
+
+# Bugs 
+
+## EASY
+
+## MEDIUM
+
+
+
+## HARD
 [] tooltip
 	[] node name horizontal alignment 
 	[] attribute value formatting 
