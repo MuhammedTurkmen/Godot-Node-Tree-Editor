@@ -20,6 +20,7 @@ signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 
 var main_container: Control
 var background_container: Control
+var group_frames_container: Control
 var grid: BayterekProceduralGrid
 var decorations_container: Control
 var lines_container: Control
@@ -30,6 +31,7 @@ var nodes_service: BayterekNodesService
 var connections_service: BayterekConnectionsService
 var prefabs_service: BayterekPrefabsService
 var allocation_service: BayterekAllocationService
+var group_frames_service: BayterekGroupFramesService
 var selection_box: BayterekSelectionBox
 
 var undo_redo_provider: Object = null
@@ -294,6 +296,8 @@ func delete_selected() -> void:
 				nodes_service.delete_node(node)
 				node_deleted.emit(node)
 		_refresh_all_allocatable_flags()
+		if group_frames_service:
+			group_frames_service.refresh_all()
 		changed.emit()
 		return
 
@@ -329,6 +333,8 @@ func _do_delete_nodes(nodes: Array) -> void:
 			nodes_service.delete_node(node)
 			node_deleted.emit(node)
 	_refresh_all_allocatable_flags()
+	if group_frames_service:
+		group_frames_service.refresh_all()
 
 func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connections: Array) -> void:
 	for i in range(nodes.size()):
@@ -342,6 +348,8 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 			connections_service.create_connection(from_node, to_node)
 
 	_refresh_all_allocatable_flags()
+	if group_frames_service:
+		group_frames_service.refresh_all()
 
 # ============================================================
 # CONNECTION CREATION (Shift + Click)
@@ -457,6 +465,12 @@ func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> vo
 		nodes_service.update_position(n, new_pos)
 		connections_service.update_lines_of(n)
 
+	# Refresh group frames for the dragging nodes
+	if group_frames_service:
+		for n in _drag_start_positions.keys():
+			if is_instance_valid(n):
+				group_frames_service.on_node_moved(n)
+
 	refresh_tooltip_position()
 
 	if not selected_nodes.is_empty():
@@ -492,6 +506,10 @@ func _on_node_drag_ended(node: BayterekNodeButton) -> void:
 		return
 
 	if not undo_redo_provider or not undo_redo_provider.undo_redo:
+		if group_frames_service:
+			for n in start_positions.keys():
+				if is_instance_valid(n):
+					group_frames_service.on_node_moved(n)
 		changed.emit()
 		return
 
@@ -502,6 +520,12 @@ func _on_node_drag_ended(node: BayterekNodeButton) -> void:
 	undo_redo.add_undo_method(_apply_positions.bind(start_positions))
 
 	undo_redo.commit_action()
+
+	if group_frames_service:
+		for n in start_positions.keys():
+			if is_instance_valid(n):
+				group_frames_service.on_node_moved(n)
+
 	changed.emit()
 
 func _apply_positions(positions: Dictionary) -> void:
@@ -509,6 +533,12 @@ func _apply_positions(positions: Dictionary) -> void:
 		if is_instance_valid(n):
 			nodes_service.update_position(n, positions[n])
 			connections_service.update_lines_of(n)
+
+	# Refresh group frames
+	if group_frames_service:
+		for n in positions.keys():
+			if is_instance_valid(n):
+				group_frames_service.on_node_moved(n)
 
 	if not selected_nodes.is_empty():
 		if selected_nodes.size() == 1:
@@ -566,6 +596,14 @@ func _create_containers() -> void:
 	background_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	background_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	main_container.add_child(background_container)
+
+	# Group frames sit BELOW nodes and lines visually, but must be PASS so
+	# their children (the title bars) can still receive mouse events.
+	group_frames_container = Control.new()
+	group_frames_container.name = "GroupFramesContainer"
+	group_frames_container.mouse_filter = Control.MOUSE_FILTER_PASS
+	group_frames_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	main_container.add_child(group_frames_container)
 
 	decorations_container = Control.new()
 	decorations_container.name = "DecorationsContainer"
@@ -643,6 +681,12 @@ func _create_services() -> void:
 	# Prefabs
 	prefabs_service = BayterekPrefabsService.new(self)
 	prefabs_service.load_tree(_tree_data)
+
+	# Group frames
+	group_frames_service = BayterekGroupFramesService.new(self)
+	group_frames_service.set_container(group_frames_container)
+	group_frames_service.load_tree(_tree_data)
+	group_frames_service.frame_pressed.connect(_on_group_frame_pressed)
 
 	# Allocation
 	allocation_service = BayterekAllocationService.new(self)
@@ -746,6 +790,28 @@ func _drag_drop_data(at_position: Vector2, data: Variant) -> void:
 
 	var tree_pos: Vector2 = screen_to_tree(view_local)
 	prefab_dropped.emit(prefab, tree_pos)
+
+# ============================================================
+# GROUP FRAME CLICK HANDLER
+# ============================================================
+
+func _on_group_frame_pressed(group_id: String, additive: bool) -> void:
+	if not nodes_service:
+		return
+
+	var members: Array = []
+	for node in nodes_service.get_all_nodes():
+		if is_instance_valid(node) and node.node_data and node.node_data.group_id == group_id:
+			members.append(node)
+
+	if members.is_empty():
+		return
+
+	if not additive:
+		clear_selection()
+
+	for node in members:
+		select_node(node, true)
 
 # ============================================================
 # SIGNAL FORWARDING

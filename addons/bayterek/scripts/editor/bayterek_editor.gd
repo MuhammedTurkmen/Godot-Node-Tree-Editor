@@ -667,6 +667,9 @@ func _on_group_dialog_applied(group_name: String, group_color: Color) -> void:
 		if hierarchy:
 			hierarchy.refresh_all()
 
+		if tree_view and tree_view.group_frames_service:
+			tree_view.group_frames_service.rebuild()
+
 		BayterekToast.success(tree_view, "Group \"%s\" created" % group_name)
 		set_dirty(true)
 
@@ -679,6 +682,9 @@ func _on_group_dialog_applied(group_name: String, group_color: Color) -> void:
 
 		if hierarchy:
 			hierarchy.refresh_all()
+
+		if tree_view and tree_view.group_frames_service and not _group_dialog_target_id.is_empty():
+			tree_view.group_frames_service.refresh_group(_group_dialog_target_id)
 
 		set_dirty(true)
 
@@ -773,6 +779,9 @@ func _do_delete_group(group_id: String, delete_nodes: bool) -> void:
 	if hierarchy:
 		hierarchy.refresh_all()
 
+	if tree_view and tree_view.group_frames_service:
+		tree_view.group_frames_service.rebuild()
+
 	set_dirty(true)
 
 	BayterekToast.success(tree_view, "Group deleted")
@@ -795,6 +804,13 @@ func _assign_node_to_group(node: BayterekNodeButton, group_id: String) -> void:
 		if new_group:
 			new_group.add_node_id(node.id)
 
+	# Refresh affected frames
+	if tree_view and tree_view.group_frames_service:
+		if not old_group_id.is_empty():
+			tree_view.group_frames_service.refresh_group(old_group_id)
+		if not group_id.is_empty():
+			tree_view.group_frames_service.refresh_group(group_id)
+
 func assign_selected_to_group(group_id: String) -> void:
 	if not tree_view:
 		return
@@ -807,6 +823,9 @@ func assign_selected_to_group(group_id: String) -> void:
 
 	if hierarchy:
 		hierarchy.refresh_all()
+
+	if tree_view and tree_view.group_frames_service:
+		tree_view.group_frames_service.refresh_all()
 
 	if count > 0:
 		set_dirty(true)
@@ -1177,6 +1196,9 @@ func _delete_selected() -> void:
 	if hierarchy:
 		hierarchy.refresh_all()
 
+	if tree_view and tree_view.group_frames_service:
+		tree_view.group_frames_service.refresh_all()
+
 func _make_selected_root() -> void:
 	if not tree_view:
 		return
@@ -1447,6 +1469,10 @@ func _paste_nodes() -> void:
 	if created.size() > 0:
 		var plural: String = "s" if created.size() > 1 else ""
 		BayterekToast.success(tree_view, "Pasted %d node%s" % [created.size(), plural])
+
+	# Refresh group frames in case pasted nodes brought group membership
+	if tree_view.group_frames_service:
+		tree_view.group_frames_service.refresh_all()
 
 	set_dirty(true)
 
