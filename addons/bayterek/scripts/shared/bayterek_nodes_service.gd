@@ -9,6 +9,7 @@ signal node_hovered(node: BayterekNodeButton, is_hovered: bool)
 signal node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal node_drag_ended(node: BayterekNodeButton)
+signal node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 
 var _nodes: Dictionary = {}
 
@@ -37,6 +38,7 @@ func _create_node_from_data(node_data: BayterekNode) -> BayterekNodeButton:
 	node.drag_started.connect(_on_node_drag_started)
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
+	node.right_clicked.connect(_on_node_right_clicked)
 
 	node.refresh_visuals()
 
@@ -65,6 +67,10 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 	node_data.position = position
 	node_data.max_allocations = 1
 
+	# Auto-root: if the tree has no root yet, make this the first root.
+	if not _tree_has_root():
+		node_data.is_root = true
+
 	# Apply default visuals from tree
 	node_data.apply_defaults_from_tree(_tree_data)
 
@@ -84,6 +90,7 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 	node.drag_started.connect(_on_node_drag_started)
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
+	node.right_clicked.connect(_on_node_right_clicked)
 
 	node.refresh_visuals()
 
@@ -106,6 +113,10 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	node_data.position = position
 	node_data.max_allocations = prefab.max_allocations
 	node_data.attributes = prefab.attributes.duplicate(true)
+
+	# Auto-root: if the tree has no root yet, make this the first root.
+	if not _tree_has_root():
+		node_data.is_root = true
 
 	# Defaults from tree, then override with prefab's visuals
 	node_data.apply_defaults_from_tree(_tree_data)
@@ -133,11 +144,25 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	node.drag_started.connect(_on_node_drag_started)
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
+	node.right_clicked.connect(_on_node_right_clicked)
 
 	node.refresh_visuals()
 
 	node_created.emit(node)
 	return node
+
+# ============================================================
+# AUTO-ROOT HELPER
+# ============================================================
+
+## Returns true if the tree already has at least one node marked as root.
+func _tree_has_root() -> bool:
+	if not _tree_data or not _tree_data.nodes:
+		return false
+	for n in _tree_data.nodes:
+		if n and n.is_root:
+			return true
+	return false
 
 # ============================================================
 # PREFAB VISUAL COPY
@@ -445,6 +470,9 @@ func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> vo
 func _on_node_drag_ended(node: BayterekNodeButton) -> void:
 	node_drag_ended.emit(node)
 
+func _on_node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
+	node_right_clicked.emit(node, screen_pos)
+
 # ============================================================
 # DUPLICATE NODE
 # ============================================================
@@ -520,6 +548,7 @@ func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 
 	node.drag_started.connect(_on_node_drag_started)
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
+	node.right_clicked.connect(_on_node_right_clicked)
 
 	node.refresh_visuals()
 

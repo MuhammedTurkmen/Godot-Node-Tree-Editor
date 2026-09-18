@@ -444,9 +444,9 @@ func load_tree(tree_data: BayterekTree) -> void:
 
 	_set_input_texture(_bg_texture_input, tree_data.bg_texture)
 
-	var small_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.SMALL, Vector2.ZERO)
-	var medium_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.MEDIUM, Vector2.ZERO)
-	var large_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.LARGE, Vector2.ZERO)
+	var small_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.SMALL, Vector2(25, 25))
+	var medium_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.MEDIUM, Vector2(45, 45))
+	var large_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.LARGE, Vector2(60, 60))
 	_small_icon_x.set_value_no_signal(small_icon.x)
 	_small_icon_y.set_value_no_signal(small_icon.y)
 	_medium_icon_x.set_value_no_signal(medium_icon.x)

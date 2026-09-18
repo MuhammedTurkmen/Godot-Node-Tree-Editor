@@ -9,6 +9,7 @@ signal selection_changed(selected: Array)
 signal node_moved(node: BayterekNodeButton)
 signal prefab_dropped(prefab: BayterekPrefab, at_tree_position: Vector2)
 signal changed
+signal node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 
 # Runtime / high-level signals (used by BayterekBuilder)
 signal tree_version_mismatch(tree: BayterekTree, saved_version: int)
@@ -633,6 +634,7 @@ func _create_services() -> void:
 	nodes_service.node_drag_started.connect(_on_node_drag_started)
 	nodes_service.node_dragged.connect(_on_node_dragged)
 	nodes_service.node_drag_ended.connect(_on_node_drag_ended)
+	nodes_service.node_right_clicked.connect(_on_nodes_service_right_clicked)
 
 	# Connections
 	connections_service = BayterekConnectionsService.new(self)
@@ -751,3 +753,6 @@ func _drag_drop_data(at_position: Vector2, data: Variant) -> void:
 
 func _on_nodes_service_node_created(node: BayterekNodeButton) -> void:
 	node_created.emit(node)
+
+func _on_nodes_service_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
+	node_right_clicked.emit(node, screen_pos)

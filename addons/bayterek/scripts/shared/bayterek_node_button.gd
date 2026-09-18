@@ -9,6 +9,7 @@ signal node_hovered(node: BayterekNodeButton, is_hovered: bool)
 signal drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal drag_ended(node: BayterekNodeButton)
+signal right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 
 var node_data: BayterekNode
 var prefab: BayterekPrefab
@@ -381,6 +382,13 @@ func _gui_input(event: InputEvent) -> void:
 				else:
 					pressed.emit()
 				accept_event()
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			# Forward right-click to editor via signal so the context menu
+			# can be shown. We consume the event here since we stop mouse
+			# propagation at this node.
+			var global_pos: Vector2 = get_global_transform() * event.position
+			right_clicked.emit(self, global_pos)
+			accept_event()
 
 	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		if not _is_dragging:

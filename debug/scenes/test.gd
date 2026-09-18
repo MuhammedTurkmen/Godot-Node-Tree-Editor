@@ -6,6 +6,9 @@ extends Control
 ##
 ## The whole scene parses and runs safely even when the plugin is disabled;
 ## autoloads are resolved at runtime.
+##
+## HUD + Confirm button are event-driven: they update only when the
+## allocation service emits a state-change signal (no per-frame polling).
 
 var _loader: Node = null
 var _serializer: Node = null
@@ -258,12 +261,8 @@ func _build_hud() -> void:
 	_hud_panel.add_child(_hud_label)
 
 # ============================================================
-# PROCESS — HUD update
+# HUD UPDATE (event-driven)
 # ============================================================
-
-func _process(_delta: float) -> void:
-	_update_hud()
-	_update_confirm_button_state()
 
 func _update_hud() -> void:
 	if not _hud_panel or not _tree_screen or not _tree_screen.visible:
@@ -296,6 +295,9 @@ func _update_hud() -> void:
 # ============================================================
 
 func _show_browser() -> void:
+	# Disconnect old signals if any
+	_disconnect_allocation_signals()
+
 	# Cleanup current tree view
 	if _tree_view:
 		_tree_view.queue_free()
@@ -397,7 +399,8 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 	_current_group_name = group_name
 	_current_tree_name = tree_name
 
-	# Clear previous tree view
+	# Cleanup old signals + tree view
+	_disconnect_allocation_signals()
 	if _tree_view:
 		_tree_view.queue_free()
 		_tree_view = null
@@ -418,12 +421,82 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 
 	_tree_view.set_tooltip_near_node_right()
 
+	# Connect allocation service signals for event-driven HUD + confirm button
+	_connect_allocation_signals()
+
 	print("Test: Opened tree '%s' (%d nodes)" % [tree_path, tree.nodes.size()])
 
 	# Switch screens
 	_browser_screen.visible = false
 	_tree_screen.visible = true
+
+	# Initial sync
 	_update_refund_button_text()
+	_update_hud()
+	_update_confirm_button_state()
+
+# ============================================================
+# ALLOCATION SIGNAL WIRING (event-driven HUD + confirm)
+# ============================================================
+
+func _connect_allocation_signals() -> void:
+	if not _tree_view or not _tree_view.allocation_service:
+		return
+
+	var svc = _tree_view.allocation_service
+
+	if not svc.node_preallocated.is_connected(_on_allocation_state_changed):
+		svc.node_preallocated.connect(_on_allocation_state_changed)
+	if not svc.node_unpreallocated.is_connected(_on_allocation_state_changed):
+		svc.node_unpreallocated.connect(_on_allocation_state_changed)
+	if not svc.node_refund_added.is_connected(_on_allocation_state_changed):
+		svc.node_refund_added.connect(_on_allocation_state_changed)
+	if not svc.node_refund_removed.is_connected(_on_allocation_state_changed):
+		svc.node_refund_removed.connect(_on_allocation_state_changed)
+	if not svc.refund_mode_entered.is_connected(_on_refund_mode_changed):
+		svc.refund_mode_entered.connect(_on_refund_mode_changed)
+	if not svc.refund_mode_exited.is_connected(_on_refund_mode_changed):
+		svc.refund_mode_exited.connect(_on_refund_mode_changed)
+	if not svc.node_allocated.is_connected(_on_allocation_state_changed):
+		svc.node_allocated.connect(_on_allocation_state_changed)
+	if not svc.node_deallocated.is_connected(_on_allocation_state_changed):
+		svc.node_deallocated.connect(_on_allocation_state_changed)
+
+func _disconnect_allocation_signals() -> void:
+	if not _tree_view or not is_instance_valid(_tree_view):
+		return
+	if not _tree_view.allocation_service:
+		return
+
+	var svc = _tree_view.allocation_service
+
+	if svc.node_preallocated.is_connected(_on_allocation_state_changed):
+		svc.node_preallocated.disconnect(_on_allocation_state_changed)
+	if svc.node_unpreallocated.is_connected(_on_allocation_state_changed):
+		svc.node_unpreallocated.disconnect(_on_allocation_state_changed)
+	if svc.node_refund_added.is_connected(_on_allocation_state_changed):
+		svc.node_refund_added.disconnect(_on_allocation_state_changed)
+	if svc.node_refund_removed.is_connected(_on_allocation_state_changed):
+		svc.node_refund_removed.disconnect(_on_allocation_state_changed)
+	if svc.refund_mode_entered.is_connected(_on_refund_mode_changed):
+		svc.refund_mode_entered.disconnect(_on_refund_mode_changed)
+	if svc.refund_mode_exited.is_connected(_on_refund_mode_changed):
+		svc.refund_mode_exited.disconnect(_on_refund_mode_changed)
+	if svc.node_allocated.is_connected(_on_allocation_state_changed):
+		svc.node_allocated.disconnect(_on_allocation_state_changed)
+	if svc.node_deallocated.is_connected(_on_allocation_state_changed):
+		svc.node_deallocated.disconnect(_on_allocation_state_changed)
+
+## Fired on any preallocation / refund node state change.
+## Has an optional arg so it can be bound to signals with or without params.
+func _on_allocation_state_changed(_node: BayterekNodeButton = null) -> void:
+	_update_hud()
+	_update_confirm_button_state()
+
+## Fired only when refund mode is entered or exited.
+func _on_refund_mode_changed() -> void:
+	_update_refund_button_text()
+	_update_hud()
 	_update_confirm_button_state()
 
 # ============================================================
@@ -445,15 +518,13 @@ func _on_refund_button_pressed() -> void:
 	else:
 		_tree_view.allocation_service.enter_refund_mode()
 
-	_update_refund_button_text()
-	_update_confirm_button_state()
+	# Mode signals will refresh HUD + confirm automatically.
 
 func _on_refund_all_pressed() -> void:
 	if not _tree_view or not _tree_view.allocation_service:
 		return
 	_tree_view.allocation_service.stage_all_for_refund()
-	_update_refund_button_text()
-	_update_confirm_button_state()
+	# refund_added signals will refresh HUD + confirm.
 
 func _on_confirm_pressed() -> void:
 	if not _tree_view or not _tree_view.allocation_service:
@@ -464,8 +535,7 @@ func _on_confirm_pressed() -> void:
 	else:
 		_tree_view.allocation_service.confirm_preallocations()
 
-	_update_refund_button_text()
-	_update_confirm_button_state()
+	# refund_mode_exited signal will refresh HUD + confirm.
 
 func _on_clear_pressed() -> void:
 	if not _tree_view or not _tree_view.allocation_service:
@@ -476,8 +546,7 @@ func _on_clear_pressed() -> void:
 	else:
 		_tree_view.allocation_service.clear_preallocations()
 
-	_update_refund_button_text()
-	_update_confirm_button_state()
+	# Signals will refresh HUD + confirm.
 
 func _on_center_pressed() -> void:
 	if _tree_view:
@@ -506,6 +575,9 @@ func _on_load_pressed() -> void:
 	if _tree_view.allocation_service:
 		_tree_view.allocation_service.reload_from_state()
 	print("Test: Tree state loaded")
+	# reload_from_state doesn't emit signals — manually refresh HUD.
+	_update_hud()
+	_update_confirm_button_state()
 
 func _on_reload_pressed() -> void:
 	if _current_group_name.is_empty() or _current_tree_name.is_empty():

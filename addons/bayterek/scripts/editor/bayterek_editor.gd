@@ -63,6 +63,13 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_PASS
 
+func _exit_tree() -> void:
+	# Context menu lives under the scene-tree root, not under this editor.
+	# Clean it up when the editor goes away.
+	if context_menu and is_instance_valid(context_menu):
+		context_menu.queue_free()
+		context_menu = null
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		call_deferred("_on_editor_resized")
@@ -353,6 +360,7 @@ func _create_tree_view() -> void:
 	tree_view.selection_changed.connect(_on_selection_changed)
 	tree_view.node_moved.connect(_on_node_moved)
 	tree_view.prefab_dropped.connect(_on_prefab_dropped_from_canvas)
+	tree_view.node_right_clicked.connect(_on_node_right_clicked)
 
 	# Default tooltip position
 	tree_view.set_tooltip_near_node_right()
@@ -637,7 +645,7 @@ func _refresh_prefabs_panels() -> void:
 
 func _create_context_menu() -> void:
 	context_menu = PopupMenu.new()
-	context_menu.name = "ContextMenu"
+	context_menu.name = "BayterekContextMenu"
 
 	var submenu := PopupMenu.new()
 	submenu.name = "NewNodeSubmenu"
@@ -650,6 +658,8 @@ func _create_context_menu() -> void:
 	context_menu.add_submenu_node_item("New Node", submenu, 0)
 
 	context_menu.add_separator()
+	context_menu.add_item("Make Root", 150)
+	context_menu.add_separator()
 	context_menu.add_item("Save as Prefab", 100)
 	context_menu.add_item("Save as Copy", 101)
 	context_menu.add_item("Make Unique", 102)
@@ -660,21 +670,46 @@ func _create_context_menu() -> void:
 
 	context_menu.id_pressed.connect(_on_context_menu_pressed)
 
-	add_child(context_menu)
+	# Add the popup to the scene-tree root so its `position` property is
+	# interpreted in GLOBAL screen coordinates. This makes the top-left
+	# corner land exactly under the mouse cursor.
+	var root: Window = get_tree().root
+	if root:
+		root.call_deferred("add_child", context_menu)
+	else:
+		add_child(context_menu)
 
 # ============================================================
 # INPUT
 # ============================================================
 
+func _on_node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
+	if not node or not node.node_data:
+		return
+
+	# If the right-clicked node isn't already selected, select it.
+	if not tree_view.selected_nodes.has(node):
+		if not node.node_data.locked:
+			tree_view.select_node(node)
+
+	_last_click_pos = tree_view.screen_to_tree(screen_pos)
+	_update_context_menu_state()
+
+	# context_menu is a child of the scene-tree root, so `position` is a
+	# global (screen) coordinate. screen_pos already IS global.
+	context_menu.position = Vector2i(screen_pos)
+	context_menu.popup()
+
 func _on_tree_view_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			# Global position of the click on the tree view.
+			var global_pos: Vector2 = tree_view.get_global_transform() * event.position
+
 			_last_click_pos = event.position
 			_update_context_menu_state()
-			context_menu.popup_on_parent(Rect2i(
-				tree_view.get_screen_transform() * event.position,
-				Vector2i.ZERO
-			))
+			context_menu.position = Vector2i(global_pos)
+			context_menu.popup()
 
 func _update_context_menu_state() -> void:
 	if not context_menu:
@@ -688,11 +723,18 @@ func _update_context_menu_state() -> void:
 
 	if has_selection:
 		var any_prefab: bool = false
+		var any_not_root: bool = false
 		for n in tree_view.selected_nodes:
-			if is_instance_valid(n) and n.prefab:
+			if not is_instance_valid(n):
+				continue
+			if n.prefab:
 				any_prefab = true
-				break
+			if n.node_data and not n.node_data.is_root:
+				any_not_root = true
 		_set_item_disabled_by_id(102, not any_prefab)
+		_set_item_disabled_by_id(150, not any_not_root)
+	else:
+		_set_item_disabled_by_id(150, true)
 
 func _set_item_disabled_by_id(item_id: int, disabled: bool) -> void:
 	var idx: int = context_menu.get_item_index(item_id)
@@ -705,6 +747,7 @@ func _on_context_menu_pressed(id: int) -> void:
 		101: _save_selected_as_prefab(true)
 		102: _make_selected_unique()
 		103: _delete_selected()
+		150: _make_selected_root()
 		200: _cleanup_orphan_prefabs()
 
 func _cleanup_orphan_prefabs() -> void:
@@ -771,14 +814,50 @@ func _make_selected_unique() -> void:
 func _delete_selected() -> void:
 	if not tree_view:
 		return
+
 	var count: int = 0
 	for n in tree_view.selected_nodes:
-		if is_instance_valid(n) and not n.node_data.locked:
-			count += 1
+		if not is_instance_valid(n) or n.node_data.locked:
+			continue
+		count += 1
+
 	tree_view.delete_selected()
+
+	if count > 0:
+		# Check if the tree still has a root AFTER deletion. If not,
+		# show a warning instead of the usual info toast.
+		if not _tree_has_root():
+			BayterekToast.warning(tree_view, "Root node deleted. Tree has no root now.")
+		else:
+			var plural: String = "s" if count > 1 else ""
+			BayterekToast.info(tree_view, "Deleted %d node%s" % [count, plural])
+
+func _make_selected_root() -> void:
+	if not tree_view:
+		return
+
+	var count: int = 0
+	for node in tree_view.selected_nodes:
+		if not is_instance_valid(node) or not node.node_data:
+			continue
+		if node.node_data.locked:
+			continue
+		if node.node_data.is_root:
+			continue
+
+		node.node_data.is_root = true
+		if node.has_method("refresh_visuals"):
+			node.refresh_visuals()
+
+		if has_method("notify_node_root_changed"):
+			notify_node_root_changed(node)
+
+		count += 1
+
 	if count > 0:
 		var plural: String = "s" if count > 1 else ""
-		BayterekToast.info(tree_view, "Deleted %d node%s" % [count, plural])
+		BayterekToast.success(tree_view, "Marked %d node%s as root" % [count, plural])
+		set_dirty(true)
 
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
@@ -1015,6 +1094,48 @@ func do_redo() -> void:
 func save_tree() -> void:
 	if not tree:
 		return
+
+	# Check root before saving.
+	if not _tree_has_root():
+		_show_no_root_save_dialog()
+		return
+
+	_perform_save()
+
+## Returns true if the tree contains at least one root node.
+func _tree_has_root() -> bool:
+	if not tree or not tree.nodes:
+		return false
+	for n in tree.nodes:
+		if n and n.is_root:
+			return true
+	return false
+
+## Shows a confirmation dialog when trying to save a tree without a root.
+func _show_no_root_save_dialog() -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "No Root Node"
+	dialog.dialog_text = "This tree has no root node. Trees without a root won't work at runtime.\n\nSave anyway?"
+	dialog.ok_button_text = "Save Anyway"
+	dialog.cancel_button_text = "Cancel"
+	dialog.unresizable = true
+
+	dialog.confirmed.connect(func() -> void:
+		_perform_save()
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func() -> void:
+		dialog.queue_free()
+	)
+	dialog.close_requested.connect(func() -> void:
+		dialog.queue_free()
+	)
+
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(400, 180))
+
+## Actual save logic — called directly or via confirmation dialog.
+func _perform_save() -> void:
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
 	tree.tree_state.version = tree.version

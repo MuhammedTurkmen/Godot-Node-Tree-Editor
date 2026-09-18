@@ -8,5 +8,3 @@ anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
 script = ExtResource("1_f2iej")
-
-[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1162299876]

@@ -2,16 +2,10 @@
 # Features
 
 ## EASY
-[] first created node will be root
-[] border system will be updated
-	[] color based 
-		- one texture and colors for other states
-	[] texture based
-		- texture for all type of states
+[] add to validator new warnings and errors 
 
 ## MEDIUM
-
-
+[] connection lines needs detailed work 
 
 ## HARD
 
@@ -29,3 +23,9 @@
 	[] node name horizontal alignment 
 	[] attribute value formatting 
 	[] connect with localization
+[] line 2d will fixed
+
+# Release
+
+[] GdUnit4: automatic code testing
+[] Export preset: en son dahil edilmeyecek dosyaları belirleme
