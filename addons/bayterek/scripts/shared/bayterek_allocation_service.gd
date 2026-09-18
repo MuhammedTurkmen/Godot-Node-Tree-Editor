@@ -2,20 +2,11 @@
 class_name BayterekAllocationService
 extends BayterekBaseService
 ## Allocation / preallocation / refund management.
-##
-## RULES:
-## - Root nodes can always be allocated
-## - A node can only be allocated if a neighbor (in or out) is already allocated
-## - Deallocation: remaining nodes must still be connected to at least one root (strict graph check)
-## - Multi-allocation: a node can be allocated multiple times (up to max_allocations)
-## - Refund mode: special mode for batch deallocation
 
 signal node_preallocated(node: BayterekNodeButton)
 signal node_unpreallocated(node: BayterekNodeButton)
-
 signal node_allocated(node: BayterekNodeButton)
 signal node_deallocated(node: BayterekNodeButton)
-
 signal refund_mode_entered
 signal refund_mode_exited
 signal node_refund_added(node: BayterekNodeButton)
@@ -32,7 +23,6 @@ var _preallocated_nodes: Array[int] = []
 var _refund_nodes: Array[int] = []
 var _refund_mode: bool = false
 
-# Shortcut — _tree_data.tree_state
 var _allocated_nodes: Array[int]:
 	get: return _tree_data.tree_state.allocated_nodes if _tree_data else []
 var _allocation_level: Dictionary:
@@ -50,7 +40,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 	if not _tree_data.tree_state:
 		_tree_data.tree_state = BayterekTreeState.new()
 
-	# Apply saved allocation state to nodes
 	for node_id in _allocated_nodes:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if not node:
@@ -79,7 +68,6 @@ func on_node_pressed(node: BayterekNodeButton) -> void:
 	else:
 		_handle_direct_click(node)
 
-# --- Preallocation flow ---
 func _handle_preallocation_click(node: BayterekNodeButton) -> void:
 	var pre_size: int = _preallocated_nodes.size()
 
@@ -87,36 +75,64 @@ func _handle_preallocation_click(node: BayterekNodeButton) -> void:
 		_preallocated_nodes.append(node.id)
 		node.preallocated = true
 		node_preallocated.emit(node)
-	elif _is_valid_deallocation(node, _get_remaining_post_unpreallocation(node.id)):
-		_preallocated_nodes.erase(node.id)
-		node.preallocated = false
-		node_unpreallocated.emit(node)
+	else:
+		var closure: Array[int] = _get_unpreallocation_closure(node.id)
+		if not closure.is_empty():
+			for node_id in closure:
+				var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+				if not n:
+					continue
+				_preallocated_nodes.erase(node_id)
+				n.preallocated = false
+				node_unpreallocated.emit(n)
 
-	# CTRL held + new preallocation → confirm immediately
 	if Input.is_key_pressed(KEY_CTRL) and pre_size == 0:
 		confirm_preallocations()
 
-# --- Direct allocation flow ---
 func _handle_direct_click(node: BayterekNodeButton) -> void:
 	if _can_allocate(node):
 		_allocate_node(node)
-	elif _is_valid_deallocation(node, _get_remaining_nodes(node.id)):
-		_deallocate_node(node)
+	else:
+		var closure: Array[int] = _get_deallocation_closure(node.id)
+		if not closure.is_empty():
+			for node_id in closure:
+				var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+				if n:
+					_deallocate_node(n)
 
-# --- Refund mode flow ---
 func _handle_refund_click(node: BayterekNodeButton) -> void:
 	var pre_size: int = _refund_nodes.size()
 
-	if _can_stage_for_refund(node):
-		node.refund = true
-		_refund_nodes.append(node.id)
-		node_refund_added.emit(node)
-	elif _refund_nodes.has(node.id) and _can_unstage_refund(node):
-		node.refund = false
-		_refund_nodes.erase(node.id)
-		node_refund_removed.emit(node)
+	if node.allocated and not _refund_nodes.has(node.id):
+		# STAGE: pull in the full closure of nodes that must go with this one.
+		var closure: Array[int] = _get_refund_closure(node.id)
+		if _is_closure_valid_for_refund(closure):
+			for node_id in closure:
+				if _refund_nodes.has(node_id):
+					continue
+				var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+				if not n:
+					continue
+				n.refund = true
+				_refund_nodes.append(node_id)
+				node_refund_added.emit(n)
+	elif _refund_nodes.has(node.id):
+		# UNSTAGE: remove the closure that was staged by this click.
+		var closure: Array[int] = _get_refund_closure(node.id)
+		var remaining: Array[int] = _allocated_nodes.filter(
+			func(id): return not closure.has(id)
+		)
+		if remaining.is_empty() or _is_valid_deallocation(node, remaining, true):
+			for node_id in closure:
+				if not _refund_nodes.has(node_id):
+					continue
+				var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+				if not n:
+					continue
+				n.refund = false
+				_refund_nodes.erase(node_id)
+				node_refund_removed.emit(n)
 
-	# CTRL batch confirm
 	if Input.is_key_pressed(KEY_CTRL) and pre_size == 0:
 		confirm_refund()
 
@@ -174,12 +190,6 @@ func is_refund_mode() -> bool:
 func get_refund_nodes() -> Array[int]:
 	return _refund_nodes.duplicate()
 
-# ============================================================
-# REFUND ALL
-# ============================================================
-
-## Stages ALL currently allocated nodes for refund.
-## Does not deallocate immediately — user must confirm.
 func stage_all_for_refund() -> void:
 	if not _refund_mode:
 		enter_refund_mode()
@@ -195,6 +205,65 @@ func stage_all_for_refund() -> void:
 		node.refund = true
 		_refund_nodes.append(node_id)
 		node_refund_added.emit(node)
+
+# ============================================================
+# PREREQUISITE LOGIC
+# ============================================================
+
+func _is_prerequisite_satisfied(node: BayterekNode, active_ids: Array, exclude_ids: Array = []) -> bool:
+	if node.is_root:
+		return true
+
+	match node.prerequisite_mode:
+		BayterekNode.PrerequisiteMode.ANY:
+			for nid in node.in_nodes:
+				if exclude_ids.has(nid):
+					continue
+				if active_ids.has(nid):
+					return true
+			for nid in node.out_nodes:
+				if exclude_ids.has(nid):
+					continue
+				if active_ids.has(nid):
+					return true
+			return false
+
+		BayterekNode.PrerequisiteMode.COUNT:
+			if node.in_nodes.is_empty():
+				for nid in node.out_nodes:
+					if exclude_ids.has(nid):
+						continue
+					if active_ids.has(nid):
+						return true
+				return false
+
+			var count: int = 0
+			for nid in node.in_nodes:
+				if exclude_ids.has(nid):
+					continue
+				if active_ids.has(nid):
+					count += 1
+					if count >= node.prerequisite_count:
+						return true
+			return false
+
+		BayterekNode.PrerequisiteMode.ALL:
+			if node.in_nodes.is_empty():
+				for nid in node.out_nodes:
+					if exclude_ids.has(nid):
+						continue
+					if active_ids.has(nid):
+						return true
+				return false
+
+			for nid in node.in_nodes:
+				if exclude_ids.has(nid):
+					continue
+				if not active_ids.has(nid):
+					return false
+			return true
+
+	return true
 
 # ============================================================
 # ALLOCATION CHECKS
@@ -214,17 +283,8 @@ func _can_preallocate(node: BayterekNodeButton) -> bool:
 		if node.allocated or node.preallocated:
 			return false
 
-	if node.is_root:
-		return true
-
-	var active_nodes: Array = _get_active_nodes()
-	for in_id in node.node_data.in_nodes:
-		if active_nodes.has(in_id):
-			return true
-	for out_id in node.node_data.out_nodes:
-		if active_nodes.has(out_id):
-			return true
-	return false
+	var active_ids: Array = _get_active_nodes()
+	return _is_prerequisite_satisfied(node.node_data, active_ids, [])
 
 func _can_allocate(node: BayterekNodeButton) -> bool:
 	if allocation_check and not allocation_check.call():
@@ -240,16 +300,7 @@ func _can_allocate(node: BayterekNodeButton) -> bool:
 		if node.allocated:
 			return false
 
-	if node.is_root:
-		return true
-
-	for in_id in node.node_data.in_nodes:
-		if _allocated_nodes.has(in_id):
-			return true
-	for out_id in node.node_data.out_nodes:
-		if _allocated_nodes.has(out_id):
-			return true
-	return false
+	return _is_prerequisite_satisfied(node.node_data, _allocated_nodes, [])
 
 func _can_stage_for_refund(node: BayterekNodeButton) -> bool:
 	if refund_check and not refund_check.call():
@@ -257,43 +308,36 @@ func _can_stage_for_refund(node: BayterekNodeButton) -> bool:
 	if not node.allocated or _refund_nodes.has(node.id):
 		return false
 
-	if _tree_data.multiallocation:
-		return _is_valid_deallocation(node, _get_remaining_post_deallocation(node.id))
-
-	var remaining: Array[int] = _allocated_nodes.filter(
-		func(id): return id != node.id and not _refund_nodes.has(id)
-	)
-	return _is_valid_deallocation(node, remaining)
+	return _is_valid_deallocation(node, _get_remaining_post_deallocation(node.id))
 
 func _can_unstage_refund(node: BayterekNodeButton) -> bool:
 	var remaining: Array[int] = _allocated_nodes.filter(
 		func(id): return not _refund_nodes.has(id) or id == node.id
 	)
-
 	if remaining.size() == _allocated_nodes.size():
 		return true
-
-	return _is_valid_deallocation(node, remaining)
+	return _is_valid_deallocation(node, remaining, true)
 
 # ============================================================
-# STRICT GRAPH CHECK — _is_valid_deallocation
+# GRAPH + PREREQUISITE VALIDITY
 # ============================================================
 
-func _is_valid_deallocation(node: BayterekNodeButton, remaining: Array[int]) -> bool:
+func _is_valid_deallocation(node: BayterekNodeButton, remaining: Array[int], for_unstage: bool = false) -> bool:
 	if deallocation_check and not deallocation_check.call():
 		return false
 
-	if _refund_mode:
-		if not node.allocated:
-			return false
-	else:
-		if not node.preallocated and not node.allocated:
-			return false
+	if not for_unstage:
+		if _refund_mode:
+			if not node.allocated:
+				return false
+		else:
+			if not node.preallocated and not node.allocated:
+				return false
 
 	if remaining.is_empty():
 		return true
 
-	# All remaining nodes must still be connected to at least one root
+	# 1) Connectivity check
 	var visited: Dictionary = {}
 	var stack: Array = []
 
@@ -322,10 +366,241 @@ func _is_valid_deallocation(node: BayterekNodeButton, remaining: Array[int]) -> 
 		if not visited.has(node_id):
 			return false
 
+	# 2) Prerequisite check
+	for node_id in remaining:
+		var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+		if not n:
+			continue
+		if not _is_prerequisite_satisfied(n.node_data, remaining, []):
+			return false
+
 	return true
 
 # ============================================================
-# HELPERS — REMAINING LISTS
+# CLOSURE COMPUTATION
+# ============================================================
+
+## Returns the set of node IDs that MUST be refunded together with `start_id`
+## because deallocating `start_id` (and, transitively, its closure) would
+## either break prerequisites OR disconnect other nodes from a root.
+##
+## Already-staged refund nodes (`_refund_nodes`) are treated as if they were
+## already removed, so repeated clicks stack cleanly.
+func _get_refund_closure(start_id: int) -> Array[int]:
+	var closure: Array[int] = [start_id]
+	var changed: bool = true
+
+	while changed:
+		changed = false
+
+		# Current remaining = allocated minus closure minus already-staged refunds
+		var active_remaining: Array = _allocated_nodes.filter(
+			func(id): return not closure.has(id) and not _refund_nodes.has(id)
+		)
+
+		# 1) Prerequisite breaks: any remaining node whose prerequisite is
+		#    no longer satisfied (but was satisfied in the full set).
+		for other_id in active_remaining:
+			if closure.has(other_id):
+				continue
+			var other: BayterekNodeButton = _tree_view.nodes_service.get_node(other_id)
+			if not other:
+				continue
+			if not _is_prerequisite_satisfied(other.node_data, active_remaining, []):
+				if _is_prerequisite_satisfied(other.node_data, _allocated_nodes, []):
+					closure.append(other_id)
+					changed = true
+
+		# 2) Connectivity breaks: any remaining node not reachable from a root.
+		var visited: Dictionary = {}
+		var stack: Array = []
+		for node_id in active_remaining:
+			var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+			if n and n.is_root:
+				stack.append(n)
+				visited[n.id] = true
+
+		while not stack.is_empty():
+			var cur: BayterekNodeButton = stack.pop_back()
+			var neighbors: Array = cur.node_data.in_nodes + cur.node_data.out_nodes
+			for nb_id in neighbors:
+				if not active_remaining.has(nb_id):
+					continue
+				if visited.has(nb_id):
+					continue
+				var nb: BayterekNodeButton = _tree_view.nodes_service.get_node(nb_id)
+				if nb:
+					visited[nb_id] = true
+					stack.append(nb)
+
+		for node_id in active_remaining:
+			if not visited.has(node_id) and not closure.has(node_id):
+				closure.append(node_id)
+				changed = true
+
+	return closure
+
+## Same as _get_refund_closure but for preallocated nodes.
+func _get_unpreallocation_closure(start_id: int) -> Array[int]:
+	var active: Array = _get_active_nodes()
+	var closure: Array[int] = [start_id]
+	var changed: bool = true
+
+	while changed:
+		changed = false
+
+		var active_remaining: Array = active.filter(
+			func(id): return not closure.has(id)
+		)
+
+		for other_id in active_remaining:
+			if closure.has(other_id):
+				continue
+			var other: BayterekNodeButton = _tree_view.nodes_service.get_node(other_id)
+			if not other:
+				continue
+			if not _is_prerequisite_satisfied(other.node_data, active_remaining, []):
+				if _is_prerequisite_satisfied(other.node_data, active, []):
+					closure.append(other_id)
+					changed = true
+
+		var visited: Dictionary = {}
+		var stack: Array = []
+		for node_id in active_remaining:
+			var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+			if n and n.is_root:
+				stack.append(n)
+				visited[n.id] = true
+
+		while not stack.is_empty():
+			var cur: BayterekNodeButton = stack.pop_back()
+			var neighbors: Array = cur.node_data.in_nodes + cur.node_data.out_nodes
+			for nb_id in neighbors:
+				if not active_remaining.has(nb_id):
+					continue
+				if visited.has(nb_id):
+					continue
+				var nb: BayterekNodeButton = _tree_view.nodes_service.get_node(nb_id)
+				if nb:
+					visited[nb_id] = true
+					stack.append(nb)
+
+		for node_id in active_remaining:
+			if not visited.has(node_id) and not closure.has(node_id):
+				closure.append(node_id)
+				changed = true
+
+	return closure
+
+## Same as _get_refund_closure but for direct (non-preallocation) clicks.
+func _get_deallocation_closure(start_id: int) -> Array[int]:
+	var closure: Array[int] = [start_id]
+	var changed: bool = true
+
+	while changed:
+		changed = false
+
+		var active_remaining: Array = _allocated_nodes.filter(
+			func(id): return not closure.has(id)
+		)
+
+		for other_id in active_remaining:
+			if closure.has(other_id):
+				continue
+			var other: BayterekNodeButton = _tree_view.nodes_service.get_node(other_id)
+			if not other:
+				continue
+			if not _is_prerequisite_satisfied(other.node_data, active_remaining, []):
+				if _is_prerequisite_satisfied(other.node_data, _allocated_nodes, []):
+					closure.append(other_id)
+					changed = true
+
+		var visited: Dictionary = {}
+		var stack: Array = []
+		for node_id in active_remaining:
+			var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+			if n and n.is_root:
+				stack.append(n)
+				visited[n.id] = true
+
+		while not stack.is_empty():
+			var cur: BayterekNodeButton = stack.pop_back()
+			var neighbors: Array = cur.node_data.in_nodes + cur.node_data.out_nodes
+			for nb_id in neighbors:
+				if not active_remaining.has(nb_id):
+					continue
+				if visited.has(nb_id):
+					continue
+				var nb: BayterekNodeButton = _tree_view.nodes_service.get_node(nb_id)
+				if nb:
+					visited[nb_id] = true
+					stack.append(nb)
+
+		for node_id in active_remaining:
+			if not visited.has(node_id) and not closure.has(node_id):
+				closure.append(node_id)
+				changed = true
+
+	return closure
+
+# ============================================================
+# CLOSURE VALIDITY
+# ============================================================
+
+## Checks whether the given closure can be removed while keeping the
+## remaining graph valid. Nodes already staged in `_refund_nodes` are
+## treated as if they were also part of the removal set, so stacking
+## multiple stage operations behaves correctly.
+func _is_closure_valid_for_refund(closure: Array[int]) -> bool:
+	if closure.is_empty():
+		return false
+
+	# Remaining = allocated minus closure minus already-staged refunds.
+	var remaining: Array[int] = _allocated_nodes.filter(
+		func(id): return not closure.has(id) and not _refund_nodes.has(id)
+	)
+
+	if remaining.is_empty():
+		return true
+
+	# 1) Connectivity check
+	var visited: Dictionary = {}
+	var stack: Array = []
+	for node_id in remaining:
+		var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+		if n and n.is_root:
+			stack.append(n)
+			visited[n.id] = true
+
+	while not stack.is_empty():
+		var cur: BayterekNodeButton = stack.pop_back()
+		var neighbors: Array = cur.node_data.in_nodes + cur.node_data.out_nodes
+		for nb_id in neighbors:
+			if not remaining.has(nb_id):
+				continue
+			if visited.has(nb_id):
+				continue
+			var nb: BayterekNodeButton = _tree_view.nodes_service.get_node(nb_id)
+			if nb:
+				visited[nb_id] = true
+				stack.append(nb)
+
+	for node_id in remaining:
+		if not visited.has(node_id):
+			return false
+
+	# 2) Prerequisite check
+	for node_id in remaining:
+		var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+		if not n:
+			continue
+		if not _is_prerequisite_satisfied(n.node_data, remaining, []):
+			return false
+
+	return true
+
+# ============================================================
+# HELPERS
 # ============================================================
 
 func _get_active_nodes() -> Array[int]:
@@ -378,7 +653,7 @@ func _get_remaining_post_unpreallocation(target_node_id: int) -> Array[int]:
 	return remaining
 
 # ============================================================
-# ALLOCATE / DEALLOCATE (INTERNAL)
+# ALLOCATE / DEALLOCATE
 # ============================================================
 
 func _allocate_node(node: BayterekNodeButton) -> void:
@@ -418,18 +693,14 @@ func _deallocate_node(node: BayterekNodeButton) -> void:
 # RELOAD FROM STATE
 # ============================================================
 
-## Re-applies tree_state to runtime nodes.
-## Call this after loading a save file.
 func reload_from_state() -> void:
 	if not _tree_data or not _tree_data.tree_state:
 		return
 
-	# Clear current runtime state
 	_preallocated_nodes.clear()
 	_refund_nodes.clear()
 	_refund_mode = false
 
-	# Reset all nodes
 	for node in _tree_view.nodes_service.get_all_nodes():
 		node.allocated = false
 		node.preallocated = false
@@ -437,7 +708,6 @@ func reload_from_state() -> void:
 		node.allocation_level = 0
 		node.set_state(Bayterek.AllocationState.NORMAL)
 
-	# Apply loaded state
 	for node_id in _allocated_nodes:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if not node:
@@ -447,7 +717,6 @@ func reload_from_state() -> void:
 		if _tree_data.multiallocation:
 			node.allocation_level = _allocation_level.get(node_id, 1)
 
-	# Refresh neighbors so INTERMEDIATE states appear
 	for node in _tree_view.nodes_service.get_all_nodes():
 		if not node.allocated and not node.preallocated:
 			_tree_view.nodes_service._refresh_node_state(node)

@@ -349,13 +349,20 @@ func _on_node_deallocated(node: BayterekNode) -> void:
 	print("Test: Node deallocated → %s" % node.name)
 
 func _on_refund_button_pressed() -> void:
-	if not _tree_view or not _tree_view.allocation_service:
+	print("[TEST] _on_refund_button_pressed called")
+	if not _tree_view:
+		print("[TEST] _tree_view is NULL")
+		return
+	if not _tree_view.allocation_service:
+		print("[TEST] allocation_service is NULL")
 		return
 
+	print("[TEST] is_refund_mode before = ", _tree_view.allocation_service.is_refund_mode())
 	if _tree_view.allocation_service.is_refund_mode():
 		_tree_view.allocation_service.exit_refund_mode()
 	else:
 		_tree_view.allocation_service.enter_refund_mode()
+	print("[TEST] is_refund_mode after = ", _tree_view.allocation_service.is_refund_mode())
 
 	_update_refund_button_text()
 

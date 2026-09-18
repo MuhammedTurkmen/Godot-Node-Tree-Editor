@@ -3,7 +3,8 @@
 
 ## EASY
 
-[] root node üzerindeki tac güncellenmiyor  
+[] first created node will be root
+[] border için texture seçici hata veriyor
 
 ## MEDIUM
 

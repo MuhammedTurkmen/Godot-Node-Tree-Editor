@@ -30,6 +30,10 @@ var _name_input: LineEdit
 var _description_input: TextEdit
 var _max_alloc_panel: HBoxContainer
 var _max_alloc_input: SpinBox
+var _prereq_panel: HBoxContainer
+var _prereq_dropdown: OptionButton
+var _prereq_count_panel: HBoxContainer
+var _prereq_count_input: SpinBox
 
 var _transform_panel: VBoxContainer
 var _pos_x_input: SpinBox
@@ -173,6 +177,44 @@ func _build_ui() -> void:
 	_max_alloc_input.allow_greater = true
 	_max_alloc_input.value_changed.connect(_on_max_alloc_changed)
 	_max_alloc_panel.add_child(_max_alloc_input)
+
+	# --- Prerequisite (non-root nodes only) ---
+	_prereq_panel = HBoxContainer.new()
+	_info_panel.add_child(_prereq_panel)
+	var prereq_label := Label.new()
+	prereq_label.text = "Prerequisite"
+	prereq_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	prereq_label.tooltip_text = "How many incoming neighbors must be active for this node to be allocatable."
+	prereq_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	_prereq_panel.add_child(prereq_label)
+
+	_prereq_dropdown = OptionButton.new()
+	_prereq_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	_prereq_dropdown.add_item("Any (1+)", 0)
+	_prereq_dropdown.add_item("Count", 1)
+	_prereq_dropdown.add_item("All", 2)
+	_prereq_dropdown.select(0)
+	_prereq_dropdown.item_selected.connect(_on_prereq_mode_changed)
+	_prereq_panel.add_child(_prereq_dropdown)
+
+	_prereq_count_panel = HBoxContainer.new()
+	_info_panel.add_child(_prereq_count_panel)
+	var prereq_count_label := Label.new()
+	prereq_count_label.text = "  Required"
+	prereq_count_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	prereq_count_label.tooltip_text = "Number of incoming neighbors that must be active (only used in Count mode)."
+	prereq_count_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	_prereq_count_panel.add_child(prereq_count_label)
+
+	_prereq_count_input = SpinBox.new()
+	_prereq_count_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	_prereq_count_input.min_value = 1
+	_prereq_count_input.max_value = 99
+	_prereq_count_input.value = 1
+	_prereq_count_input.rounded = true
+	_prereq_count_input.allow_greater = true
+	_prereq_count_input.value_changed.connect(_on_prereq_count_changed)
+	_prereq_count_panel.add_child(_prereq_count_input)
 
 	# --- Transform ---
 	_transform_panel = VBoxContainer.new()
@@ -392,6 +434,14 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_max_alloc_panel.visible = editor and editor.tree and editor.tree.multiallocation
 
+	# Prerequisite UI: shown only for non-root nodes
+	var show_prereq: bool = not node.node_data.is_root
+	_prereq_panel.visible = show_prereq
+	_prereq_count_panel.visible = show_prereq and node.node_data.prerequisite_mode == BayterekNode.PrerequisiteMode.COUNT
+	if show_prereq:
+		_prereq_dropdown.select(int(node.node_data.prerequisite_mode))
+		_prereq_count_input.set_value_no_signal(node.node_data.prerequisite_count)
+
 	_updating_ui = false
 
 	_rebuild_attributes_list()
@@ -418,6 +468,8 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_transform_panel.visible = false
 	_connections_panel.visible = false
 	_max_alloc_panel.visible = false
+	_prereq_panel.visible = false
+	_prereq_count_panel.visible = false
 
 	_updating_ui = true
 
@@ -485,6 +537,12 @@ func _on_root_toggled(pressed: bool) -> void:
 	_current_node.is_root = pressed
 	if editor and editor.has_method("notify_node_root_changed"):
 		editor.notify_node_root_changed(_current_node)
+
+	# Update prerequisite panel visibility based on new root status
+	var show_prereq: bool = not _current_node.node_data.is_root
+	_prereq_panel.visible = show_prereq
+	_prereq_count_panel.visible = show_prereq and _current_node.node_data.prerequisite_mode == BayterekNode.PrerequisiteMode.COUNT
+
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -1680,3 +1738,22 @@ func _on_reset_attr_pressed(attr_id: String) -> void:
 	_rebuild_attributes_list()
 	editor.set_dirty(true)
 	changed.emit()
+
+func _on_prereq_mode_changed(index: int) -> void:
+	if _updating_ui or not _current_node:
+		return
+	if _current_prefab:
+		return
+	_current_node.node_data.prerequisite_mode = index as BayterekNode.PrerequisiteMode
+	_prereq_count_panel.visible = (index == BayterekNode.PrerequisiteMode.COUNT)
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_prereq_count_changed(value: float) -> void:
+	if _updating_ui or not _current_node:
+		return
+	if _current_prefab:
+		return
+	_current_node.node_data.prerequisite_count = int(value)
+	changed.emit()
+	_notify_editor_dirty()

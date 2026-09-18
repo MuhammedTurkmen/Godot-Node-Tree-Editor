@@ -35,7 +35,7 @@ project/assembly_name="TestProject"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/bayterek/plugin.cfg")
+enabled=PackedStringArray("res://addons/bayterek/plugin.cfg", "res://addons/file_exporter/plugin.cfg")
 
 [physics]
 

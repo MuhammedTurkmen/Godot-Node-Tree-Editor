@@ -173,9 +173,9 @@ func refresh_visuals() -> void:
 
 	# Locked → semi transparent
 	if node_data.locked:
-		modulate = Color(1, 1, 1, 0.5)
+		modulate.a = 0.5
 	else:
-		modulate = Color.WHITE
+		modulate.a = 1.0
 
 func _apply_state_border() -> void:
 	if not node_data:
@@ -202,27 +202,33 @@ func _apply_state_border() -> void:
 		_apply_state_fallback()
 
 ## Fallback visual when no border textures are assigned.
+## Tints the whole node so allocation state is always visible.
 func _apply_state_fallback() -> void:
 	var tint: Color = Color.WHITE
 
 	match state:
 		Bayterek.AllocationState.NORMAL:
-			tint = Color(0.5, 0.5, 0.5)
+			tint = Color(0.55, 0.55, 0.55)
 		Bayterek.AllocationState.INTERMEDIATE:
-			tint = Color(0.7, 0.7, 0.7)
+			tint = Color(0.85, 0.85, 0.85)
 		Bayterek.AllocationState.ACTIVE:
-			tint = Color(1, 1, 1)
+			tint = Color.WHITE
 		Bayterek.AllocationState.PREALLOCATED_INTERMEDIATE:
-			tint = Color(1, 0.9, 0.5)
+			tint = Color(1.0, 0.95, 0.6)
 		Bayterek.AllocationState.PREALLOCATED_ACTIVE:
-			tint = Color(1, 0.8, 0.2)
+			tint = Color(1.0, 0.85, 0.3)
 		Bayterek.AllocationState.REFUND:
-			tint = Color(1, 0.4, 0.4)
+			tint = Color(1.0, 0.4, 0.4)
 
 	if _icon_rect:
 		_icon_rect.modulate = tint
 	if _icon_fallback:
 		_icon_fallback.modulate = tint
+
+	# Node-level tint so state is visible even when the icon texture is
+	# already colored. Skip if a border texture carries the state instead.
+	if not _border_rect or not _border_rect.texture:
+		modulate = tint
 
 func _update_border(texture: Texture2D, color: Color = Color.WHITE) -> void:
 	if not _border_rect:
@@ -314,6 +320,18 @@ func format_tooltip() -> String:
 		]
 	else:
 		text += "[b][color=#f9e6ca]%s[/color][/b]\n\n" % display_name
+
+	# Prerequisite requirement (only shown for non-root nodes with
+	# a non-default prerequisite mode).
+	if not node_data.is_root and node_data.prerequisite_mode != BayterekNode.PrerequisiteMode.ANY:
+		var mode_text: String = ""
+		match node_data.prerequisite_mode:
+			BayterekNode.PrerequisiteMode.COUNT:
+				mode_text = "Requires: %d incoming active" % node_data.prerequisite_count
+			BayterekNode.PrerequisiteMode.ALL:
+				mode_text = "Requires: all incoming active"
+		if not mode_text.is_empty():
+			text += "[color=#c9a227]%s[/color]\n\n" % mode_text
 
 	text += _format_attributes()
 
