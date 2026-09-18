@@ -45,6 +45,38 @@ func _create_node_from_data(node_data: BayterekNode) -> BayterekNodeButton:
 	node_created.emit(node)
 	return node
 
+## Creates a node from pre-built node_data. Used by paste.
+## Does NOT auto-root. Does NOT append to _tree_data.nodes
+## (the caller's undo system handles that via restore_node).
+func create_node_from_data_paste(node_data: BayterekNode) -> BayterekNodeButton:
+	if not node_data:
+		return null
+
+	var node := _build_node(node_data.type)
+	if not node:
+		return null
+
+	node.node_data = node_data
+	node.tree_data = _tree_data
+	node.name = "Node_%d" % node_data.id
+
+	_position_node(node, node_data.position)
+
+	_tree_view.nodes_container.add_child(node)
+	_nodes[node_data.id] = node
+
+	node.pressed.connect(_on_node_pressed.bind(node))
+	node.node_hovered.connect(_on_node_hovered)
+	node.drag_started.connect(_on_node_drag_started)
+	node.dragged.connect(_on_node_dragged)
+	node.drag_ended.connect(_on_node_drag_ended)
+	node.right_clicked.connect(_on_node_right_clicked)
+
+	node.refresh_visuals()
+
+	node_created.emit(node)
+	return node
+
 func get_node(node_id: int) -> BayterekNodeButton:
 	return _nodes.get(node_id, null)
 

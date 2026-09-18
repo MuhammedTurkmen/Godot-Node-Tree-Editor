@@ -957,6 +957,12 @@ func _input(event: InputEvent) -> void:
 	elif ctrl and key == KEY_D:
 		duplicate_selected_nodes()
 		get_viewport().set_input_as_handled()
+	elif ctrl and key == KEY_C:
+		_copy_selected_nodes()
+		get_viewport().set_input_as_handled()
+	elif ctrl and key == KEY_V:
+		_paste_nodes()
+		get_viewport().set_input_as_handled()
 	elif key == KEY_C and not ctrl and not shift:
 		_toggle_chain_connection_mode()
 		get_viewport().set_input_as_handled()
@@ -1264,6 +1270,392 @@ func _on_tree_view_changed() -> void:
 
 func request_close() -> void:
 	closed.emit()
+
+# ============================================================
+# COPY / PASTE
+# ============================================================
+
+## Copies the currently selected nodes to the OS clipboard as JSON.
+## Only regular nodes (not decorations) are supported.
+func _copy_selected_nodes() -> void:
+	if not tree_view or tree_view.selected_nodes.is_empty():
+		BayterekToast.info(tree_view, "Nothing to copy")
+		return
+
+	# Collect selected non-decoration nodes
+	var selected: Array = []
+	for n in tree_view.selected_nodes:
+		if not is_instance_valid(n) or not n.node_data:
+			continue
+		if n.type == BayterekNode.NodeType.DECORATION:
+			continue
+		selected.append(n)
+
+	if selected.is_empty():
+		BayterekToast.warning(tree_view, "Decorations cannot be copied")
+		return
+
+	# Build the payload
+	var copied_ids: Array = []
+	var nodes_data: Array = []
+
+	for node in selected:
+		copied_ids.append(node.id)
+		nodes_data.append(_node_to_dict(node.node_data))
+
+	var payload: Dictionary = {
+		"bayterek_version": 1,
+		"source_tree_path": tree_path,
+		"copied_ids": copied_ids,
+		"nodes": nodes_data,
+	}
+
+	var json: String = JSON.stringify(payload)
+	DisplayServer.clipboard_set(json)
+
+	var plural: String = "s" if selected.size() > 1 else ""
+	BayterekToast.success(tree_view, "Copied %d node%s" % [selected.size(), plural])
+
+## Serializes a BayterekNode into a plain Dictionary suitable for JSON.
+func _node_to_dict(node_data: BayterekNode) -> Dictionary:
+	var d: Dictionary = {}
+
+	# Basic fields
+	d["name"] = node_data.name
+	d["description"] = node_data.description
+	d["type"] = int(node_data.type)
+	d["position"] = {"x": node_data.position.x, "y": node_data.position.y}
+	d["max_allocations"] = node_data.max_allocations
+	d["is_root"] = node_data.is_root
+	d["locked"] = node_data.locked
+	d["external_id"] = node_data.external_id
+	d["reference_id"] = node_data.reference_id
+
+	# Attributes + overrides
+	d["attributes"] = _deep_copy_json(node_data.attributes)
+	d["overridden_attributes"] = _deep_copy_json(node_data.overridden_attributes)
+
+	# Connections (IDs will be remapped on paste)
+	d["out_nodes"] = node_data.out_nodes.duplicate()
+	d["in_nodes"] = node_data.in_nodes.duplicate()
+
+	# Line data per outgoing connection
+	var line_data_dict: Dictionary = {}
+	for to_id in node_data.line_data.keys():
+		var ld = node_data.line_data[to_id]
+		if ld is BayterekLineData:
+			line_data_dict[str(to_id)] = _line_data_to_dict(ld)
+	d["line_data"] = line_data_dict
+
+	# Prerequisite
+	d["prerequisite_mode"] = int(node_data.prerequisite_mode)
+	d["prerequisite_count"] = node_data.prerequisite_count
+
+	# Visuals — textures stored as resource paths
+	d["border_texture_locked"] = _tex_to_path(node_data.border_texture_locked)
+	d["border_texture_normal"] = _tex_to_path(node_data.border_texture_normal)
+	d["border_texture_hover"] = _tex_to_path(node_data.border_texture_hover)
+	d["border_texture_max_level"] = _tex_to_path(node_data.border_texture_max_level)
+	d["icon_texture_locked"] = _tex_to_path(node_data.icon_texture_locked)
+	d["icon_texture_normal"] = _tex_to_path(node_data.icon_texture_normal)
+	d["icon_texture_hover"] = _tex_to_path(node_data.icon_texture_hover)
+	d["icon_texture_max_level"] = _tex_to_path(node_data.icon_texture_max_level)
+
+	# Colors
+	d["border_color_locked"] = _color_to_dict(node_data.border_color_locked)
+	d["border_color_normal"] = _color_to_dict(node_data.border_color_normal)
+	d["border_color_hover"] = _color_to_dict(node_data.border_color_hover)
+	d["border_color_allocate"] = _color_to_dict(node_data.border_color_allocate)
+	d["border_color_refund"] = _color_to_dict(node_data.border_color_refund)
+	d["border_color_max_level"] = _color_to_dict(node_data.border_color_max_level)
+	d["border_color_allocatable"] = _color_to_dict(node_data.border_color_allocatable)
+	d["border_color_not_allocatable"] = _color_to_dict(node_data.border_color_not_allocatable)
+
+	d["icon_color_locked"] = _color_to_dict(node_data.icon_color_locked)
+	d["icon_color_normal"] = _color_to_dict(node_data.icon_color_normal)
+	d["icon_color_hover"] = _color_to_dict(node_data.icon_color_hover)
+	d["icon_color_allocate"] = _color_to_dict(node_data.icon_color_allocate)
+	d["icon_color_refund"] = _color_to_dict(node_data.icon_color_refund)
+	d["icon_color_max_level"] = _color_to_dict(node_data.icon_color_max_level)
+	d["icon_color_allocatable"] = _color_to_dict(node_data.icon_color_allocatable)
+	d["icon_color_not_allocatable"] = _color_to_dict(node_data.icon_color_not_allocatable)
+
+	return d
+
+func _line_data_to_dict(ld: BayterekLineData) -> Dictionary:
+	return {
+		"line_type": int(ld.line_type),
+		"line_style": int(ld.line_style),
+		"curve_height": ld.curve_height,
+		"segments": ld.segments,
+		"reversed": ld.reversed,
+		"step_distance": ld.step_distance,
+		"dash_length": ld.dash_length,
+		"dash_gap": ld.dash_gap,
+		"start_arrow": int(ld.start_arrow),
+		"end_arrow": int(ld.end_arrow),
+		"arrow_size": ld.arrow_size,
+	}
+
+## Reads the clipboard, validates the payload, and creates new nodes.
+## New IDs are assigned, positions offset to the mouse, and connections
+## between copied nodes are preserved.
+func _paste_nodes() -> void:
+	if not tree_view or not tree_view.nodes_service:
+		return
+
+	var clipboard_text: String = DisplayServer.clipboard_get()
+	if clipboard_text.is_empty():
+		BayterekToast.info(tree_view, "Clipboard is empty")
+		return
+
+	# Parse JSON
+	var parsed = JSON.parse_string(clipboard_text)
+	if parsed == null or not parsed is Dictionary:
+		BayterekToast.error(tree_view, "Clipboard does not contain Bayterek nodes")
+		return
+
+	var payload: Dictionary = parsed
+	if payload.get("bayterek_version", 0) != 1:
+		BayterekToast.error(tree_view, "Unsupported clipboard version")
+		return
+
+	var nodes_data: Array = payload.get("nodes", [])
+	var copied_ids: Array = payload.get("copied_ids", [])
+
+	if nodes_data.is_empty() or copied_ids.size() != nodes_data.size():
+		BayterekToast.error(tree_view, "Invalid clipboard data")
+		return
+
+	# --- Compute paste offset ---
+	# The paste target is the mouse position on the tree canvas.
+	var mouse_local: Vector2 = tree_view.get_local_mouse_position()
+	var mouse_tree: Vector2 = tree_view.screen_to_tree(mouse_local)
+
+	# Find the top-left-most copied node (relative anchor).
+	var min_x: float = INF
+	var min_y: float = INF
+	for nd in nodes_data:
+		var pos: Dictionary = nd.get("position", {})
+		var px: float = float(pos.get("x", 0.0))
+		var py: float = float(pos.get("y", 0.0))
+		min_x = minf(min_x, px)
+		min_y = minf(min_y, py)
+
+	var anchor: Vector2 = Vector2(min_x, min_y)
+	var paste_offset: Vector2 = mouse_tree - anchor
+
+	# --- Assign new IDs ---
+	var id_map: Dictionary = {}   # old_id -> new_id
+	for i in range(nodes_data.size()):
+		var old_id: int = int(copied_ids[i])
+		var new_id: int = tree_view._tree_data.get_next_id()
+		id_map[old_id] = new_id
+
+	# --- Create nodes ---
+	var created: Array = []
+	undo_redo.create_action("Paste Nodes")
+
+	for i in range(nodes_data.size()):
+		var nd: Dictionary = nodes_data[i]
+		var old_id: int = int(copied_ids[i])
+		var new_id: int = id_map[old_id]
+
+		# Build a BayterekNode from the dict
+		var node_data: BayterekNode = _dict_to_node(nd, new_id, id_map, paste_offset)
+
+		# Create the visual node via nodes_service (no auto-root here;
+		# pasted nodes keep their original is_root flag)
+		var node: BayterekNodeButton = tree_view.nodes_service.create_node_from_data_paste(node_data)
+		if not node:
+			continue
+
+		created.append(node)
+		undo_redo.add_do_method(_do_restore_duplicate.bind(node))
+		undo_redo.add_undo_method(_do_remove_duplicate.bind(node))
+
+	# Restore internal connections between pasted nodes
+	for i in range(nodes_data.size()):
+		var nd: Dictionary = nodes_data[i]
+		var old_id: int = int(copied_ids[i])
+		var new_from_id: int = id_map[old_id]
+
+		var out_list: Array = nd.get("out_nodes", [])
+		for old_to_id_v in out_list:
+			var old_to_id: int = int(old_to_id_v)
+			if not id_map.has(old_to_id):
+				continue
+			var new_to_id: int = id_map[old_to_id]
+			undo_redo.add_do_method(_do_paste_connection.bind(new_from_id, new_to_id))
+
+	undo_redo.commit_action()
+
+	# Select the pasted nodes
+	tree_view.clear_selection()
+	for n in created:
+		if is_instance_valid(n):
+			tree_view.select_node(n, true)
+
+	if created.size() > 0:
+		var plural: String = "s" if created.size() > 1 else ""
+		BayterekToast.success(tree_view, "Pasted %d node%s" % [created.size(), plural])
+
+	set_dirty(true)
+
+func _do_paste_connection(from_id: int, to_id: int) -> void:
+	if not tree_view or not tree_view.connections_service:
+		return
+	var from_node: BayterekNodeButton = tree_view.nodes_service.get_node(from_id)
+	var to_node: BayterekNodeButton = tree_view.nodes_service.get_node(to_id)
+	if from_node and to_node:
+		tree_view.connections_service.create_connection(from_node, to_node)
+
+## Reconstructs a BayterekNode from a dictionary. Handles ID remapping
+## for out_nodes/in_nodes, prefab reference resolution, and position offset.
+func _dict_to_node(nd: Dictionary, new_id: int, id_map: Dictionary, offset: Vector2) -> BayterekNode:
+	var node_data: BayterekNode = BayterekNode.new()
+
+	node_data.id = new_id
+	node_data.name = nd.get("name", "")
+	node_data.description = nd.get("description", "")
+	node_data.type = int(nd.get("type", 0)) as BayterekNode.NodeType
+
+	var pos: Dictionary = nd.get("position", {})
+	var px: float = float(pos.get("x", 0.0)) + offset.x
+	var py: float = float(pos.get("y", 0.0)) + offset.y
+	node_data.position = Vector2(px, py)
+
+	node_data.max_allocations = int(nd.get("max_allocations", 1))
+	node_data.is_root = bool(nd.get("is_root", false))
+	node_data.locked = bool(nd.get("locked", false))
+	node_data.external_id = nd.get("external_id", "")
+
+	# Reference ID — only keep if the prefab actually exists in this tree
+	var old_ref: String = nd.get("reference_id", "")
+	var prefab_exists: bool = false
+	if not old_ref.is_empty() and tree_view and tree_view.prefabs_service:
+		prefab_exists = tree_view.prefabs_service.get_prefab_by_reference_id(old_ref) != null
+
+	if prefab_exists:
+		node_data.reference_id = old_ref
+	else:
+		node_data.reference_id = ""
+
+	# Attributes + overrides
+	node_data.attributes = _deep_copy_json(nd.get("attributes", {}))
+	node_data.overridden_attributes = _deep_copy_json(nd.get("overridden_attributes", {}))
+
+	# Prerequisite
+	node_data.prerequisite_mode = int(nd.get("prerequisite_mode", 0)) as BayterekNode.PrerequisiteMode
+	node_data.prerequisite_count = int(nd.get("prerequisite_count", 1))
+
+	# Visuals — restore textures from paths
+	node_data.border_texture_locked = _path_to_tex(nd.get("border_texture_locked", ""))
+	node_data.border_texture_normal = _path_to_tex(nd.get("border_texture_normal", ""))
+	node_data.border_texture_hover = _path_to_tex(nd.get("border_texture_hover", ""))
+	node_data.border_texture_max_level = _path_to_tex(nd.get("border_texture_max_level", ""))
+	node_data.icon_texture_locked = _path_to_tex(nd.get("icon_texture_locked", ""))
+	node_data.icon_texture_normal = _path_to_tex(nd.get("icon_texture_normal", ""))
+	node_data.icon_texture_hover = _path_to_tex(nd.get("icon_texture_hover", ""))
+	node_data.icon_texture_max_level = _path_to_tex(nd.get("icon_texture_max_level", ""))
+
+	# Colors
+	node_data.border_color_locked = _dict_to_color(nd.get("border_color_locked", {}), node_data.border_color_locked)
+	node_data.border_color_normal = _dict_to_color(nd.get("border_color_normal", {}), node_data.border_color_normal)
+	node_data.border_color_hover = _dict_to_color(nd.get("border_color_hover", {}), node_data.border_color_hover)
+	node_data.border_color_allocate = _dict_to_color(nd.get("border_color_allocate", {}), node_data.border_color_allocate)
+	node_data.border_color_refund = _dict_to_color(nd.get("border_color_refund", {}), node_data.border_color_refund)
+	node_data.border_color_max_level = _dict_to_color(nd.get("border_color_max_level", {}), node_data.border_color_max_level)
+	node_data.border_color_allocatable = _dict_to_color(nd.get("border_color_allocatable", {}), node_data.border_color_allocatable)
+	node_data.border_color_not_allocatable = _dict_to_color(nd.get("border_color_not_allocatable", {}), node_data.border_color_not_allocatable)
+
+	node_data.icon_color_locked = _dict_to_color(nd.get("icon_color_locked", {}), node_data.icon_color_locked)
+	node_data.icon_color_normal = _dict_to_color(nd.get("icon_color_normal", {}), node_data.icon_color_normal)
+	node_data.icon_color_hover = _dict_to_color(nd.get("icon_color_hover", {}), node_data.icon_color_hover)
+	node_data.icon_color_allocate = _dict_to_color(nd.get("icon_color_allocate", {}), node_data.icon_color_allocate)
+	node_data.icon_color_refund = _dict_to_color(nd.get("icon_color_refund", {}), node_data.icon_color_refund)
+	node_data.icon_color_max_level = _dict_to_color(nd.get("icon_color_max_level", {}), node_data.icon_color_max_level)
+	node_data.icon_color_allocatable = _dict_to_color(nd.get("icon_color_allocatable", {}), node_data.icon_color_allocatable)
+	node_data.icon_color_not_allocatable = _dict_to_color(nd.get("icon_color_not_allocatable", {}), node_data.icon_color_not_allocatable)
+
+	# Line data — remap to new IDs
+	var line_data_dict: Dictionary = nd.get("line_data", {})
+	for old_to_id_str in line_data_dict.keys():
+		var old_to_id: int = int(old_to_id_str)
+		if not id_map.has(old_to_id):
+			continue
+		var new_to_id: int = id_map[old_to_id]
+		var ld_dict: Dictionary = line_data_dict[old_to_id_str]
+		node_data.line_data[new_to_id] = _dict_to_line_data(ld_dict)
+
+	return node_data
+
+func _dict_to_line_data(d: Dictionary) -> BayterekLineData:
+	var ld := BayterekLineData.new()
+	ld.line_type = int(d.get("line_type", 0)) as BayterekLineData.LineType
+	ld.line_style = int(d.get("line_style", 0)) as BayterekLineData.LineStyle
+	ld.curve_height = float(d.get("curve_height", 48.0))
+	ld.segments = int(d.get("segments", 16))
+	ld.reversed = bool(d.get("reversed", false))
+	ld.step_distance = float(d.get("step_distance", 48.0))
+	ld.dash_length = float(d.get("dash_length", 12.0))
+	ld.dash_gap = float(d.get("dash_gap", 6.0))
+	ld.start_arrow = int(d.get("start_arrow", 0)) as BayterekLineData.ArrowStyle
+	ld.end_arrow = int(d.get("end_arrow", 0)) as BayterekLineData.ArrowStyle
+	ld.arrow_size = float(d.get("arrow_size", 12.0))
+	return ld
+
+# --- JSON helpers ---
+
+func _deep_copy_json(value: Variant) -> Variant:
+	# Recursively converts Godot objects into JSON-safe primitives.
+	# Attributes might be ints, floats, strings, Arrays, or Dictionaries.
+	match typeof(value):
+		TYPE_DICTIONARY:
+			var out: Dictionary = {}
+			for k in value.keys():
+				out[str(k)] = _deep_copy_json(value[k])
+			return out
+		TYPE_ARRAY:
+			var out_arr: Array = []
+			for v in value:
+				out_arr.append(_deep_copy_json(v))
+			return out_arr
+		TYPE_VECTOR2:
+			return {"x": value.x, "y": value.y}
+		TYPE_COLOR:
+			return _color_to_dict(value)
+		TYPE_INT, TYPE_FLOAT, TYPE_STRING, TYPE_BOOL:
+			return value
+		TYPE_NIL:
+			return null
+		_:
+			return str(value)
+
+func _tex_to_path(tex: Texture2D) -> String:
+	if tex == null:
+		return ""
+	return tex.resource_path
+
+func _path_to_tex(path: String) -> Texture2D:
+	if path.is_empty():
+		return null
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
+
+func _color_to_dict(c: Color) -> Dictionary:
+	return {"r": c.r, "g": c.g, "b": c.b, "a": c.a}
+
+func _dict_to_color(d: Variant, fallback: Color) -> Color:
+	if not d is Dictionary:
+		return fallback
+	return Color(
+		float(d.get("r", fallback.r)),
+		float(d.get("g", fallback.g)),
+		float(d.get("b", fallback.b)),
+		float(d.get("a", fallback.a))
+	)
 
 # ============================================================
 # DUPLICATE NODES

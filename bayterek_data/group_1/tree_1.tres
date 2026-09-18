@@ -12,8 +12,8 @@ script = ExtResource("2_p7r5a")
 script = ExtResource("1_d7nu5")
 is_root = true
 id = 13
-name = "test"
-description = "açıklama"
+name = "değiştirildi"
+description = "açıklama ekleniyor"
 type = 2
 position = Vector2(-278.21558, -73.93945)
 line_data = {
@@ -59,7 +59,7 @@ border_texture_max_level = ExtResource("2_tyv6k")
 script = ExtResource("2_y2ort")
 id = "tree_1"
 name = "Tree 1"
-id_counter = 15
+id_counter = 18
 icon_sizes = {
 0: Vector2(25, 25),
 1: Vector2(45, 45),
