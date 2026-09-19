@@ -22,6 +22,7 @@ const CM_DELETE := 103
 const CM_MAKE_ROOT := 150
 const CM_DUPLICATE := 151
 const CM_ASSIGN_GROUP := 160
+const CM_ADD_TEST_FRAME := 170
 const CM_CLEANUP_ORPHANS := 200
 
 # Group submenu IDs
@@ -967,6 +968,7 @@ func _create_context_menu() -> void:
 	context_menu.add_separator()
 	context_menu.add_item("Delete", CM_DELETE)
 	context_menu.add_separator()
+	context_menu.add_item("Add Test Frame Here", CM_ADD_TEST_FRAME)
 	context_menu.add_item("Cleanup Orphan Prefabs", CM_CLEANUP_ORPHANS)
 
 	context_menu.id_pressed.connect(_on_context_menu_pressed)
@@ -1048,6 +1050,7 @@ func _on_context_menu_pressed(id: int) -> void:
 		CM_DELETE: _delete_selected()
 		CM_MAKE_ROOT: _make_selected_root()
 		CM_DUPLICATE: duplicate_selected_nodes()
+		CM_ADD_TEST_FRAME: _add_test_frame_at_mouse()
 		CM_CLEANUP_ORPHANS: _cleanup_orphan_prefabs()
 
 # ============================================================
@@ -1111,6 +1114,15 @@ func _on_group_submenu_pressed(id: int) -> void:
 # ============================================================
 # PREFAB / ROOT OPERATIONS
 # ============================================================
+
+func _add_test_frame_at_mouse() -> void:
+	if not tree_view:
+		return
+	# _last_click_pos is tree_view-local; convert to screen first
+	var screen_pos: Vector2 = tree_view.get_global_transform() * _last_click_pos
+	tree_view.add_test_frame_at_screen(screen_pos)
+	set_dirty(true)
+	BayterekToast.info(tree_view, "Added test frame")
 
 func _cleanup_orphan_prefabs() -> void:
 	if not tree_view or not tree_view.prefabs_service:
