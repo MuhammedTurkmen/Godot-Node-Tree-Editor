@@ -39,6 +39,13 @@ enum TooltipCorner {
 	BOTTOM_RIGHT,
 }
 
+## Alignment for tooltip header, body, and footer.
+enum TooltipAlign {
+	LEFT,
+	CENTER,
+	RIGHT,
+}
+
 # --- Static editor-side registry ---
 
 static var _editor_registry: BayterekRegistry = null

@@ -1,9 +1,17 @@
 [gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://b6yb5nyvedfkp"]
 
+[ext_resource type="Script" uid="uid://hqjiiihenipg" path="res://addons/bayterek/scripts/resources/bayterek_attribute.gd" id="1_tyv6k"]
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_y2ort"]
 [ext_resource type="Script" uid="uid://de6ng2pbq3gss" path="res://addons/bayterek/scripts/resources/bayterek_node_group.gd" id="2_p7r5a"]
 [ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="3_p7r5a"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="3_tyv6k"]
+
+[sub_resource type="Resource" id="Resource_fi42j"]
+script = ExtResource("1_tyv6k")
+id = "new_attribute"
+name = "New Attribute"
+effect = "Effect #"
+value_count = 1
 
 [sub_resource type="Resource" id="Resource_p7r5a"]
 script = ExtResource("2_p7r5a")
@@ -19,11 +27,12 @@ is_root = true
 id = 1
 name = "Large Node"
 type = 2
-position = Vector2(-227.5, 153.5)
+position = Vector2(-200.1665, 163.5)
 line_data = {
 2: SubResource("Resource_tyv6k")
 }
 out_nodes = Array[int]([2])
+max_allocations = 4
 group_id = "5631b144-d797-45e7-91ca-bed309bd492c"
 
 [sub_resource type="Resource" id="Resource_32bmc"]
@@ -54,8 +63,10 @@ group_id = "5631b144-d797-45e7-91ca-bed309bd492c"
 script = ExtResource("3_tyv6k")
 id = "tree_1"
 name = "Tree 1"
+multiallocation = true
 group_frame_title_align = 1
-id_counter = 3
+tooltip_header_align = 1
+id_counter = 5
 icon_sizes = {
 0: Vector2(0, 0),
 1: Vector2(0, 0),
@@ -72,6 +83,9 @@ node_size = {
 2: Vector2(64, 64)
 }
 nodes = Array[ExtResource("1_y2ort")]([SubResource("Resource_s5f85"), SubResource("Resource_gmi7d"), SubResource("Resource_4kaxi")])
+attributes = {
+"new_attribute": SubResource("Resource_fi42j")
+}
 node_groups = Array[ExtResource("2_p7r5a")]([SubResource("Resource_p7r5a")])
 hierarchy_split_offset = -404
 prefabs_split_offset = 226

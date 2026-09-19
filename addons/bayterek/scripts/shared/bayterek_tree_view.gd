@@ -117,32 +117,18 @@ func _create_tooltip() -> void:
 	_tooltip.visible = false
 	_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 8)
-	margin.add_theme_constant_override("margin_right", 8)
-	margin.add_theme_constant_override("margin_top", 6)
-	margin.add_theme_constant_override("margin_bottom", 6)
-	_tooltip.add_child(margin)
-
-	var rich := RichTextLabel.new()
-	rich.name = "Label"
-	rich.bbcode_enabled = true
-	rich.fit_content = true
-	rich.custom_minimum_size = Vector2(280, 0)
-	rich.custom_maximum_size = Vector2(550, -1)
-	rich.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	rich.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	margin.add_child(rich)
-
-	_tooltip.label = rich
-
 	add_child(_tooltip)
 
+	# Style the panel
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
 	style.border_color = Color(0.3, 0.3, 0.3, 0.9)
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(4)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 8
+	style.content_margin_bottom = 8
 	_tooltip.add_theme_stylebox_override("panel", style)
 
 # ============================================================
@@ -360,7 +346,7 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 		group_frames_service.refresh_all()
 
 # ============================================================
-# CONNECTION CREATION (Shift + Click)
+# CONNECTION CREATION (Shift + Click) + ALLOCATION/ SELECTION
 # ============================================================
 
 func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void:
@@ -369,7 +355,10 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 	if node.node_data.locked:
 		return
 
-	if _is_allocation_active():
+	# Runtime allocation: Ctrl (or Meta) held = force selection mode.
+	# This lets the user select nodes even when allocation is active.
+	var ctrl_held: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
+	if _is_allocation_active() and not ctrl_held:
 		allocation_service.on_node_pressed(node)
 		_refresh_all_allocatable_flags()
 		return
@@ -809,10 +798,7 @@ func _handle_group_frame_input(event: InputEvent) -> bool:
 				_group_frame_dragging = hit
 				_group_frame_drag_start_mc_local = mc_local
 
-				# Start drag in the service (fills _drag_start_positions).
 				group_frames_service.start_drag(hit, mc_local)
-
-				# Selection — also select the group's member nodes
 				group_frames_service.set_selected(hit.group_id)
 
 				var additive: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)

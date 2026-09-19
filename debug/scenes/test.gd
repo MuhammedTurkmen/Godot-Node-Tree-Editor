@@ -179,6 +179,13 @@ func _build_tree_screen() -> void:
 	clear_btn.pressed.connect(_on_clear_pressed)
 	_top_bar.add_child(clear_btn)
 
+	var reset_save_btn := Button.new()
+	reset_save_btn.name = "ResetSaveButton"
+	reset_save_btn.text = "Reset Save"
+	reset_save_btn.tooltip_text = "Delete the saved allocation state on disk and reset."
+	reset_save_btn.pressed.connect(_on_reset_save_pressed)
+	_top_bar.add_child(reset_save_btn)
+
 	var sep2 := VSeparator.new()
 	_top_bar.add_child(sep2)
 
@@ -227,7 +234,6 @@ func _build_hud() -> void:
 	_hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_panel.visible = false
 
-	# Anchor: top-left, below the toolbar
 	_hud_panel.anchor_left = 0.0
 	_hud_panel.anchor_top = 0.0
 	_hud_panel.anchor_right = 0.0
@@ -295,22 +301,18 @@ func _update_hud() -> void:
 # ============================================================
 
 func _show_browser() -> void:
-	# Disconnect old signals if any
 	_disconnect_allocation_signals()
 
-	# Cleanup current tree view
 	if _tree_view:
 		_tree_view.queue_free()
 		_tree_view = null
 	_current_group_name = ""
 	_current_tree_name = ""
 
-	# Clear render container children
 	if _tree_container:
 		for child in _tree_container.get_children():
 			child.queue_free()
 
-	# Update toolbar state
 	if _refund_btn:
 		_refund_btn.text = "Enter Refund Mode (R)"
 		_refund_btn.button_pressed = false
@@ -319,7 +321,6 @@ func _show_browser() -> void:
 	if _hud_panel:
 		_hud_panel.visible = false
 
-	# Switch screens
 	_browser_screen.visible = true
 	_tree_screen.visible = false
 
@@ -399,7 +400,6 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 	_current_group_name = group_name
 	_current_tree_name = tree_name
 
-	# Cleanup old signals + tree view
 	_disconnect_allocation_signals()
 	if _tree_view:
 		_tree_view.queue_free()
@@ -408,7 +408,6 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 	for child in _tree_container.get_children():
 		child.queue_free()
 
-	# Build runtime view
 	_tree_view = BayterekBuilder.new(tree) \
 		.set_parent(_tree_container) \
 		.node_allocated_callback(_on_node_allocated) \
@@ -421,16 +420,13 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 
 	_tree_view.set_tooltip_near_node_right()
 
-	# Connect allocation service signals for event-driven HUD + confirm button
 	_connect_allocation_signals()
 
 	print("Test: Opened tree '%s' (%d nodes)" % [tree_path, tree.nodes.size()])
 
-	# Switch screens
 	_browser_screen.visible = false
 	_tree_screen.visible = true
 
-	# Initial sync
 	_update_refund_button_text()
 	_update_hud()
 	_update_confirm_button_state()
@@ -487,13 +483,10 @@ func _disconnect_allocation_signals() -> void:
 	if svc.node_deallocated.is_connected(_on_allocation_state_changed):
 		svc.node_deallocated.disconnect(_on_allocation_state_changed)
 
-## Fired on any preallocation / refund node state change.
-## Has an optional arg so it can be bound to signals with or without params.
 func _on_allocation_state_changed(_node: BayterekNodeButton = null) -> void:
 	_update_hud()
 	_update_confirm_button_state()
 
-## Fired only when refund mode is entered or exited.
 func _on_refund_mode_changed() -> void:
 	_update_refund_button_text()
 	_update_hud()
@@ -518,13 +511,10 @@ func _on_refund_button_pressed() -> void:
 	else:
 		_tree_view.allocation_service.enter_refund_mode()
 
-	# Mode signals will refresh HUD + confirm automatically.
-
 func _on_refund_all_pressed() -> void:
 	if not _tree_view or not _tree_view.allocation_service:
 		return
 	_tree_view.allocation_service.stage_all_for_refund()
-	# refund_added signals will refresh HUD + confirm.
 
 func _on_confirm_pressed() -> void:
 	if not _tree_view or not _tree_view.allocation_service:
@@ -535,18 +525,31 @@ func _on_confirm_pressed() -> void:
 	else:
 		_tree_view.allocation_service.confirm_preallocations()
 
-	# refund_mode_exited signal will refresh HUD + confirm.
+# ============================================================
+# CLEAR — clears EVERYTHING (allocations + preallocations + refunds)
+# ============================================================
 
 func _on_clear_pressed() -> void:
-	if not _tree_view or not _tree_view.allocation_service:
+	if not _tree_view:
 		return
 
-	if _tree_view.allocation_service.is_refund_mode():
-		_tree_view.allocation_service.exit_refund_mode()
-	else:
-		_tree_view.allocation_service.clear_preallocations()
+	# 1) Full allocation reset (preallocation + refund staging + real allocations)
+	if _tree_view.allocation_service:
+		_tree_view.allocation_service.clear_all_allocations()
 
-	# Signals will refresh HUD + confirm.
+	# 2) UI selection state
+	_tree_view.clear_selection()
+	if _tree_view.group_frames_service:
+		_tree_view.group_frames_service.clear_selection()
+
+	# 3) Reset toolbar button visuals
+	if _refund_btn:
+		_refund_btn.button_pressed = false
+		_refund_btn.text = "Enter Refund Mode (R)"
+
+	# 4) Refresh HUD + confirm
+	_update_hud()
+	_update_confirm_button_state()
 
 func _on_center_pressed() -> void:
 	if _tree_view:
@@ -575,9 +578,38 @@ func _on_load_pressed() -> void:
 	if _tree_view.allocation_service:
 		_tree_view.allocation_service.reload_from_state()
 	print("Test: Tree state loaded")
-	# reload_from_state doesn't emit signals — manually refresh HUD.
 	_update_hud()
 	_update_confirm_button_state()
+
+func _on_reset_save_pressed() -> void:
+	if not _tree_view or not _tree_view._tree_data:
+		return
+
+	var tree = _tree_view._tree_data
+
+	# Delete on-disk save (if any)
+	if _serializer:
+		_serializer.call("delete_tree_state", tree)
+
+	# Reset in-memory tree state
+	if not tree.tree_state:
+		tree.tree_state = BayterekTreeState.new()
+	tree.tree_state.allocated_nodes.clear()
+	tree.tree_state.allocation_level.clear()
+
+	# Force the tree view to reload from the empty state
+	if _tree_view.allocation_service:
+		_tree_view.allocation_service.reload_from_state()
+
+	# Reset toolbar button visuals
+	if _refund_btn:
+		_refund_btn.button_pressed = false
+		_refund_btn.text = "Enter Refund Mode (R)"
+
+	_update_hud()
+	_update_confirm_button_state()
+
+	print("Test: Save state reset")
 
 func _on_reload_pressed() -> void:
 	if _current_group_name.is_empty() or _current_tree_name.is_empty():
@@ -613,7 +645,6 @@ func _update_confirm_button_state() -> void:
 # ============================================================
 
 func _input(event: InputEvent) -> void:
-	# Input only active on the tree screen
 	if not _tree_screen or not _tree_screen.visible:
 		return
 

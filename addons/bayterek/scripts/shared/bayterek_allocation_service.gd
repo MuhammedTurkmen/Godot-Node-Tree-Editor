@@ -51,7 +51,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 		node_allocated.emit(node)
 
 # ============================================================
-# PUBLIC GETTERS (for HUD / test scenes)
+# PUBLIC GETTERS
 # ============================================================
 
 func get_preallocated_count() -> int:
@@ -114,7 +114,6 @@ func _handle_refund_click(node: BayterekNodeButton) -> void:
 	var pre_size: int = _refund_nodes.size()
 
 	if node.allocated and not _refund_nodes.has(node.id):
-		# STAGE: pull in the full closure of nodes that must go with this one.
 		var closure: Array[int] = _get_refund_closure(node.id)
 		if _is_closure_valid_for_refund(closure):
 			for node_id in closure:
@@ -127,7 +126,6 @@ func _handle_refund_click(node: BayterekNodeButton) -> void:
 				_refund_nodes.append(node_id)
 				node_refund_added.emit(n)
 	elif _refund_nodes.has(node.id):
-		# UNSTAGE: remove the closure that was staged by this click.
 		var closure: Array[int] = _get_refund_closure(node.id)
 		var remaining: Array[int] = _allocated_nodes.filter(
 			func(id): return not closure.has(id)
@@ -147,23 +145,40 @@ func _handle_refund_click(node: BayterekNodeButton) -> void:
 		confirm_refund()
 
 # ============================================================
-# PUBLIC API
+# PUBLIC API — CONFIRM / CLEAR
 # ============================================================
+# Pattern: snapshot → clear → iterate (so listeners read the correct count).
 
 func confirm_preallocations() -> void:
-	for node_id in _preallocated_nodes:
+	var snapshot: Array[int] = _preallocated_nodes.duplicate()
+	_preallocated_nodes.clear()
+
+	for node_id in snapshot:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if node:
 			_allocate_node(node)
-	_preallocated_nodes.clear()
+
+func confirm_refund() -> void:
+	var snapshot: Array[int] = _refund_nodes.duplicate()
+	_refund_nodes.clear()
+	_refund_mode = false
+
+	for node_id in snapshot:
+		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+		if node:
+			_deallocate_node(node)
+
+	refund_mode_exited.emit()
 
 func clear_preallocations() -> void:
-	for node_id in _preallocated_nodes:
+	var snapshot: Array[int] = _preallocated_nodes.duplicate()
+	_preallocated_nodes.clear()
+
+	for node_id in snapshot:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if node:
 			node.preallocated = false
 			node_unpreallocated.emit(node)
-	_preallocated_nodes.clear()
 
 func enter_refund_mode() -> void:
 	if _refund_mode:
@@ -176,22 +191,16 @@ func enter_refund_mode() -> void:
 	refund_mode_entered.emit()
 
 func exit_refund_mode() -> void:
-	for node_id in _refund_nodes:
+	var snapshot: Array[int] = _refund_nodes.duplicate()
+	_refund_nodes.clear()
+	_refund_mode = false
+
+	for node_id in snapshot:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if node:
 			node.refund = false
 			node_refund_removed.emit(node)
-	_refund_nodes.clear()
-	_refund_mode = false
-	refund_mode_exited.emit()
 
-func confirm_refund() -> void:
-	for node_id in _refund_nodes:
-		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
-		if node:
-			_deallocate_node(node)
-	_refund_nodes.clear()
-	_refund_mode = false
 	refund_mode_exited.emit()
 
 func is_refund_mode() -> bool:
@@ -215,6 +224,62 @@ func stage_all_for_refund() -> void:
 		node.refund = true
 		_refund_nodes.append(node_id)
 		node_refund_added.emit(node)
+
+# ============================================================
+# CLEAR ALL
+# ============================================================
+
+func clear_all_allocations() -> void:
+	# 1) Clear preallocations
+	var pre_snapshot: Array[int] = _preallocated_nodes.duplicate()
+	_preallocated_nodes.clear()
+	for node_id in pre_snapshot:
+		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+		if node:
+			node.preallocated = false
+			node_unpreallocated.emit(node)
+
+	# 2) Clear refund staging
+	var was_refund_mode: bool = _refund_mode
+	var refund_snapshot: Array[int] = _refund_nodes.duplicate()
+	_refund_nodes.clear()
+	_refund_mode = false
+	for node_id in refund_snapshot:
+		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+		if node:
+			node.refund = false
+			node_refund_removed.emit(node)
+
+	# 3) Clear real allocations
+	var allocated_snapshot: Array[int] = _allocated_nodes.duplicate()
+	for node_id in allocated_snapshot:
+		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+		if node:
+			node.allocated = false
+			node.allocation_level = 0
+			node.refund = false
+			node.preallocated = false
+			node.set_state(Bayterek.AllocationState.NORMAL)
+			node_deallocated.emit(node)
+
+	_allocated_nodes.clear()
+	_allocation_level.clear()
+
+	# 4) Refresh visuals
+	_refresh_all_node_visuals()
+
+	# 5) Emit mode-exit if we were in refund mode
+	if was_refund_mode:
+		refund_mode_exited.emit()
+
+func _refresh_all_node_visuals() -> void:
+	if not _tree_view or not _tree_view.nodes_service:
+		return
+	for node in _tree_view.nodes_service.get_all_nodes():
+		if not is_instance_valid(node):
+			continue
+		if node.has_method("refresh_visuals"):
+			node.refresh_visuals()
 
 # ============================================================
 # PREREQUISITE LOGIC
@@ -275,11 +340,10 @@ func _is_prerequisite_satisfied(node: BayterekNode, active_ids: Array, exclude_i
 
 		BayterekNode.PrerequisiteMode.GROUP_COMPLETE:
 			if node.prerequisite_group_id.is_empty():
-				return true   # No group restriction
+				return true
 			var group: BayterekNodeGroup = _tree_data.get_group_by_id(node.prerequisite_group_id) if _tree_data else null
 			if not group:
-				return true   # Group missing — no restriction
-			# All members of the group must be active
+				return true
 			for member_id in group.node_ids:
 				if exclude_ids.has(member_id):
 					continue
@@ -297,11 +361,15 @@ func _can_preallocate(node: BayterekNodeButton) -> bool:
 	if preallocation_check and not preallocation_check.call():
 		return false
 
+	if not node.node_data:
+		return false
+
 	if _tree_data.multiallocation:
 		if node.preallocated:
 			return false
 		if node.allocated:
-			if _allocation_level.get(node.id, 0) >= node.max_allocations:
+			# FIXED: max_allocations lives on node_data, not on the button.
+			if _allocation_level.get(node.id, 0) >= node.node_data.max_allocations:
 				return false
 	else:
 		if node.allocated or node.preallocated:
@@ -314,9 +382,13 @@ func _can_allocate(node: BayterekNodeButton) -> bool:
 	if allocation_check and not allocation_check.call():
 		return false
 
+	if not node.node_data:
+		return false
+
 	if _tree_data.multiallocation:
 		if node.allocated:
-			if _allocation_level.get(node.id, 0) >= node.max_allocations:
+			# FIXED: max_allocations lives on node_data, not on the button.
+			if _allocation_level.get(node.id, 0) >= node.node_data.max_allocations:
 				return false
 		if node.preallocated:
 			return false

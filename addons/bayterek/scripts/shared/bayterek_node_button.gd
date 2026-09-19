@@ -415,22 +415,24 @@ func _on_mouse_exited() -> void:
 # TOOLTIP FORMATTING
 # ============================================================
 
-func format_tooltip() -> String:
+## Returns three BBCode strings: header, body, footer.
+## The tooltip renders them as separate aligned sections.
+func format_tooltip_sections() -> Dictionary:
+	var header: String = ""
+	var body: String = ""
+	var footer: String = ""
+
 	if not node_data:
-		return ""
+		return {"header": "", "body": "", "footer": ""}
 
-	var text: String = ""
-
+	# --- HEADER: node name ---
 	var display_name: String = node_name
 	if display_name.is_empty():
 		display_name = "Node %d" % id
+	header = "[b][color=#f9e6ca]%s[/color][/b]" % display_name
 
-	if _is_multiallocation():
-		text += "[b][color=#f9e6ca]%s[/color][/b] [color=#a0a0a0](%d/%d)[/color]\n\n" % [
-			display_name, allocation_level, node_data.max_allocations
-		]
-	else:
-		text += "[b][color=#f9e6ca]%s[/color][/b]\n\n" % display_name
+	# --- BODY: prerequisite info, attributes, description ---
+	var body_parts: Array[String] = []
 
 	if not node_data.is_root and node_data.prerequisite_mode != BayterekNode.PrerequisiteMode.ANY:
 		var mode_text: String = ""
@@ -440,14 +442,62 @@ func format_tooltip() -> String:
 			BayterekNode.PrerequisiteMode.ALL:
 				mode_text = "Requires: all incoming active"
 		if not mode_text.is_empty():
-			text += "[color=#c9a227]%s[/color]\n\n" % mode_text
+			body_parts.append("[color=#c9a227]%s[/color]" % mode_text)
 
-	text += _format_attributes()
+	var attrs_text: String = _format_attributes()
+	if not attrs_text.is_empty():
+		body_parts.append(attrs_text)
 
 	if not node_data.description.is_empty():
-		text += "\n[color=orange]%s[/color]" % node_data.description
+		body_parts.append("[color=orange]%s[/color]" % node_data.description)
 
-	return text.strip_edges()
+	body = "\n\n".join(body_parts)
+
+	# --- FOOTER: level ---
+	footer = _format_level_footer()
+
+	return {"header": header, "body": body, "footer": footer}
+
+## Returns a BBCode string for the level footer.
+##   - multi-allocation OFF → "Level: 0 / 1"  (or 1 / 1 when allocated)
+##   - multi-allocation ON  → "Level: X / Y"
+func _format_level_footer() -> String:
+	if not node_data:
+		return ""
+
+	var current: int = allocation_level
+	var maximum: int = 1
+
+	if _is_multiallocation():
+		maximum = node_data.max_allocations
+		current = allocation_level
+	else:
+		# Single allocation: "0 / 1" when not allocated, "1 / 1" when allocated.
+		maximum = 1
+		current = 1 if allocated else 0
+
+	# Color-code: yellow when at max, green when allocated but not max,
+	# grey when not allocated.
+	var color: String = "#a0a0a0"
+	if maximum > 0 and current >= maximum:
+		color = "#ffd766"
+	elif current > 0:
+		color = "#8ef58e"
+
+	return "[center][color=%s]Level: %d / %d[/color][/center]" % [color, current, maximum]
+
+## Kept for backward compatibility — flattens the three sections into
+## a single BBCode string. Prefer format_tooltip_sections().
+func format_tooltip() -> String:
+	var sections: Dictionary = format_tooltip_sections()
+	var parts: Array[String] = []
+	if not sections["header"].is_empty():
+		parts.append(sections["header"])
+	if not sections["body"].is_empty():
+		parts.append(sections["body"])
+	if not sections["footer"].is_empty():
+		parts.append(sections["footer"])
+	return "\n\n".join(parts)
 
 func _is_multiallocation() -> bool:
 	if not tree_data:

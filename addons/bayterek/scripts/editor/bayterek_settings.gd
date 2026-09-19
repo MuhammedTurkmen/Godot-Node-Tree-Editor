@@ -63,6 +63,11 @@ var _chain_connection_check: CheckBox
 var _show_group_frames_check: CheckBox
 var _frame_title_align_dropdown: OptionButton
 
+# --- Tooltip ---
+var _tooltip_header_align_dropdown: OptionButton
+var _tooltip_body_align_dropdown: OptionButton
+var _tooltip_footer_align_dropdown: OptionButton
+
 # --- Default node visuals ---
 # Border textures
 var _default_border_tex_locked: BayterekInspectorTextureInput
@@ -283,6 +288,34 @@ func _build_ui() -> void:
 		["Left (Normal)", "Centered"]
 	)
 	_frame_title_align_dropdown.item_selected.connect(_on_frame_title_align_changed)
+
+	# --- Tooltip ---
+	_add_separator(_content)
+	_add_section_label(_content, "Tooltip")
+
+	_tooltip_header_align_dropdown = _make_dropdown_row(
+		_content,
+		"Header Align",
+		"Horizontal alignment of the tooltip header (node name).",
+		["Left", "Center", "Right"]
+	)
+	_tooltip_header_align_dropdown.item_selected.connect(_on_tooltip_header_align_changed)
+
+	_tooltip_body_align_dropdown = _make_dropdown_row(
+		_content,
+		"Body Align",
+		"Horizontal alignment of the tooltip body (attributes, description).",
+		["Left", "Center", "Right"]
+	)
+	_tooltip_body_align_dropdown.item_selected.connect(_on_tooltip_body_align_changed)
+
+	_tooltip_footer_align_dropdown = _make_dropdown_row(
+		_content,
+		"Footer Align",
+		"Horizontal alignment of the tooltip footer (level).",
+		["Left", "Center", "Right"]
+	)
+	_tooltip_footer_align_dropdown.item_selected.connect(_on_tooltip_footer_align_changed)
 
 # ============================================================
 # DEFAULT VISUAL GROUPS
@@ -540,6 +573,11 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_chain_connection_check.button_pressed = tree_data.chain_connection_mode
 	_show_group_frames_check.button_pressed = tree_data.show_group_frames
 	_frame_title_align_dropdown.select(tree_data.group_frame_title_align)
+
+	# Tooltip alignments
+	_tooltip_header_align_dropdown.select(tree_data.tooltip_header_align)
+	_tooltip_body_align_dropdown.select(tree_data.tooltip_body_align)
+	_tooltip_footer_align_dropdown.select(tree_data.tooltip_footer_align)
 
 	_updating_ui = false
 
@@ -868,10 +906,34 @@ func _on_frame_title_align_changed(index: int) -> void:
 	editor.tree.group_frame_title_align = index
 	frame_title_align_changed.emit()
 
-	# Apply immediately to existing frames
 	if editor.tree_view and editor.tree_view.group_frames_service:
 		editor.tree_view.group_frames_service.refresh_all()
 
+	changed.emit()
+	_notify_dirty()
+
+# ============================================================
+# TOOLTIP HANDLERS
+# ============================================================
+
+func _on_tooltip_header_align_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.tooltip_header_align = index
+	changed.emit()
+	_notify_dirty()
+
+func _on_tooltip_body_align_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.tooltip_body_align = index
+	changed.emit()
+	_notify_dirty()
+
+func _on_tooltip_footer_align_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.tooltip_footer_align = index
 	changed.emit()
 	_notify_dirty()
 

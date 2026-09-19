@@ -20,6 +20,12 @@ extends Resource
 ## 0 = Sol (normal), 1 = Ortalanmış (centered)
 @export_storage var group_frame_title_align: int = 0
 
+## Tooltip alignment settings.
+## 0 = Left, 1 = Center, 2 = Right
+@export_storage var tooltip_header_align: int = 0
+@export_storage var tooltip_body_align: int = 0
+@export_storage var tooltip_footer_align: int = 1
+
 @export_storage var size: Vector2 = Vector2(5000, 5000)
 @export_storage var bg_color: Color = Color(0.1, 0.1, 0.1)
 @export_storage var bg_texture: Texture2D
