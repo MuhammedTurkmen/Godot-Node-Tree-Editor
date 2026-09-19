@@ -684,6 +684,7 @@ func _create_services() -> void:
 	group_frames_service = BayterekGroupFramesService.new(self)
 	group_frames_service.set_container(group_frames_container)
 	group_frames_service.load_tree(_tree_data)
+	group_frames_service.refresh_all() 
 
 	allocation_service = BayterekAllocationService.new(self)
 

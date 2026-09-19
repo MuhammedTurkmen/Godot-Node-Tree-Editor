@@ -12,6 +12,14 @@ extends Resource
 @export_storage var multiallocation: bool = false
 @export_storage var chain_connection_mode: bool = true
 
+## Runtime'da (oyun içinde) grup frame'lerinin görünüp görünmemesi.
+## Editörde her zaman görünür — bu sadece runtime için geçerli.
+@export_storage var show_group_frames: bool = false
+
+## Frame title'larının hizalaması:
+## 0 = Sol (normal), 1 = Ortalanmış (centered)
+@export_storage var group_frame_title_align: int = 0
+
 @export_storage var size: Vector2 = Vector2(5000, 5000)
 @export_storage var bg_color: Color = Color(0.1, 0.1, 0.1)
 @export_storage var bg_texture: Texture2D

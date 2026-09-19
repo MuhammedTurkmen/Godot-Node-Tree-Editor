@@ -15,6 +15,8 @@ signal allocation_changed
 signal preallocation_changed
 signal multiallocation_changed
 signal chain_connection_mode_changed
+signal show_group_frames_changed
+signal frame_title_align_changed
 signal texture_filter_changed
 
 var editor: BayterekEditor
@@ -56,6 +58,10 @@ var _allocation_check: CheckBox
 var _preallocation_check: CheckBox
 var _multiallocation_check: CheckBox
 var _chain_connection_check: CheckBox
+
+# --- Group Frames ---
+var _show_group_frames_check: CheckBox
+var _frame_title_align_dropdown: OptionButton
 
 # --- Default node visuals ---
 # Border textures
@@ -257,6 +263,26 @@ func _build_ui() -> void:
 	)
 	_chain_connection_check.button_pressed = true
 	_chain_connection_check.toggled.connect(_on_chain_connection_mode_changed)
+
+	# --- Group Frames ---
+	_add_separator(_content)
+	_add_section_label(_content, "Group Frames")
+
+	_show_group_frames_check = _make_check_row(
+		_content,
+		"Show Frames in Runtime",
+		"Whether group frames are drawn at runtime (in-game). In the editor they are always visible."
+	)
+	_show_group_frames_check.button_pressed = false
+	_show_group_frames_check.toggled.connect(_on_show_group_frames_changed)
+
+	_frame_title_align_dropdown = _make_dropdown_row(
+		_content,
+		"Title Align",
+		"Horizontal alignment of the group frame's title text.",
+		["Left (Normal)", "Centered"]
+	)
+	_frame_title_align_dropdown.item_selected.connect(_on_frame_title_align_changed)
 
 # ============================================================
 # DEFAULT VISUAL GROUPS
@@ -512,6 +538,8 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_preallocation_check.button_pressed = tree_data.preallocation
 	_multiallocation_check.button_pressed = tree_data.multiallocation
 	_chain_connection_check.button_pressed = tree_data.chain_connection_mode
+	_show_group_frames_check.button_pressed = tree_data.show_group_frames
+	_frame_title_align_dropdown.select(tree_data.group_frame_title_align)
 
 	_updating_ui = false
 
@@ -823,6 +851,27 @@ func _on_chain_connection_mode_changed(pressed: bool) -> void:
 		return
 	editor.tree.chain_connection_mode = pressed
 	chain_connection_mode_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_show_group_frames_changed(pressed: bool) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.show_group_frames = pressed
+	show_group_frames_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_frame_title_align_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.group_frame_title_align = index
+	frame_title_align_changed.emit()
+
+	# Apply immediately to existing frames
+	if editor.tree_view and editor.tree_view.group_frames_service:
+		editor.tree_view.group_frames_service.refresh_all()
+
 	changed.emit()
 	_notify_dirty()
 

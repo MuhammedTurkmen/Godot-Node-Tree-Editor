@@ -5,8 +5,7 @@ extends Control
 ##
 ## Frame hiçbir event almaz (mouse_filter = IGNORE). Tıklama/drag tamamen
 ## BayterekGroupFramesService + BayterekTreeView tarafındaki manuel
-## hit-test ile yönetilir. Bu sayede offset_transform'lı parent'larda
-## Godot'un input picking bug'ına takılmıyoruz.
+## hit-test ile yönetilir.
 
 const PADDING := 20.0
 const TITLE_HEIGHT := 22.0
@@ -17,6 +16,9 @@ var group_name: String = "Group"
 var group_color: Color = Color(0.4, 0.7, 1.0)
 
 var selected: bool = false
+
+## 0 = sol (normal), 1 = ortalanmış (centered)
+var title_align: int = 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -82,15 +84,31 @@ func _draw() -> void:
 	# Title text
 	var font: Font = get_theme_default_font()
 	if font:
-		draw_string(
-			font,
-			Vector2(10, TITLE_HEIGHT - 6),
-			group_name,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1,
-			13,
-			group_color
-		)
+		var font_size: int = 13
+		var baseline_y: float = TITLE_HEIGHT - 6
+
+		if title_align == 1:
+			# Centered
+			draw_string(
+				font,
+				Vector2(0, baseline_y),
+				group_name,
+				HORIZONTAL_ALIGNMENT_CENTER,
+				size.x,
+				font_size,
+				group_color
+			)
+		else:
+			# Left
+			draw_string(
+				font,
+				Vector2(10, baseline_y),
+				group_name,
+				HORIZONTAL_ALIGNMENT_LEFT,
+				-1,
+				font_size,
+				group_color
+			)
 
 	# Selected indicator strip
 	if selected:
