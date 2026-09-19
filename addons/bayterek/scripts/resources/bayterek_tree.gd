@@ -12,6 +12,14 @@ extends Resource
 @export_storage var multiallocation: bool = false
 @export_storage var chain_connection_mode: bool = true
 
+## When true, allocation requires a Confirm step (preallocation mode).
+## When false (default), clicking a node allocates it immediately.
+@export_storage var allocation_confirm: bool = false
+
+## When true, refund requires a Confirm step (staging mode).
+## When false (default), clicking a node in refund mode deallocates it immediately.
+@export_storage var refund_confirm: bool = false
+
 ## Runtime'da (oyun içinde) grup frame'lerinin görünüp görünmemesi.
 ## Editörde her zaman görünür — bu sadece runtime için geçerli.
 @export_storage var show_group_frames: bool = false

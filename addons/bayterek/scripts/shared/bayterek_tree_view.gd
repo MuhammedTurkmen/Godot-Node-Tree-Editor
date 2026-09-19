@@ -211,6 +211,16 @@ func refresh_tooltip_position() -> void:
 	if _tooltip and _tooltip.visible and _hovered_node:
 		_tooltip.update_position_for(_hovered_node)
 
+## Rebuilds the tooltip content for the currently hovered node (if any).
+## Call this after any state change (allocation, refund, level) so the
+## tooltip stays in sync without waiting for a mouse move.
+func refresh_tooltip_content() -> void:
+	if not _tooltip or not _tooltip.visible:
+		return
+	if not _hovered_node or not is_instance_valid(_hovered_node):
+		return
+	_tooltip.inspect(_hovered_node)
+
 # ============================================================
 # INPUT
 # ============================================================
@@ -346,7 +356,7 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 		group_frames_service.refresh_all()
 
 # ============================================================
-# CONNECTION CREATION (Shift + Click) + ALLOCATION/ SELECTION
+# CONNECTION CREATION (Shift + Click) + ALLOCATION/SELECTION
 # ============================================================
 
 func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void:
@@ -719,7 +729,7 @@ func _create_selection_box() -> void:
 	add_child(selection_box)
 
 # ============================================================
-# ALLOCATABLE FLAGS
+# ALLOCATABLE FLAGS + TOOLTIP SYNC
 # ============================================================
 
 func _refresh_all_allocatable_flags() -> void:
@@ -736,6 +746,11 @@ func _refresh_all_allocatable_flags() -> void:
 				active_ids.append(nid)
 
 	nodes_service.refresh_allocatable_flags(active_ids)
+
+	# Keep an active tooltip in sync with the new state.
+	# This makes level/attribute changes reflect immediately after a click,
+	# without waiting for a mouse move.
+	refresh_tooltip_content()
 
 # ============================================================
 # COORDINATE HELPERS

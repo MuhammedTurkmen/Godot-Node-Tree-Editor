@@ -70,11 +70,15 @@ func on_node_pressed(node: BayterekNodeButton) -> void:
 	if not _tree_data or not _tree_data.allocation:
 		return
 
-	if _tree_data.preallocation:
-		if _refund_mode:
+	if _refund_mode:
+		if _tree_data.refund_confirm:
 			_handle_refund_click(node)
 		else:
-			_handle_preallocation_click(node)
+			_handle_immediate_refund_click(node)
+		return
+
+	if _tree_data.preallocation and _tree_data.allocation_confirm:
+		_handle_preallocation_click(node)
 	else:
 		_handle_direct_click(node)
 
@@ -99,16 +103,14 @@ func _handle_preallocation_click(node: BayterekNodeButton) -> void:
 	if Input.is_key_pressed(KEY_CTRL) and pre_size == 0:
 		confirm_preallocations()
 
+## Normal mode (refund mode NOT active): clicking a node either allocates
+## it or, when multiallocation is on and max level isn't reached, raises
+## its level. If allocation isn't possible, nothing happens — no
+## deallocation from this code path. Deallocation only happens through
+## the refund flow.
 func _handle_direct_click(node: BayterekNodeButton) -> void:
 	if _can_allocate(node):
 		_allocate_node(node)
-	else:
-		var closure: Array[int] = _get_deallocation_closure(node.id)
-		if not closure.is_empty():
-			for node_id in closure:
-				var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
-				if n:
-					_deallocate_node(n)
 
 func _handle_refund_click(node: BayterekNodeButton) -> void:
 	var pre_size: int = _refund_nodes.size()
@@ -143,6 +145,26 @@ func _handle_refund_click(node: BayterekNodeButton) -> void:
 
 	if Input.is_key_pressed(KEY_CTRL) and pre_size == 0:
 		confirm_refund()
+
+## Refund mode + refund_confirm == false: deallocate immediately.
+## Computes the refund closure and deallocates it in one step.
+func _handle_immediate_refund_click(node: BayterekNodeButton) -> void:
+	if not node.allocated:
+		return
+
+	var closure: Array[int] = _get_refund_closure(node.id)
+	if closure.is_empty():
+		return
+
+	# Validate that removing this whole closure is safe.
+	if not _is_closure_valid_for_refund(closure):
+		return
+
+	for node_id in closure:
+		var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
+		if not n:
+			continue
+		_deallocate_node(n)
 
 # ============================================================
 # PUBLIC API — CONFIRM / CLEAR
@@ -368,7 +390,6 @@ func _can_preallocate(node: BayterekNodeButton) -> bool:
 		if node.preallocated:
 			return false
 		if node.allocated:
-			# FIXED: max_allocations lives on node_data, not on the button.
 			if _allocation_level.get(node.id, 0) >= node.node_data.max_allocations:
 				return false
 	else:
@@ -387,7 +408,6 @@ func _can_allocate(node: BayterekNodeButton) -> bool:
 
 	if _tree_data.multiallocation:
 		if node.allocated:
-			# FIXED: max_allocations lives on node_data, not on the button.
 			if _allocation_level.get(node.id, 0) >= node.node_data.max_allocations:
 				return false
 		if node.preallocated:

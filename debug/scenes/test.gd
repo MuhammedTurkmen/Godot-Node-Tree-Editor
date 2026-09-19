@@ -318,6 +318,7 @@ func _show_browser() -> void:
 		_refund_btn.button_pressed = false
 	if _confirm_btn:
 		_confirm_btn.disabled = true
+		_confirm_btn.visible = true
 	if _hud_panel:
 		_hud_panel.visible = false
 
@@ -469,7 +470,7 @@ func _disconnect_allocation_signals() -> void:
 	if svc.node_preallocated.is_connected(_on_allocation_state_changed):
 		svc.node_preallocated.disconnect(_on_allocation_state_changed)
 	if svc.node_unpreallocated.is_connected(_on_allocation_state_changed):
-		svc.node_unpreallocated.disconnect(_on_allocation_state_changed)
+			svc.node_unpreallocated.disconnect(_on_allocation_state_changed)
 	if svc.node_refund_added.is_connected(_on_allocation_state_changed):
 		svc.node_refund_added.disconnect(_on_allocation_state_changed)
 	if svc.node_refund_removed.is_connected(_on_allocation_state_changed):
@@ -533,7 +534,7 @@ func _on_clear_pressed() -> void:
 	if not _tree_view:
 		return
 
-	# 1) Full allocation reset (preallocation + refund staging + real allocations)
+	# 1) Full allocation reset
 	if _tree_view.allocation_service:
 		_tree_view.allocation_service.clear_all_allocations()
 
@@ -587,21 +588,17 @@ func _on_reset_save_pressed() -> void:
 
 	var tree = _tree_view._tree_data
 
-	# Delete on-disk save (if any)
 	if _serializer:
 		_serializer.call("delete_tree_state", tree)
 
-	# Reset in-memory tree state
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
 	tree.tree_state.allocated_nodes.clear()
 	tree.tree_state.allocation_level.clear()
 
-	# Force the tree view to reload from the empty state
 	if _tree_view.allocation_service:
 		_tree_view.allocation_service.reload_from_state()
 
-	# Reset toolbar button visuals
 	if _refund_btn:
 		_refund_btn.button_pressed = false
 		_refund_btn.text = "Enter Refund Mode (R)"
@@ -625,9 +622,38 @@ func _update_refund_button_text() -> void:
 	else:
 		_refund_btn.text = "Enter Refund Mode (R)"
 
+# ============================================================
+# CONFIRM BUTTON VISIBILITY
+# ============================================================
+
+## Returns true if the current tree requires the Confirm button for the
+## active mode (allocation or refund). Returns false when both confirms
+## are disabled, meaning clicks act immediately.
+func _is_confirm_required() -> bool:
+	if not _tree_view or not _tree_view._tree_data:
+		return false
+
+	var tree = _tree_view._tree_data
+
+	# Refund mode → check refund_confirm
+	if _tree_view.allocation_service and _tree_view.allocation_service.is_refund_mode():
+		return tree.refund_confirm
+
+	# Normal allocation → check allocation_confirm
+	return tree.allocation_confirm
+
 func _update_confirm_button_state() -> void:
 	if not _confirm_btn:
 		return
+
+	# Hide the Confirm button entirely when the current mode doesn't
+	# require confirmation (immediate-click mode).
+	if not _is_confirm_required():
+		_confirm_btn.visible = false
+		_confirm_btn.disabled = true
+		return
+
+	_confirm_btn.visible = true
 
 	if not _tree_view or not _tree_view.allocation_service:
 		_confirm_btn.disabled = true
@@ -655,7 +681,7 @@ func _input(event: InputEvent) -> void:
 		_on_refund_button_pressed()
 		get_viewport().set_input_as_handled()
 	elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-		if not _confirm_btn.disabled:
+		if _confirm_btn.visible and not _confirm_btn.disabled:
 			_on_confirm_pressed()
 		get_viewport().set_input_as_handled()
 	elif event.keycode == KEY_ESCAPE:

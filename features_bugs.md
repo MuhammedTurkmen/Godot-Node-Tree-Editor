@@ -2,31 +2,31 @@
 # Features
 
 ## EASY
-[] add to validator new warnings and errors 
+[] validator'a yeni uyarı ve hata mesajları eklenecek 
 
 ## MEDIUM
-[] connection lines needs detailed work
-
+[] bağlantı çizgileri düzenlenecek 
 
 ## HARD
-
+[] yetenek ağacındaki çerçeve tipleri
+	[] başlıklı dikdörtgen
+	[] başlık altı çizili 
+[] düğüm düzenleyici ekleyelim
+	[] 
 
 # Bugs 
 
 ## EASY
 
 ## MEDIUM
-[] ungrouped nodeları toplu silince hierarchy doğru güncellenmedi
- 
-
+[] gruplanmamış düğümleri toplu silince hierarchy doğru güncellenmedi
 
 ## HARD
-[] tooltip
-	[] node name horizontal alignment 
-	[] attribute value formatting 
-	[] connect with localization
-[] line 2d will fixed
+[] araç bilgisi
+	[] açıklama formatlanabilir olacak içinde attribute kullanabilicez 
+	[] lokalizasyonla bağla
+[] line 2d hataları çözülecek
 
 # Release
-[] GdUnit4: automatic code testing
+[] GdUnit4: otomatik arayüz test edici
 [] Export preset: en son dahil edilmeyecek dosyaları belirleme
