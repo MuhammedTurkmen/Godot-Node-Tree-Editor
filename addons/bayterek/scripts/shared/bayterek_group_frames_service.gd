@@ -3,8 +3,10 @@ class_name BayterekGroupFramesService
 extends BayterekBaseService
 ## Canvas'taki grup frame'lerini yönetir.
 ##
-## Her grup için bir BayterekGroupFrame oluşturur, konumunu günceller,
-## seçim ve sürükleme olaylarını tree_view'a yönlendirir.
+## Frame'ler event almaz. Tıklama/drag tamamen manuel hit-test ile
+## yönetilir: BayterekTreeView._handle_group_frame_input() bu servise
+## mc_local pozisyonunu verir, servis hangi frame'in seçildiğini ve
+## nasıl hareket ettiğini bilir.
 
 signal frame_pressed(group_id: String, additive: bool)
 signal frame_drag_started(group_id: String)
@@ -16,10 +18,13 @@ var _frames: Dictionary = {}   # group_id -> BayterekGroupFrame
 ## Frame'lerin eklendiği container. TreeView tarafından atanır.
 var _frame_container: Control
 
-## Drag state
+## Drag state (mc_local coordinates — main_container local space)
 var _drag_start_positions: Dictionary = {}   # BayterekNodeButton -> Vector2
-var _drag_start_mouse_tree: Vector2 = Vector2.ZERO
+var _drag_start_mc_local: Vector2 = Vector2.ZERO
 var _dragging_group_id: String = ""
+
+## Selection state
+var selected_group_id: String = ""
 
 func set_container(container: Control) -> void:
 	_frame_container = container
@@ -32,8 +37,8 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
 	rebuild()
 
-## Tüm frame'leri sıfırdan oluşturur. Grup eklenince/silinince çağrılır.
 func rebuild() -> void:
+	print("[GROUP_FRAMES] rebuild()")
 	_clear_all_frames()
 
 	if not _tree_data:
@@ -50,42 +55,33 @@ func _clear_all_frames() -> void:
 		if is_instance_valid(frame):
 			frame.queue_free()
 	_frames.clear()
+	selected_group_id = ""
+	_dragging_group_id = ""
+	_drag_start_positions.clear()
 
 func _create_frame(group: BayterekNodeGroup) -> void:
 	if not _frame_container:
 		push_warning("BayterekGroupFramesService: _frame_container is null!")
 		return
 
-	print("[FramesService] creating frame, container=", _frame_container.name, " filter=", _frame_container.mouse_filter)
+	print("[GROUP_FRAMES] create frame: ", group.name)
 
 	var frame := BayterekGroupFrame.new()
 	frame.name = "GroupFrame_%s" % group.id
 	frame.group_id = group.id
 	frame.group_name = group.name
 	frame.group_color = group.color
-	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	frame.frame_pressed.connect(_on_frame_pressed)
-	frame.frame_drag_started.connect(_on_frame_drag_started)
-	frame.frame_dragged.connect(_on_frame_dragged)
-	frame.frame_drag_ended.connect(_on_frame_drag_ended)
 
 	_frame_container.add_child(frame)
 	_frames[group.id] = frame
 
-	# Immediately compute the bounding box from members so the frame
-	# isn't left at size (0, 0).
 	var members: Array = _collect_members(group.id)
 	frame.fit_to_members(members)
-
-	# Defer a debug report so we see the real size after layout.
-	frame.call_deferred("_debug_report")
 
 # ============================================================
 # UPDATE
 # ============================================================
 
-## Tek bir frame'i günceller.
 func refresh_group(group_id: String) -> void:
 	if not _frames.has(group_id):
 		return
@@ -93,22 +89,18 @@ func refresh_group(group_id: String) -> void:
 	if not is_instance_valid(frame):
 		return
 
-	# Grup bilgisini güncelle (isim/renk değişmiş olabilir)
 	var group: BayterekNodeGroup = _tree_data.get_group_by_id(group_id) if _tree_data else null
 	if group:
 		frame.group_name = group.name
 		frame.group_color = group.color
 
-	# Üyeleri topla
 	var members: Array = _collect_members(group_id)
 	frame.fit_to_members(members)
 
-## Tüm frame'leri günceller.
 func refresh_all() -> void:
 	for group_id in _frames.keys():
 		refresh_group(group_id)
 
-## Node'un bulunduğu grubun frame'ini günceller.
 func on_node_moved(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data:
 		return
@@ -117,24 +109,11 @@ func on_node_moved(node: BayterekNodeButton) -> void:
 		return
 	refresh_group(gid)
 
-## Node'un grubu değiştiğinde (assign/remove) eski ve yeni frame'i güncelle.
 func on_node_group_changed(node: BayterekNodeButton, old_group_id: String, new_group_id: String) -> void:
 	if not old_group_id.is_empty():
 		refresh_group(old_group_id)
 	if not new_group_id.is_empty():
 		refresh_group(new_group_id)
-
-# ============================================================
-# SELECTION
-# ============================================================
-
-## Tree view, seçim değiştiğinde hangi frame'lerin seçili olduğunu bildirir.
-func set_selected_groups(group_ids: Array) -> void:
-	for gid in _frames.keys():
-		var frame: BayterekGroupFrame = _frames[gid]
-		if is_instance_valid(frame):
-			frame.selected = gid in group_ids
-			frame.queue_redraw()
 
 # ============================================================
 # MEMBER COLLECTION
@@ -153,19 +132,64 @@ func _collect_members(group_id: String) -> Array:
 	return result
 
 # ============================================================
-# DRAG HANDLING
+# HIT TESTING
 # ============================================================
 
-func _on_frame_pressed(frame: BayterekGroupFrame, additive: bool) -> void:
-	print("[FramesService] frame_pressed: ", frame.group_name)
-	frame_pressed.emit(frame.group_id, additive)
+## Returns the topmost group frame whose TITLE BAR contains `mc_local_pos`.
+func hit_test(mc_local_pos: Vector2) -> BayterekGroupFrame:
+	print("[GROUP_FRAMES] hit_test at ", mc_local_pos, " frame count=", _frames.size())
 
-func _on_frame_drag_started(frame: BayterekGroupFrame, screen_pos: Vector2) -> void:
-	print("[FramesService] frame_drag_started: ", frame.group_name)
-	if not _tree_view:
+	var keys: Array = _frames.keys()
+	for i in range(keys.size() - 1, -1, -1):
+		var gid: String = keys[i]
+		var frame: BayterekGroupFrame = _frames[gid]
+		if not is_instance_valid(frame) or not frame.visible:
+			continue
+
+		var rect: Rect2 = Rect2(frame.position, frame.size)
+		var in_body: bool = rect.has_point(mc_local_pos)
+		print("[GROUP_FRAMES]   frame ", frame.group_name, " rect=", rect, " in_body=", in_body)
+
+		if not in_body:
+			continue
+
+		var title_rect := Rect2(frame.position, Vector2(frame.size.x, BayterekGroupFrame.TITLE_HEIGHT))
+		var in_title: bool = title_rect.has_point(mc_local_pos)
+		print("[GROUP_FRAMES]   title_rect=", title_rect, " in_title=", in_title)
+
+		if in_title:
+			return frame
+		return null
+
+	return null
+
+# ============================================================
+# SELECTION
+# ============================================================
+
+func set_selected(group_id: String) -> void:
+	selected_group_id = group_id
+	for gid in _frames.keys():
+		var frame: BayterekGroupFrame = _frames[gid]
+		if is_instance_valid(frame):
+			frame.selected = (gid == group_id)
+			frame.queue_redraw()
+
+func clear_selection() -> void:
+	set_selected("")
+
+# ============================================================
+# DRAG
+# ============================================================
+
+func start_drag(frame: BayterekGroupFrame, mc_local: Vector2) -> void:
+	print("[GROUP_FRAMES] start_drag frame=", frame.group_name if frame else "NULL", " mc_local=", mc_local)
+
+	if not frame or not _tree_view:
 		return
 
 	_dragging_group_id = frame.group_id
+	_drag_start_mc_local = mc_local
 	_drag_start_positions.clear()
 
 	var members: Array = _collect_members(frame.group_id)
@@ -173,16 +197,21 @@ func _on_frame_drag_started(frame: BayterekGroupFrame, screen_pos: Vector2) -> v
 		if is_instance_valid(node):
 			_drag_start_positions[node] = node.node_data.position
 
-	_drag_start_mouse_tree = _tree_view.screen_to_tree(screen_pos)
+	print("[GROUP_FRAMES]   drag members=", _drag_start_positions.size())
 
 	frame_drag_started.emit(frame.group_id)
 
-func _on_frame_dragged(frame: BayterekGroupFrame, screen_pos: Vector2) -> void:
+func update_drag(frame: BayterekGroupFrame, mc_local: Vector2) -> void:
+	print("[GROUP_FRAMES] update_drag mc_local=", mc_local, " dragging_id=", _dragging_group_id)
+
 	if not _tree_view or _dragging_group_id.is_empty():
+		print("[GROUP_FRAMES]   early return (no drag active)")
+		return
+	if not is_instance_valid(frame):
 		return
 
-	var current_mouse_tree: Vector2 = _tree_view.screen_to_tree(screen_pos)
-	var delta: Vector2 = current_mouse_tree - _drag_start_mouse_tree
+	var delta: Vector2 = mc_local - _drag_start_mc_local
+	print("[GROUP_FRAMES]   delta=", delta, " node count=", _drag_start_positions.size())
 
 	for node in _drag_start_positions.keys():
 		if not is_instance_valid(node):
@@ -192,16 +221,16 @@ func _on_frame_dragged(frame: BayterekGroupFrame, screen_pos: Vector2) -> void:
 		_tree_view.nodes_service.update_position(node, new_pos)
 		_tree_view.connections_service.update_lines_of(node)
 
-	# Update this frame's rect (bulk update happens on release)
 	refresh_group(_dragging_group_id)
 
 	frame_dragged.emit(frame.group_id, delta)
 
-func _on_frame_drag_ended(frame: BayterekGroupFrame) -> void:
+func end_drag(frame: BayterekGroupFrame) -> void:
+	print("[GROUP_FRAMES] end_drag dragging_id=", _dragging_group_id)
+
 	if _dragging_group_id.is_empty():
 		return
 
-	# Build start/end position maps for undo_redo
 	var start_positions: Dictionary = {}
 	var end_positions: Dictionary = {}
 
@@ -215,10 +244,8 @@ func _on_frame_drag_ended(frame: BayterekGroupFrame) -> void:
 	var group_id: String = _dragging_group_id
 	_dragging_group_id = ""
 
-	# Emit signal so editor can push an undo action
 	frame_drag_ended.emit(group_id)
 
-	# If tree_view has an undo provider, push the action
 	if _tree_view.undo_redo_provider and _tree_view.undo_redo_provider.undo_redo:
 		var undo_redo: UndoRedo = _tree_view.undo_redo_provider.undo_redo
 		undo_redo.create_action("Move Group")

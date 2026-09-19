@@ -48,11 +48,9 @@ var _dragging: bool = false
 var _drag_start_mouse_tree: Vector2 = Vector2.ZERO
 var _drag_start_positions: Dictionary = {}
 
-# Test frames (temporary, for proving manual hit-test works)
-var _test_frames: Array[BayterekTestFrame] = []
-var _test_frame_dragging: BayterekTestFrame = null
-var _test_frame_drag_start_mc_local: Vector2 = Vector2.ZERO
-var _test_frame_drag_start_pos: Vector2 = Vector2.ZERO
+# Group frame drag state (manual hit-test)
+var _group_frame_dragging: BayterekGroupFrame = null
+var _group_frame_drag_start_mc_local: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -74,8 +72,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_create_services()
 	_create_selection_box()
 
-	_test_frames.clear()
-	_test_frame_dragging = null
+	_group_frame_dragging = null
 
 	call_deferred("center_camera_on_content")
 
@@ -236,8 +233,8 @@ func _gui_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
 
-	# Test frame hit-test FIRST (before camera, so drag doesn't pan).
-	if _handle_test_frame_input(event):
+	# Group frame hit-test FIRST (before camera so drag doesn't pan).
+	if _handle_group_frame_input(event):
 		return
 
 	if camera:
@@ -687,7 +684,6 @@ func _create_services() -> void:
 	group_frames_service = BayterekGroupFramesService.new(self)
 	group_frames_service.set_container(group_frames_container)
 	group_frames_service.load_tree(_tree_data)
-	group_frames_service.frame_pressed.connect(_on_group_frame_pressed)
 
 	allocation_service = BayterekAllocationService.new(self)
 
@@ -755,14 +751,10 @@ func _refresh_all_allocatable_flags() -> void:
 # COORDINATE HELPERS
 # ============================================================
 
-## Converts a screen-space position into tree coordinates.
-## Tree space is centered on (0,0) — the middle of the canvas.
 func screen_to_tree(screen_pos: Vector2) -> Vector2:
 	var local: Vector2 = main_container.get_global_transform().affine_inverse() * (get_global_transform() * screen_pos)
 	return local - (_tree_data.size * 0.5)
 
-## Converts a screen-space position into main_container's LOCAL space.
-## This is what we need for placing child Controls (frames etc.).
 func screen_to_mc_local(screen_pos: Vector2) -> Vector2:
 	return main_container.get_global_transform().affine_inverse() * (get_global_transform() * screen_pos)
 
@@ -797,70 +789,13 @@ func _drag_drop_data(at_position: Vector2, data: Variant) -> void:
 	prefab_dropped.emit(prefab, tree_pos)
 
 # ============================================================
-# GROUP FRAME CLICK HANDLER
+# GROUP FRAME INPUT (manual hit-test)
 # ============================================================
 
-func _on_group_frame_pressed(group_id: String, additive: bool) -> void:
-	if not nodes_service:
-		return
+func _handle_group_frame_input(event: InputEvent) -> bool:
+	if not group_frames_service:
+		return false
 
-	var members: Array = []
-	for node in nodes_service.get_all_nodes():
-		if is_instance_valid(node) and node.node_data and node.node_data.group_id == group_id:
-			members.append(node)
-
-	if members.is_empty():
-		return
-
-	if not additive:
-		clear_selection()
-
-	for node in members:
-		select_node(node, true)
-
-# ============================================================
-# TEST FRAME API
-# ============================================================
-
-## Adds a test frame centered at the given screen-space position.
-func add_test_frame_at_screen(screen_pos: Vector2) -> void:
-	if not _tree_data or not main_container:
-		return
-
-	# Position in main_container local space — this is what .position expects.
-	var mc_local: Vector2 = screen_to_mc_local(screen_pos)
-	var frame_size := Vector2(300, 200)
-
-	var frame := BayterekTestFrame.new()
-	frame.frame_name = "Test Frame %d" % (_test_frames.size() + 1)
-	frame.size = frame_size
-	frame.position = mc_local - frame_size * 0.5   # center on click
-
-	main_container.add_child(frame)
-	_test_frames.append(frame)
-
-	changed.emit()
-
-## Returns the topmost test frame whose title bar contains `mc_local_pos`.
-## `mc_local_pos` must be in main_container's LOCAL coordinates.
-func _test_frame_at(mc_local_pos: Vector2) -> BayterekTestFrame:
-	for i in range(_test_frames.size() - 1, -1, -1):
-		var f = _test_frames[i]
-		if not is_instance_valid(f) or not f.visible:
-			continue
-		var rect: Rect2 = Rect2(f.position, f.size)
-		if not rect.has_point(mc_local_pos):
-			continue
-		# Only the title bar counts as a clickable region.
-		var title_rect: Rect2 = Rect2(f.position, Vector2(f.size.x, BayterekTestFrame.TITLE_HEIGHT))
-		if title_rect.has_point(mc_local_pos):
-			return f
-		# Body hit — return null so node selection works underneath.
-		return null
-	return null
-
-## Handles input for test frames. Returns true if the event was consumed.
-func _handle_test_frame_input(event: InputEvent) -> bool:
 	if event is InputEventMouseButton:
 		if event.button_index != MOUSE_BUTTON_LEFT:
 			return false
@@ -868,31 +803,37 @@ func _handle_test_frame_input(event: InputEvent) -> bool:
 		var mc_local: Vector2 = screen_to_mc_local(event.position)
 
 		if event.pressed:
-			var hit: BayterekTestFrame = _test_frame_at(mc_local)
+			var hit: BayterekGroupFrame = group_frames_service.hit_test(mc_local)
 			if hit:
-				_test_frame_dragging = hit
-				_test_frame_drag_start_mc_local = mc_local
-				_test_frame_drag_start_pos = hit.position
+				_group_frame_dragging = hit
+				_group_frame_drag_start_mc_local = mc_local
 
-				for f in _test_frames:
-					if is_instance_valid(f):
-						f.selected = (f == hit)
-						f.queue_redraw()
+				# Start drag in the service (fills _drag_start_positions).
+				group_frames_service.start_drag(hit, mc_local)
+
+				# Selection — also select the group's member nodes
+				group_frames_service.set_selected(hit.group_id)
+
+				var additive: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
+				if not additive:
+					clear_selection()
+				for node in nodes_service.get_all_nodes():
+					if is_instance_valid(node) and node.node_data and node.node_data.group_id == hit.group_id:
+						select_node(node, true)
 
 				return true
 
 		else:
-			if _test_frame_dragging:
-				_test_frame_dragging = null
+			if _group_frame_dragging:
+				group_frames_service.end_drag(_group_frame_dragging)
+				_group_frame_dragging = null
 				changed.emit()
 				return true
 
 	elif event is InputEventMouseMotion:
-		if _test_frame_dragging and is_instance_valid(_test_frame_dragging):
+		if _group_frame_dragging and is_instance_valid(_group_frame_dragging):
 			var mc_local: Vector2 = screen_to_mc_local(event.position)
-			var delta: Vector2 = mc_local - _test_frame_drag_start_mc_local
-			_test_frame_dragging.position = _test_frame_drag_start_pos + delta
-			_test_frame_dragging.queue_redraw()
+			group_frames_service.update_drag(_group_frame_dragging, mc_local)
 			return true
 
 	return false
