@@ -124,8 +124,11 @@ func ensure_border_config(state: String) -> void:
 # ============================================================
 
 ## Base polygon at the given size, centered at (0, 0).
-## Applies corner rounding for non-circular shapes when `corner_radius > 0`.
-func get_polygon_vertices(effective_size: Vector2) -> PackedVector2Array:
+##
+## `radius_override`: when >= 0, overrides `corner_radius` for this call
+## (used internally to compute the inset fill with a smaller radius so
+## the fill's corners are concentric with the border's inner edge).
+func get_polygon_vertices(effective_size: Vector2, radius_override: float = -1.0) -> PackedVector2Array:
 	var half: Vector2 = effective_size * 0.5
 	var base_verts: PackedVector2Array
 
@@ -149,9 +152,28 @@ func get_polygon_vertices(effective_size: Vector2) -> PackedVector2Array:
 		_:
 			return PackedVector2Array()
 
-	if corner_radius > 0.0:
-		return _apply_corner_rounding(base_verts, corner_radius)
+	var r: float = corner_radius if radius_override < 0.0 else radius_override
+	if r > 0.0:
+		return _apply_corner_rounding(base_verts, r)
 	return base_verts
+
+## Vertices used for the FILL. When a border is active, the fill is inset
+## by `border_width` and its corner radius is reduced by the same amount,
+## so the inner arc stays concentric with the outer border arc.
+func get_fill_vertices(effective_size: Vector2) -> PackedVector2Array:
+	if not border_enabled or border_width <= 0.0:
+		return get_polygon_vertices(effective_size)
+
+	var inset_size: Vector2 = effective_size - Vector2(border_width, border_width) * 2.0
+	if inset_size.x <= 0.5 or inset_size.y <= 0.5:
+		return PackedVector2Array()
+
+	var inner_radius: float = max(0.0, corner_radius - border_width)
+	return get_polygon_vertices(inset_size, inner_radius)
+
+## Vertices used for the BORDER's outer edge — the full shape outline.
+func get_border_vertices(effective_size: Vector2) -> PackedVector2Array:
+	return get_polygon_vertices(effective_size)
 
 ## DEBUG ONLY: returns the un-rounded polygon for comparison.
 func _make_raw_polygon(effective_size: Vector2) -> PackedVector2Array:
@@ -166,21 +188,6 @@ func _make_raw_polygon(effective_size: Vector2) -> PackedVector2Array:
 		ShapeType.PENTAGON: return _make_regular_polygon(half, 5, -PI * 0.5)
 		ShapeType.HEXAGON: return _make_regular_polygon(half, 6, -PI * 0.5)
 		_: return PackedVector2Array()
-
-## Vertices used for the FILL. When a border is active, the fill is inset
-## by `border_width` so the border's inner edge lines up with the fill.
-func get_fill_vertices(effective_size: Vector2) -> PackedVector2Array:
-	if not border_enabled or border_width <= 0.0:
-		return get_polygon_vertices(effective_size)
-
-	var inset_size: Vector2 = effective_size - Vector2(border_width, border_width) * 2.0
-	if inset_size.x <= 0.5 or inset_size.y <= 0.5:
-		return PackedVector2Array()
-	return get_polygon_vertices(inset_size)
-
-## Vertices used for the BORDER's outer edge — the full shape outline.
-func get_border_vertices(effective_size: Vector2) -> PackedVector2Array:
-	return get_polygon_vertices(effective_size)
 
 func _make_circle_vertices(half: Vector2, segments: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
