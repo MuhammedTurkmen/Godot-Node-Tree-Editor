@@ -198,6 +198,7 @@ func _get_simulated_states() -> Dictionary:
 	return {
 		"normal": true,
 		"hover": false,
+		"clicked": false,
 		"locked": false,
 		"preallocated": false,
 		"prerefund": false,

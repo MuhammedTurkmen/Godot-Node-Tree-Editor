@@ -181,6 +181,7 @@ func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
 	var result: Dictionary = {}
 
 	var is_hovered: bool = runtime_flags.get("is_hovered", false)
+	var is_clicked: bool = runtime_flags.get("is_clicked", false)
 	var allocated: bool = runtime_flags.get("allocated", false)
 	var preallocated: bool = runtime_flags.get("preallocated", false)
 	var refund: bool = runtime_flags.get("refund", false)
@@ -192,6 +193,7 @@ func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
 	result["preallocated"] = preallocated and not refund
 	result["max_level"] = allocated and max_allocations > 0 and allocation_level >= max_allocations
 	result["hover"] = is_hovered
+	result["clicked"] = is_clicked
 
 	if not allocated and not preallocated:
 		result["allocateable"] = is_allocatable
@@ -201,7 +203,7 @@ func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
 		result["not_allocateable"] = false
 
 	var any_special: bool = false
-	for key in ["locked", "prerefund", "preallocated", "max_level", "hover", "allocateable", "not_allocateable"]:
+	for key in ["locked", "prerefund", "preallocated", "max_level", "hover", "clicked", "allocateable", "not_allocateable"]:
 		if result.get(key, false):
 			any_special = true
 			break

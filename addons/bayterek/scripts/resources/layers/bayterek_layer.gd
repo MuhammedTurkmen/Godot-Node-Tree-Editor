@@ -12,6 +12,7 @@ extends Resource
 const STATES: Array[String] = [
 	"normal",
 	"hover",
+	"clicked",
 	"locked",
 	"preallocated",
 	"prerefund",
@@ -23,11 +24,12 @@ const STATES: Array[String] = [
 ## State çözümleme önceliği — aktif state'ler arasından katmanın hangisini
 ## seçeceğini belirler. Index 0 = en yüksek öncelik.
 ##
-## Örnek: Node aynı anda hem "hover" hem "locked" ise → katmanın her ikisinin
-## de checkbox'ı ON ise "hover" seçilir (önce gelir).
-## Katmanın hover checkbox'ı OFF, locked ON ise → "locked" seçilir.
+## Örnek: Node aynı anda hem "clicked" hem "hover" ise → katmanın her ikisinin
+## de checkbox'ı ON ise "clicked" seçilir (önce gelir).
+## Katmanın clicked checkbox'ı OFF, hover ON ise → "hover" seçilir.
 ## Hiçbiri ON değilse → "normal" fallback.
 const STATE_PRIORITY: Array[String] = [
+	"clicked",
 	"hover",
 	"prerefund",
 	"preallocated",
@@ -48,7 +50,7 @@ const STATE_PRIORITY: Array[String] = [
 @export_storage var transform: BayterekLayerTransform
 
 # ============================================================
-# ANIMASYON (Faz 5 için yer tutucu)
+# ANİMASYON (Faz 5 için yer tutucu)
 # ============================================================
 
 ## Animasyon sistemi Faz 5'te gelecek. Şimdilik sadece veri alanı.

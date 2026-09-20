@@ -18,6 +18,7 @@ var prefab: BayterekPrefab
 var tree_data: BayterekTree
 
 var is_mouse_over: bool = false
+var is_clicked: bool = false
 var selected: bool = false
 
 var allocated: bool = false
@@ -126,6 +127,7 @@ func _recompute_active_states() -> void:
 
 	var flags: Dictionary = {
 		"is_hovered": is_mouse_over,
+		"is_clicked": is_clicked,
 		"allocated": allocated,
 		"preallocated": preallocated,
 		"refund": refund,
@@ -243,11 +245,6 @@ func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Colo
 ## Draws the border as a thick polyline along the centerline. This produces
 ## a proper ring — the interior stays empty (or filled by the fill polygon
 ## drawn underneath), which is what you want when fill is disabled.
-##
-## NOTE: draw_polyline strokes `width` total thickness, half outward and
-## half inward. The centerline polygon is inset by `width/2` from the outer
-## edge, so the visible outer edge lands exactly at `effective_size` and
-## the inner edge at `effective_size - width`.
 func _draw_shape_border_ring(
 	verts: PackedVector2Array,
 	xform: Transform2D,
@@ -344,8 +341,14 @@ func _gui_input(event: InputEvent) -> void:
 			if event.pressed:
 				_press_pos = event.position
 				_is_dragging = false
+				if not is_clicked:
+					is_clicked = true
+					refresh_visuals()
 				accept_event()
 			else:
+				if is_clicked:
+					is_clicked = false
+					refresh_visuals()
 				if _is_dragging:
 					drag_ended.emit(self)
 					_is_dragging = false
@@ -375,6 +378,8 @@ func _on_mouse_entered() -> void:
 
 func _on_mouse_exited() -> void:
 	is_mouse_over = false
+	if is_clicked:
+		is_clicked = false
 	refresh_visuals()
 	node_hovered.emit(self, false)
 

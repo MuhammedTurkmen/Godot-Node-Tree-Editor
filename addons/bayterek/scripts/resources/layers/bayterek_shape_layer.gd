@@ -3,29 +3,6 @@ class_name BayterekShapeLayer
 extends BayterekLayer
 ## Shape layer — circle, square, triangle, pentagon, hexagon.
 ## Supports fill, border and shadow.
-##
-## GEOMETRY
-## --------
-##   outer_size        = effective_size              (outer bound)
-##   border_width      = w
-##   centerline_size   = effective_size - w          (border ring center)
-##   inner_size        = effective_size - 2w         (fill bound)
-##   corner_radius     = outer polygon corner radius (auto-clamped)
-##
-## RENDERING
-## ---------
-## The border is drawn as a `draw_polyline` stroke along a centerline
-## polygon. draw_polyline expands w/2 outward and w/2 inward, so:
-##   outer edge = centerline + w/2 = effective_size
-##   inner edge = centerline - w/2 = effective_size - w
-##
-## The fill is drawn as a filled polygon inset by `border_width` so it
-## sits exactly inside the border's inner edge. This makes the two layers
-## independent: fill-only, border-only (a ring), and both, all work.
-##
-## CORNER RADIUS CLAMP
-## -------------------
-## `corner_radius` is auto-clamped to `min(w,h)/2 * 0.99`.
 
 enum ShapeType {
 	CIRCLE,
@@ -71,6 +48,7 @@ static func _make_default_fill_configs() -> Dictionary:
 	return {
 		"normal":           {"enabled": false, "color": Color("7FB8FF")},
 		"hover":            {"enabled": false, "color": Color("FFD966")},
+		"clicked":          {"enabled": false, "color": Color("B38A00")},
 		"locked":           {"enabled": false, "color": Color("666666")},
 		"preallocated":     {"enabled": false, "color": Color("FFA640")},
 		"prerefund":        {"enabled": false, "color": Color("FF8080")},
@@ -83,6 +61,7 @@ static func _make_default_border_configs() -> Dictionary:
 	return {
 		"normal":           {"enabled": false, "color": Color("F2F2F2")},
 		"hover":            {"enabled": false, "color": Color("FFBF00")},
+		"clicked":          {"enabled": false, "color": Color("A87A00")},
 		"locked":           {"enabled": false, "color": Color("444444")},
 		"preallocated":     {"enabled": false, "color": Color("FF8000")},
 		"prerefund":        {"enabled": false, "color": Color("FF4D4D")},
@@ -191,9 +170,8 @@ func _corner_radius_limit(effective_size: Vector2) -> float:
 func get_polygon_vertices(effective_size: Vector2) -> PackedVector2Array:
 	return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
 
-## Fill polygon: size shrunk by `2*border_width` (i.e. inset `border_width`
-## on each side), rounded with `corner_radius - border_width`. When border
-## is disabled, matches the outer polygon exactly.
+## Fill polygon: size shrunk by `2*border_width`, rounded with
+## `corner_radius - border_width`.
 func get_fill_vertices(effective_size: Vector2) -> PackedVector2Array:
 	if not border_enabled or border_width <= 0.0:
 		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))

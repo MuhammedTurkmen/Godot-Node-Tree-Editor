@@ -1,0 +1,129 @@
+[gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://cgt7fuj0gnifp"]
+
+[ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_llt3a"]
+[ext_resource type="Script" uid="uid://de6ng2pbq3gss" path="res://addons/bayterek/scripts/resources/bayterek_node_group.gd" id="2_immpc"]
+[ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="3_3oq2p"]
+[ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="3_k1nh3"]
+[ext_resource type="Script" uid="uid://bnggwadduoie5" path="res://addons/bayterek/scripts/resources/layers/bayterek_shape_layer.gd" id="4_ak1rv"]
+[ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="5_ke383"]
+
+[sub_resource type="Resource" id="Resource_k1nh3"]
+script = ExtResource("5_ke383")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_ak1rv"]
+script = ExtResource("4_ak1rv")
+shape_type = 1
+corner_radius = 15.0
+fill_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.4, 0.7, 1, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+border_enabled = true
+border_configs = {
+"allocateable": {
+"color": Color(0.3019608, 0.85882354, 0.3019608, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.65882355, 0.47843137, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.7490196, 0, 1),
+"enabled": true
+},
+"locked": {
+"color": Color(0.26666668, 0.26666668, 0.26666668, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8, 0, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(1, 1, 1, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.2, 0.2, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.5019608, 0, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.3019608, 0.3019608, 1),
+"enabled": false
+}
+}
+layer_name = "Background"
+transform = SubResource("Resource_k1nh3")
+
+[sub_resource type="Resource" id="Resource_ke383"]
+script = ExtResource("1_llt3a")
+is_root = true
+id = 2
+name = "Large Node"
+type = 2
+design_id = "new_design"
+position = Vector2(-343.5, -130.5)
+layers = Array[ExtResource("3_k1nh3")]([SubResource("Resource_ak1rv")])
+
+[resource]
+script = ExtResource("3_3oq2p")
+id = "tree_1"
+name = "Tree 1"
+id_counter = 2
+icon_sizes = {
+0: Vector2(0, 0),
+1: Vector2(0, 0),
+2: Vector2(0, 0)
+}
+icons = {
+0: null,
+1: null,
+2: null
+}
+node_size = {
+0: Vector2(27, 27),
+1: Vector2(48, 48),
+2: Vector2(64, 64)
+}
+nodes = Array[ExtResource("1_llt3a")]([SubResource("Resource_ke383")])
+hierarchy_split_offset = -356
