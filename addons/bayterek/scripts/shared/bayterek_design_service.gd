@@ -2,7 +2,7 @@
 class_name BayterekDesignService
 extends RefCounted
 ## Design CRUD + disk operations.
-## All design files live in res://bayterek_data/designs/.
+## All design files live in res://data/bayterek/designs/.
 ##
 ## File naming: snake_case of the design name + ".tres"
 ## ID: same as file basename (unique)
@@ -57,19 +57,39 @@ static func create_design(base_name: String = "New Design", category: String = "
 	design.design_size = Vector2(100, 100)
 	design.scale = Vector2.ONE
 
-	# Default: one filled circle shape layer
+	# --- Default background layer ---
+	# Start from a fresh shape layer so it inherits ALL default field values
+	# from BayterekShapeLayer._init() (fill_configs, border_configs,
+	# corner_radius, shadow settings, etc). Then override just what we
+	# want for the default design.
 	var shape := BayterekShapeLayer.new()
 	shape.layer_name = "Background"
-	shape.shape_type = BayterekShapeLayer.ShapeType.CIRCLE
+	shape.shape_type = BayterekShapeLayer.ShapeType.SQUARE
 	shape.transform.size = design.design_size
-	shape.fill_configs = {
-		"normal": {"enabled": true, "color": Color(0.4, 0.7, 1.0, 1.0)},
-	}
-	shape.border_configs = {
-		"normal": {"enabled": true, "color": Color(1.0, 1.0, 1.0, 1.0)},
-	}
+
+	# Corner radius: a pleasing default that scales with the design size.
+	# The layer will clamp it against its own geometry at render time.
+	shape.corner_radius = design.design_size.x * 0.15
+
+	# Enable fill + border with the "normal" state only.
+	# Other states keep their default (disabled) values from the layer's
+	# default configs, so the user can enable them later without losing
+	# the pre-populated palette.
+	shape.fill_enabled = true
 	shape.border_enabled = true
 	shape.border_width = 2.0
+
+	# Override just the "normal" fill/border colors — merge into the
+	# existing defaults so hover/locked/etc. configs are preserved.
+	shape.fill_configs["normal"] = {
+		"enabled": true,
+		"color": Color(0.4, 0.7, 1.0, 1.0),
+	}
+	shape.border_configs["normal"] = {
+		"enabled": true,
+		"color": Color(1.0, 1.0, 1.0, 1.0),
+	}
+
 	design.add_layer(shape)
 
 	var err: Error = ResourceSaver.save(design, file_path)
