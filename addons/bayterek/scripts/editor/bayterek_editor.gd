@@ -1509,6 +1509,7 @@ func _layer_to_dict(layer: BayterekLayer) -> Dictionary:
 	if layer is BayterekShapeLayer:
 		d["_type"] = "shape"
 		d["shape_type"] = int(layer.shape_type)
+		d["corner_radius"] = layer.corner_radius
 		d["fill_enabled"] = layer.fill_enabled
 		d["fill_configs"] = _configs_to_dict(layer.fill_configs)
 		d["border_enabled"] = layer.border_enabled
@@ -1584,6 +1585,7 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 
 	if layer is BayterekShapeLayer:
 		layer.shape_type = int(d.get("shape_type", 0)) as BayterekShapeLayer.ShapeType
+		layer.corner_radius = float(d.get("corner_radius", 0.0))
 		layer.fill_enabled = d.get("fill_enabled", true)
 		layer.fill_configs = _dict_to_configs(d.get("fill_configs", {}))
 		layer.border_enabled = d.get("border_enabled", false)

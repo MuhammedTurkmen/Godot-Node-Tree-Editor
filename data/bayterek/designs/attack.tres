@@ -11,6 +11,7 @@ size = Vector2(100, 100)
 
 [sub_resource type="Resource" id="Resource_5qdsx"]
 script = ExtResource("2_44v2d")
+shape_type = 1
 fill_configs = {
 "normal": {
 "color": Color(0.4, 0.7, 1, 1),

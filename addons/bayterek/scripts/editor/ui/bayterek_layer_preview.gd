@@ -221,20 +221,10 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
 			var outer_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
-			var inner_verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
+			if not outer_verts.is_empty():
+				_draw_border_polyline(outer_verts, xform, border_color, layer.border_width)
 
-			if draw_fill:
-				# Fill will cover the interior — draw only the outer polygon.
-				if not outer_verts.is_empty():
-					_draw_fill(outer_verts, xform, border_color)
-			else:
-				# No fill — draw as a ring so the interior stays empty.
-				if not outer_verts.is_empty() and not inner_verts.is_empty():
-					_draw_ring(inner_verts, outer_verts, xform, border_color)
-				elif not outer_verts.is_empty():
-					_draw_fill(outer_verts, xform, border_color)
-
-	# --- Fill ---
+	# --- Fill on top (covers the inner half of the border) ---
 	if draw_fill:
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
@@ -243,6 +233,30 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 				verts = layer.get_polygon_vertices(effective_size)
 			if not verts.is_empty():
 				_draw_fill(verts, xform, fill_color)
+
+	# --- DEBUG visualization (remove once corners are tuned) ---
+	if layer.corner_radius > 0.0:
+		var raw_verts: PackedVector2Array = layer._make_raw_polygon(effective_size)
+		if raw_verts.size() >= 2:
+			var raw_pts := PackedVector2Array()
+			raw_pts.resize(raw_verts.size() + 1)
+			for i in raw_verts.size():
+				raw_pts[i] = xform * raw_verts[i]
+			raw_pts[raw_verts.size()] = raw_pts[0]
+			draw_polyline(raw_pts, Color(0.3, 0.5, 1.0, 0.6), 1.0)
+
+func _draw_border_polyline(verts: PackedVector2Array, xform: Transform2D, color: Color, width: float) -> void:
+	if verts.size() < 2:
+		return
+
+	var scaled_width: float = width * preview_scale
+	var pts := PackedVector2Array()
+	pts.resize(verts.size() + 1)
+	for i in verts.size():
+		pts[i] = xform * verts[i]
+	pts[verts.size()] = pts[0]
+
+	draw_polyline(pts, color, scaled_width * 2.0, true)
 
 func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
 	var offset: Vector2 = layer.shadow_size * preview_scale
@@ -278,22 +292,6 @@ func _draw_fill(verts: PackedVector2Array, xform: Transform2D, color: Color) -> 
 	for i in verts.size():
 		transformed[i] = xform * verts[i]
 	draw_colored_polygon(transformed, color)
-
-## Draws a ring between two concentric polygons with the same vertex count.
-func _draw_ring(inner_verts: PackedVector2Array, outer_verts: PackedVector2Array, xform: Transform2D, color: Color) -> void:
-	var n: int = min(inner_verts.size(), outer_verts.size())
-	if n < 2:
-		return
-
-	for i in n:
-		var next_i: int = (i + 1) % n
-		var quad := PackedVector2Array([
-			xform * inner_verts[i],
-			xform * outer_verts[i],
-			xform * outer_verts[next_i],
-			xform * inner_verts[next_i],
-		])
-		draw_colored_polygon(quad, color)
 
 func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Array:
 	var out := PackedVector2Array()

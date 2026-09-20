@@ -220,20 +220,10 @@ func _draw_shape_layer(
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
 			var outer_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
-			var inner_verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
+			if not outer_verts.is_empty():
+				_draw_shape_border(outer_verts, combined, border_color, layer.border_width)
 
-			if draw_fill:
-				# Fill will cover the interior — draw only the outer polygon.
-				if not outer_verts.is_empty():
-					_draw_shape_fill(outer_verts, combined, border_color)
-			else:
-				# No fill — draw as a ring so the interior stays empty.
-				if not outer_verts.is_empty() and not inner_verts.is_empty():
-					_draw_ring(inner_verts, outer_verts, combined, border_color)
-				elif not outer_verts.is_empty():
-					_draw_shape_fill(outer_verts, combined, border_color)
-
-	# --- Fill ---
+	# --- Fill on top (covers the inner half of the border) ---
 	if draw_fill:
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
@@ -250,22 +240,23 @@ func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Colo
 		transformed[i] = xform * verts[i]
 	draw_colored_polygon(transformed, color)
 
-## Draws a ring between two concentric polygons with the same vertex count.
-## Between every pair of consecutive vertices, emits a quad covering the gap.
-func _draw_ring(inner_verts: PackedVector2Array, outer_verts: PackedVector2Array, xform: Transform2D, color: Color) -> void:
-	var n: int = min(inner_verts.size(), outer_verts.size())
-	if n < 2:
+## Draws the border as a thick polyline centered on the outline.
+## Line width stays constant along the whole path, including on rounded
+## corners — unlike a quad-strip ring, which doubles up at arc joins.
+## The inner half of the stroke will be covered by the fill drawn on top.
+func _draw_shape_border(verts: PackedVector2Array, xform: Transform2D, color: Color, width: float) -> void:
+	if verts.size() < 2:
 		return
 
-	for i in n:
-		var next_i: int = (i + 1) % n
-		var quad := PackedVector2Array([
-			xform * inner_verts[i],
-			xform * outer_verts[i],
-			xform * outer_verts[next_i],
-			xform * inner_verts[next_i],
-		])
-		draw_colored_polygon(quad, color)
+	var pts := PackedVector2Array()
+	pts.resize(verts.size() + 1)
+	for i in verts.size():
+		pts[i] = xform * verts[i]
+	pts[verts.size()] = pts[0]
+
+	# Double the width because polyline is centered: outer half visible,
+	# inner half is hidden under the fill.
+	draw_polyline(pts, color, width * 2.0, true)
 
 ## Draws the shadow with optional multi-pass blur.
 func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:

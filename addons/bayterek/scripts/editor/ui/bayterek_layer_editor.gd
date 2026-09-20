@@ -26,7 +26,6 @@ var _context_menu: PopupMenu
 var _selected_layer_index: int = -1
 var _updating_ui: bool = false
 
-# Context menu IDs
 const CM_RENAME := 1
 const CM_DUPLICATE := 2
 const CM_DELETE := 3
@@ -89,7 +88,7 @@ func _build_ui() -> void:
 	_layer_tree = Tree.new()
 	_layer_tree.hide_root = true
 	_layer_tree.select_mode = Tree.SELECT_ROW
-	_layer_tree.custom_minimum_size = Vector2(0, 165)
+	_layer_tree.custom_minimum_size = Vector2(0, 220)
 	_layer_tree.size_flags_horizontal = SIZE_EXPAND_FILL
 	_layer_tree.item_selected.connect(_on_layer_selected)
 	_layer_tree.button_clicked.connect(_on_layer_button_clicked)
@@ -253,10 +252,6 @@ func _on_context_menu_pressed(id: int) -> void:
 		CM_MOVE_UP: _on_up_pressed()
 		CM_MOVE_DOWN: _on_down_pressed()
 
-# ============================================================
-# RENAME LAYER
-# ============================================================
-
 func _rename_layer_dialog() -> void:
 	if not design or _selected_layer_index < 0:
 		return
@@ -301,10 +296,6 @@ func _rename_layer_dialog() -> void:
 	dialog.popup_centered(Vector2i(360, 140))
 	name_input.call_deferred("grab_focus")
 	name_input.call_deferred("select_all")
-
-# ============================================================
-# DUPLICATE LAYER
-# ============================================================
 
 func _duplicate_selected_layer() -> void:
 	if not design or _selected_layer_index < 0:
@@ -372,7 +363,6 @@ func _on_delete_pressed() -> void:
 	var removed_idx: int = _selected_layer_index
 	design.remove_layer(removed_idx)
 
-	# Prefer the previous layer; fall back to first remaining layer.
 	var new_idx: int = -1
 	var count: int = design.get_layer_count()
 	if count > 0:
@@ -435,7 +425,6 @@ func _rebuild_detail_form() -> void:
 	if not layer:
 		return
 
-	# --- Name row ---
 	var name_row := HBoxContainer.new()
 	_detail_root.add_child(name_row)
 
@@ -455,7 +444,6 @@ func _rebuild_detail_form() -> void:
 	)
 	name_row.add_child(name_input)
 
-	# --- Transform fold ---
 	var transform_fold := _make_fold("Transform")
 	_detail_root.add_child(transform_fold)
 
@@ -471,7 +459,6 @@ func _rebuild_detail_form() -> void:
 	)
 	transform_inner.add_child(transform_form)
 
-	# --- Type-specific folds ---
 	if layer is BayterekShapeLayer:
 		_build_shape_detail(layer)
 	elif layer is BayterekTextureLayer:
@@ -508,6 +495,27 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 		changed.emit()
 	)
 	type_row.add_child(type_dropdown)
+
+	# Corner radius
+	var cr_row := HBoxContainer.new()
+	shape_inner.add_child(cr_row)
+	var cr_label := Label.new()
+	cr_label.text = "Corner R"
+	cr_label.custom_minimum_size = Vector2(80, 0)
+	cr_label.tooltip_text = "Corner rounding radius in pixels (0 = sharp)"
+	cr_row.add_child(cr_label)
+	var cr_input := SpinBox.new()
+	cr_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	cr_input.min_value = 0.0
+	cr_input.max_value = 200.0
+	cr_input.step = 0.5
+	cr_input.value = layer.corner_radius
+	cr_input.value_changed.connect(func(v: float):
+		layer.corner_radius = v
+		design.notify_layer_modified()
+		changed.emit()
+	)
+	cr_row.add_child(cr_input)
 
 	# --- Fill fold ---
 	var fill_fold := _make_fold("Fill")
@@ -669,7 +677,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	shadow_blur_row.add_child(sb_input)
 
 func _build_texture_detail(layer: BayterekTextureLayer) -> void:
-	# --- Icon fold ---
 	var icon_fold := _make_fold("Icon")
 	_detail_root.add_child(icon_fold)
 
@@ -695,7 +702,6 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	)
 	icon_inner.add_child(icon_editor)
 
-	# --- Tint fold ---
 	var tint_fold := _make_fold("Tint")
 	_detail_root.add_child(tint_fold)
 
