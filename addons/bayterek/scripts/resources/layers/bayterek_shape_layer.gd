@@ -4,33 +4,28 @@ extends BayterekLayer
 ## Shape layer — circle, square, triangle, pentagon, hexagon.
 ## Supports fill, border and shadow.
 ##
-## BORDER GEOMETRY
-## ----------------
-##   outer_size        = effective_size              (outer bound, = button size)
+## GEOMETRY
+## --------
+##   outer_size        = effective_size              (outer bound)
 ##   border_width      = w
+##   centerline_size   = effective_size - w          (border ring center)
 ##   inner_size        = effective_size - 2w         (fill bound)
 ##   corner_radius     = outer polygon corner radius (auto-clamped)
 ##
-## INNER CORNER RADIUS
-## -------------------
-## The inner polygon's corner radius is derived automatically as
-## `max(0, corner_radius - border_width)`, so the border stays roughly
-## constant-thickness in the rounded corners. It is NOT user-configurable.
+## RENDERING
+## ---------
+## The border is drawn as a `draw_polyline` stroke along a centerline
+## polygon. draw_polyline expands w/2 outward and w/2 inward, so:
+##   outer edge = centerline + w/2 = effective_size
+##   inner edge = centerline - w/2 = effective_size - w
+##
+## The fill is drawn as a filled polygon inset by `border_width` so it
+## sits exactly inside the border's inner edge. This makes the two layers
+## independent: fill-only, border-only (a ring), and both, all work.
 ##
 ## CORNER RADIUS CLAMP
 ## -------------------
-## `corner_radius` is auto-clamped to:
-##
-##     min(effective_size.x, effective_size.y) / 2 * 0.99
-##
-## i.e. 99% of half the smaller dimension. This prevents the rounding
-## from eating past the shape's centerline and collapsing the shape.
-##
-## CRITICAL — WINDING-AWARE ARC SWEEP
-## ----------------------------------
-## Arcs must sweep in the same direction as the polygon's winding, or the
-## polygon becomes self-intersecting and draw_colored_polygon fails with
-## "Invalid polygon data, triangulation failed".
+## `corner_radius` is auto-clamped to `min(w,h)/2 * 0.99`.
 
 enum ShapeType {
 	CIRCLE,
@@ -170,26 +165,10 @@ func ensure_border_config(state: String) -> void:
 		border_configs[state] = {"enabled": false, "color": Color.WHITE}
 
 # ============================================================
-# INNER CORNER RADIUS (auto-derived, not user-editable)
-# ============================================================
-
-## Auto-derived inner corner radius:
-##   inner_r = max(0, corner_radius - border_width)
-## The inner polygon's arc radius shrinks by `border_width` to keep the
-## border roughly constant-thickness in rounded corners.
-func get_inner_corner_radius(effective_size: Vector2) -> float:
-	var cr: float = get_clamped_corner_radius(effective_size)
-	return maxf(0.0, cr - border_width)
-
-# ============================================================
 # CLAMPED CORNER RADIUS
 # ============================================================
 
-## Returns `corner_radius` clamped to:
-##
-##     min(effective_size.x, effective_size.y) / 2 * 0.99
-##
-## i.e. 99% of half the smaller dimension.
+## Returns `corner_radius` clamped to `min(w,h)/2 * 0.99`.
 func get_clamped_corner_radius(effective_size: Vector2) -> float:
 	if corner_radius <= 0.0:
 		return 0.0
@@ -212,21 +191,40 @@ func _corner_radius_limit(effective_size: Vector2) -> float:
 func get_polygon_vertices(effective_size: Vector2) -> PackedVector2Array:
 	return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
 
-## Fill polygon: size shrunk by `2*border_width`, rounded with the
-## auto-derived inner corner radius.
+## Fill polygon: size shrunk by `2*border_width` (i.e. inset `border_width`
+## on each side), rounded with `corner_radius - border_width`. When border
+## is disabled, matches the outer polygon exactly.
 func get_fill_vertices(effective_size: Vector2) -> PackedVector2Array:
 	if not border_enabled or border_width <= 0.0:
 		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
 
-	var inner_size: Vector2 = effective_size - Vector2(border_width, border_width) * 2.0
+	var inset: float = border_width
+	var inner_size: Vector2 = effective_size - Vector2(inset, inset) * 2.0
 	if inner_size.x <= 0.5 or inner_size.y <= 0.5:
 		return PackedVector2Array()
 
-	return _build_polygon(inner_size, get_inner_corner_radius(effective_size))
+	var cr: float = get_clamped_corner_radius(effective_size)
+	var inner_radius: float = maxf(0.0, cr - inset)
 
-## Kept for API compatibility — returns the outer polygon.
+	return _build_polygon(inner_size, inner_radius)
+
+## Vertices for the BORDER's centerline. Stroked with `border_width` via
+## draw_polyline, so:
+##   outer edge = centerline + w/2 = effective_size
+##   inner edge = centerline - w/2 = effective_size - w
 func get_border_centerline_vertices(effective_size: Vector2) -> PackedVector2Array:
-	return get_polygon_vertices(effective_size)
+	if border_width <= 0.0:
+		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
+
+	var inset: float = border_width * 0.5
+	var center_size: Vector2 = effective_size - Vector2(inset, inset) * 2.0
+	if center_size.x <= 0.5 or center_size.y <= 0.5:
+		return PackedVector2Array()
+
+	var cr: float = get_clamped_corner_radius(effective_size)
+	var center_radius: float = maxf(0.0, cr - inset)
+
+	return _build_polygon(center_size, center_radius)
 
 ## Returns the outer polygon for shadow / outline use.
 func get_border_vertices(effective_size: Vector2) -> PackedVector2Array:

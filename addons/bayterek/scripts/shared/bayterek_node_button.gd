@@ -215,22 +215,23 @@ func _draw_shape_layer(
 	var draw_border: bool = layer.should_draw_border(state_key)
 	var draw_fill: bool = layer.should_draw_fill(state_key)
 
-	var border_color: Color = layer.get_border_color_for_state(state_key)
-	var fill_color: Color = layer.get_fill_color_for_state(state_key)
+	# --- Fill (bottom layer) ---
+	if draw_fill:
+		var fill_color: Color = layer.get_fill_color_for_state(state_key)
+		if fill_color.a > 0.0:
+			var fill_verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
+			if fill_verts.is_empty():
+				fill_verts = layer.get_polygon_vertices(effective_size)
+			if not fill_verts.is_empty():
+				_draw_shape_fill(fill_verts, combined, fill_color)
 
-	# --- Border: filled outer polygon ---
-	if draw_border and border_color.a > 0.0 and layer.border_width > 0.0:
-		var outer_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
-		if not outer_verts.is_empty():
-			_draw_shape_fill(outer_verts, combined, border_color)
-
-	# --- Fill: filled inner polygon on top of the border ---
-	if draw_fill and fill_color.a > 0.0:
-		var fill_verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
-		if fill_verts.is_empty():
-			fill_verts = layer.get_polygon_vertices(effective_size)
-		if not fill_verts.is_empty():
-			_draw_shape_fill(fill_verts, combined, fill_color)
+	# --- Border (ring on top of fill) ---
+	if draw_border:
+		var border_color: Color = layer.get_border_color_for_state(state_key)
+		if border_color.a > 0.0 and layer.border_width > 0.0:
+			var center_verts: PackedVector2Array = layer.get_border_centerline_vertices(effective_size)
+			if not center_verts.is_empty():
+				_draw_shape_border_ring(center_verts, combined, border_color, layer.border_width)
 
 func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Color) -> void:
 	var transformed := PackedVector2Array()
@@ -238,6 +239,31 @@ func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Colo
 	for i in verts.size():
 		transformed[i] = xform * verts[i]
 	draw_colored_polygon(transformed, color)
+
+## Draws the border as a thick polyline along the centerline. This produces
+## a proper ring — the interior stays empty (or filled by the fill polygon
+## drawn underneath), which is what you want when fill is disabled.
+##
+## NOTE: draw_polyline strokes `width` total thickness, half outward and
+## half inward. The centerline polygon is inset by `width/2` from the outer
+## edge, so the visible outer edge lands exactly at `effective_size` and
+## the inner edge at `effective_size - width`.
+func _draw_shape_border_ring(
+	verts: PackedVector2Array,
+	xform: Transform2D,
+	color: Color,
+	width: float
+) -> void:
+	if verts.size() < 2:
+		return
+
+	var pts := PackedVector2Array()
+	pts.resize(verts.size() + 1)
+	for i in verts.size():
+		pts[i] = xform * verts[i]
+	pts[verts.size()] = pts[0]
+
+	draw_polyline(pts, color, width, true)
 
 ## Draws the shadow with optional multi-pass blur.
 func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
