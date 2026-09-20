@@ -1,7 +1,9 @@
 @tool
 class_name BayterekNodeButton
 extends BaseButton
-## Tek bir node'un sahnedeki görsel temsili.
+## On-canvas visual representation of a node.
+## Renders all layers via custom _draw(). Crown and selection frame
+## are kept as child controls.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -18,26 +20,22 @@ var tree_data: BayterekTree
 var is_mouse_over: bool = false
 var selected: bool = false
 
-# === Allocation runtime vars ===
 var allocated: bool = false
 var preallocated: bool = false
 var refund: bool = false
 var allocation_level: int = 0
 var state: Bayterek.AllocationState = Bayterek.AllocationState.NORMAL
 
-## Global "can this node be allocated right now" flag, computed by the
-## tree view after each allocation/preallocation/refund change.
-## Used by `_apply_visuals()` to pick allocatable/not_allocatable color.
 var is_allocatable: bool = false
 
-var _icon_rect: TextureRect
-var _icon_fallback: ColorRect
-var _border_rect: TextureRect
+# --- Child controls ---
 var _select_border: Panel
 var _crown_label: Label
 
 var _is_dragging: bool = false
 var _press_pos: Vector2 = Vector2.ZERO
+
+var _active_states: Dictionary = {}
 
 var id: int:
 	get: return node_data.id if node_data else -1
@@ -66,44 +64,21 @@ var position_data: Vector2:
 	get: return node_data.position if node_data else Vector2.ZERO
 	set(v): if node_data: node_data.position = v
 
+var design_id: String:
+	get: return node_data.design_id if node_data else ""
+	set(v):
+		if node_data:
+			node_data.design_id = v
+			refresh_visuals()
+
 func _ready() -> void:
 	button_mask = MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
+	_build_children()
 
-	_build_visuals()
-
-func _build_visuals() -> void:
-	# 1) Fallback (colored box — visible when no texture)
-	_icon_fallback = ColorRect.new()
-	_icon_fallback.name = "IconFallback"
-	_icon_fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_icon_fallback.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_icon_fallback.visible = false
-	add_child(_icon_fallback)
-
-	# 2) Icon texture
-	_icon_rect = TextureRect.new()
-	_icon_rect.name = "Icon"
-	_icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_icon_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(_icon_rect)
-
-	# 3) Border
-	_border_rect = TextureRect.new()
-	_border_rect.name = "Border"
-	_border_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_border_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_border_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_border_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_border_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(_border_rect)
-
-	# 4) Selection frame
+func _build_children() -> void:
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -122,12 +97,10 @@ func _build_visuals() -> void:
 	_select_border.visible = false
 	add_child(_select_border)
 
-	# 5) Crown icon (visible only for root nodes)
 	_crown_label = Label.new()
 	_crown_label.name = "Crown"
 	_crown_label.text = "👑"
 	_crown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_crown_label.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_crown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_crown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_crown_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
@@ -143,214 +116,41 @@ func _build_visuals() -> void:
 	add_child(_crown_label)
 
 # ============================================================
-# VISUAL STATE RESOLUTION
+# STATE RESOLUTION
 # ============================================================
 
-## Returns which visual "state key" this node should use right now.
-## Priority:
-##   1. LOCKED
-##   2. REFUND
-##   3. ALLOCATE (preallocated — preallocation mode only)
-##   4. MAX_LEVEL
-##   5. HOVER
-##   6. ALLOCATABLE
-##   7. NOT_ALLOCATABLE
-##   8. NORMAL
-func _resolve_visual_state() -> String:
-	if node_data == null:
-		return "normal"
+func _recompute_active_states() -> void:
+	if not node_data:
+		_active_states = {}
+		return
 
-	# 1) Locked takes top priority.
-	if node_data.locked:
-		return "locked"
-
-	# 2) Refund: this node is currently staged for refund.
-	if refund:
-		return "refund"
-
-	# 3) Allocate: preallocation mode, node is staged for allocation.
-	if preallocated:
-		return "allocate"
-
-	# 4) Max level: allocated and at maximum level.
-	if allocated and node_data.max_allocations > 0 and allocation_level >= node_data.max_allocations:
-		return "max_level"
-
-	# 5) Hover: mouse is over the node.
-	if is_mouse_over:
-		return "hover"
-
-	# 6) Allocatable: node is not yet allocated but CAN be allocated right now.
-	if tree_data and tree_data.allocation and not allocated:
-		if is_allocatable:
-			return "allocatable"
-		else:
-			return "not_allocatable"
-
-	# 7) Fallback.
-	return "normal"
-
-## Resolves the border texture for the current visual state.
-## Falls back gracefully: if the state has no dedicated texture, uses
-## `normal`, then `hover`, then any other populated one, then null.
-func _resolve_border_texture(state_key: String) -> Texture2D:
-	if node_data == null:
-		return null
-
-	# 1. Direct match for the state
-	match state_key:
-		"locked":
-			if node_data.border_texture_locked:
-				return node_data.border_texture_locked
-		"normal":
-			if node_data.border_texture_normal:
-				return node_data.border_texture_normal
-		"hover":
-			if node_data.border_texture_hover:
-				return node_data.border_texture_hover
-		"max_level":
-			if node_data.border_texture_max_level:
-				return node_data.border_texture_max_level
-
-	# 2. Fallback chain: normal → hover → locked → max_level
-	if node_data.border_texture_normal:
-		return node_data.border_texture_normal
-	if node_data.border_texture_hover:
-		return node_data.border_texture_hover
-	if node_data.border_texture_locked:
-		return node_data.border_texture_locked
-	if node_data.border_texture_max_level:
-		return node_data.border_texture_max_level
-
-	# 3. Nothing set
-	return null
-
-## Resolves the icon texture for the current visual state.
-## Falls back to `icon_texture_normal` (base icon) when nothing set.
-func _resolve_icon_texture(state_key: String) -> Texture2D:
-	if node_data == null:
-		return null
-
-	match state_key:
-		"locked":
-			if node_data.icon_texture_locked:
-				return node_data.icon_texture_locked
-		"normal":
-			if node_data.icon_texture_normal:
-				return node_data.icon_texture_normal
-		"hover":
-			if node_data.icon_texture_hover:
-				return node_data.icon_texture_hover
-		"max_level":
-			if node_data.icon_texture_max_level:
-				return node_data.icon_texture_max_level
-
-	# Fallback to base icon
-	if node_data.icon_texture_normal:
-		return node_data.icon_texture_normal
-	if node_data.icon_texture_hover:
-		return node_data.icon_texture_hover
-	if node_data.icon_texture_locked:
-		return node_data.icon_texture_locked
-	if node_data.icon_texture_max_level:
-		return node_data.icon_texture_max_level
-
-	return null
-
-## Looks up the current border color for the given state key.
-func _border_color_for(state_key: String) -> Color:
-	if node_data == null:
-		return Color.WHITE
-	match state_key:
-		"locked":          return node_data.border_color_locked
-		"normal":          return node_data.border_color_normal
-		"hover":           return node_data.border_color_hover
-		"allocate":        return node_data.border_color_allocate
-		"refund":          return node_data.border_color_refund
-		"max_level":       return node_data.border_color_max_level
-		"allocatable":     return node_data.border_color_allocatable
-		"not_allocatable": return node_data.border_color_not_allocatable
-	return Color.WHITE
-
-## Looks up the current icon color for the given state key.
-func _icon_color_for(state_key: String) -> Color:
-	if node_data == null:
-		return Color.WHITE
-	match state_key:
-		"locked":          return node_data.icon_color_locked
-		"normal":          return node_data.icon_color_normal
-		"hover":           return node_data.icon_color_hover
-		"allocate":        return node_data.icon_color_allocate
-		"refund":          return node_data.icon_color_refund
-		"max_level":       return node_data.icon_color_max_level
-		"allocatable":     return node_data.icon_color_allocatable
-		"not_allocatable": return node_data.icon_color_not_allocatable
-	return Color.WHITE
+	var flags: Dictionary = {
+		"is_hovered": is_mouse_over,
+		"allocated": allocated,
+		"preallocated": preallocated,
+		"refund": refund,
+		"allocation_level": allocation_level,
+		"is_allocatable": is_allocatable,
+	}
+	_active_states = node_data.resolve_active_states(flags)
 
 # ============================================================
-# VISUAL UPDATE
+# VISUAL REFRESH
 # ============================================================
 
 func refresh_visuals() -> void:
 	if not node_data:
 		return
 
-	# Apply texture filter from tree
-	if tree_data:
-		var filter: int = tree_data.get_godot_texture_filter()
-		if _icon_rect:
-			_icon_rect.texture_filter = filter
-		if _border_rect:
-			_border_rect.texture_filter = filter
+	_recompute_active_states()
 
-	var state_key: String = _resolve_visual_state()
-
-	# --- Icon layer ---
-	var icon_tex: Texture2D = _resolve_icon_texture(state_key)
-
-	if icon_tex:
-		_icon_rect.texture = icon_tex
-		_icon_rect.visible = true
-		_icon_fallback.visible = false
-		_icon_rect.modulate = _icon_color_for(state_key)
-	else:
-		_icon_rect.texture = null
-		_icon_rect.visible = false
-		_icon_fallback.visible = true
-		_icon_fallback.color = _get_type_color(node_data.type)
-		_icon_fallback.modulate = _icon_color_for(state_key)
-
-	# --- Border layer ---
-	var border_tex: Texture2D = _resolve_border_texture(state_key)
-	var border_color: Color = _border_color_for(state_key)
-
-	if border_tex:
-		_border_rect.texture = border_tex
-		_border_rect.modulate = border_color
-		_border_rect.visible = true
-		modulate = Color.WHITE  # don't double-tint the whole node
-	else:
-		_border_rect.texture = null
-		_border_rect.visible = false
-		# If there's no border texture, tint the whole node so state is
-		# still visible. This is the "color only" fallback.
-		modulate = border_color
-
-	# Crown — visible only for root nodes
 	if _crown_label:
 		_crown_label.visible = node_data.is_root
 
-func _get_type_color(t: BayterekNode.NodeType) -> Color:
-	match t:
-		BayterekNode.NodeType.SMALL:  return Color(0.4, 0.7, 1.0, 0.8)
-		BayterekNode.NodeType.MEDIUM: return Color(0.4, 1.0, 0.5, 0.8)
-		BayterekNode.NodeType.LARGE:  return Color(1.0, 0.7, 0.4, 0.8)
-		BayterekNode.NodeType.DECORATION: return Color(0.7, 0.5, 1.0, 0.8)
-	return Color.WHITE
+	if _select_border:
+		_select_border.visible = selected
 
-# ============================================================
-# ALLOCATION STATE
-# ============================================================
+	queue_redraw()
 
 func set_state(new_state: Bayterek.AllocationState) -> void:
 	state = new_state
@@ -360,6 +160,146 @@ func set_selected(value: bool) -> void:
 	selected = value
 	if _select_border:
 		_select_border.visible = value
+
+# ============================================================
+# DRAW
+# ============================================================
+
+func _draw() -> void:
+	if not node_data:
+		return
+
+	var design_size: Vector2 = node_data.design_size
+	var node_scale: Vector2 = node_data.scale
+
+	var scale_transform := Transform2D(
+		Vector2(node_scale.x, 0.0),
+		Vector2(0.0, node_scale.y),
+		design_size * 0.5 * node_scale
+	)
+
+	for layer in node_data.layers:
+		if not layer or not layer.visible:
+			continue
+		_draw_layer(layer, design_size, scale_transform)
+
+func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transform2D) -> void:
+	var state_key: String = layer.get_visual_state(_active_states)
+	var layer_matrix: Transform2D = layer.get_matrix(design_size)
+	var effective_size: Vector2 = layer.get_size(design_size)
+
+	if layer is BayterekShapeLayer:
+		_draw_shape_layer(layer, state_key, effective_size, layer_matrix, base_xform)
+	elif layer is BayterekTextureLayer:
+		_draw_texture_layer(layer, state_key, effective_size, layer_matrix, base_xform)
+
+# ============================================================
+# SHAPE DRAWING
+# ============================================================
+
+func _draw_shape_layer(
+	layer: BayterekShapeLayer,
+	state_key: String,
+	effective_size: Vector2,
+	layer_matrix: Transform2D,
+	base_xform: Transform2D
+) -> void:
+	var combined: Transform2D = base_xform * layer_matrix
+
+	# --- Shadow (based on outer border outline) ---
+	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
+		var outer_verts: PackedVector2Array = layer.get_border_vertices(effective_size)
+		if not outer_verts.is_empty():
+			_draw_shape_shadow(layer, outer_verts, combined)
+
+	# --- Border (outer outline, drawn as filled polygon under the fill) ---
+	if layer.should_draw_border(state_key):
+		var border_color: Color = layer.get_border_color_for_state(state_key)
+		if border_color.a > 0.0 and layer.border_width > 0.0:
+			var border_verts: PackedVector2Array = layer.get_border_vertices(effective_size)
+			if not border_verts.is_empty():
+				_draw_shape_fill(border_verts, combined, border_color)
+
+	# --- Fill (inset so it sits inside the border) ---
+	if layer.should_draw_fill(state_key):
+		var fill_color: Color = layer.get_fill_color_for_state(state_key)
+		if fill_color.a > 0.0:
+			var fill_verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
+			if not fill_verts.is_empty():
+				_draw_shape_fill(fill_verts, combined, fill_color)
+
+func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Color) -> void:
+	var transformed := PackedVector2Array()
+	transformed.resize(verts.size())
+	for i in verts.size():
+		transformed[i] = xform * verts[i]
+	draw_colored_polygon(transformed, color)
+
+## Draws the shadow with optional multi-pass blur.
+func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
+	var offset: Vector2 = layer.shadow_size
+	var blur: float = layer.shadow_blur
+	var base_color: Color = layer.shadow_color
+
+	if blur <= 0.01:
+		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + offset)
+		_draw_shape_fill(verts, shadow_xform, base_color)
+		return
+
+	var passes: int = 4
+	var alpha_per_pass: float = base_color.a / float(passes)
+	var color_per_pass := Color(base_color.r, base_color.g, base_color.b, alpha_per_pass)
+
+	var dir: Vector2 = offset
+	if dir.length_squared() > 0.0001:
+		dir = dir.normalized()
+	else:
+		dir = Vector2.ZERO
+
+	for i in passes:
+		var spread: float = blur * (float(i) / float(passes - 1))
+		var pass_offset: Vector2 = offset - dir * spread * 0.5
+		var expanded: PackedVector2Array = _expand_verts(verts, spread)
+
+		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + pass_offset)
+		_draw_shape_fill(expanded, shadow_xform, color_per_pass)
+
+## Offsets each vertex outward from center by `offset`. Used for shadow blur.
+func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	out.resize(verts.size())
+	for i in verts.size():
+		var v: Vector2 = verts[i]
+		var dir: Vector2 = v
+		if dir.length_squared() > 0.0001:
+			dir = dir.normalized()
+		out[i] = v + dir * offset
+	return out
+
+# ============================================================
+# TEXTURE DRAWING
+# ============================================================
+
+func _draw_texture_layer(
+	layer: BayterekTextureLayer,
+	state_key: String,
+	effective_size: Vector2,
+	layer_matrix: Transform2D,
+	base_xform: Transform2D
+) -> void:
+	if not layer.should_draw_icon(state_key):
+		return
+
+	var tex: Texture2D = layer.get_icon_for_state(state_key)
+	if not tex:
+		return
+
+	var tint: Color = layer.get_tint_for_state(state_key)
+	var combined: Transform2D = base_xform * layer_matrix
+
+	draw_set_transform_matrix(combined)
+	draw_texture_rect(tex, Rect2(-effective_size * 0.5, effective_size), false, tint)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
 
 # ============================================================
 # INPUT / DRAG
@@ -383,9 +323,6 @@ func _gui_input(event: InputEvent) -> void:
 					pressed.emit()
 				accept_event()
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			# Forward right-click to editor via signal so the context menu
-			# can be shown. We consume the event here since we stop mouse
-			# propagation at this node.
 			var global_pos: Vector2 = get_global_transform() * event.position
 			right_clicked.emit(self, global_pos)
 			accept_event()
@@ -415,8 +352,6 @@ func _on_mouse_exited() -> void:
 # TOOLTIP FORMATTING
 # ============================================================
 
-## Returns three BBCode strings: header, body, footer.
-## The tooltip renders them as separate aligned sections.
 func format_tooltip_sections() -> Dictionary:
 	var header: String = ""
 	var body: String = ""
@@ -425,13 +360,11 @@ func format_tooltip_sections() -> Dictionary:
 	if not node_data:
 		return {"header": "", "body": "", "footer": ""}
 
-	# --- HEADER: node name ---
 	var display_name: String = node_name
 	if display_name.is_empty():
 		display_name = "Node %d" % id
 	header = "[b][color=#f9e6ca]%s[/color][/b]" % display_name
 
-	# --- BODY: prerequisite info, attributes, description ---
 	var body_parts: Array[String] = []
 
 	if not node_data.is_root and node_data.prerequisite_mode != BayterekNode.PrerequisiteMode.ANY:
@@ -452,15 +385,10 @@ func format_tooltip_sections() -> Dictionary:
 		body_parts.append("[color=orange]%s[/color]" % node_data.description)
 
 	body = "\n\n".join(body_parts)
-
-	# --- FOOTER: level ---
 	footer = _format_level_footer()
 
 	return {"header": header, "body": body, "footer": footer}
 
-## Returns a BBCode string for the level footer.
-##   - multi-allocation OFF → "Level: 0 / 1"  (or 1 / 1 when allocated)
-##   - multi-allocation ON  → "Level: X / Y"
 func _format_level_footer() -> String:
 	if not node_data:
 		return ""
@@ -472,12 +400,9 @@ func _format_level_footer() -> String:
 		maximum = node_data.max_allocations
 		current = allocation_level
 	else:
-		# Single allocation: "0 / 1" when not allocated, "1 / 1" when allocated.
 		maximum = 1
 		current = 1 if allocated else 0
 
-	# Color-code: yellow when at max, green when allocated but not max,
-	# grey when not allocated.
 	var color: String = "#a0a0a0"
 	if maximum > 0 and current >= maximum:
 		color = "#ffd766"
@@ -486,8 +411,6 @@ func _format_level_footer() -> String:
 
 	return "[center][color=%s]Level: %d / %d[/color][/center]" % [color, current, maximum]
 
-## Kept for backward compatibility — flattens the three sections into
-## a single BBCode string. Prefer format_tooltip_sections().
 func format_tooltip() -> String:
 	var sections: Dictionary = format_tooltip_sections()
 	var parts: Array[String] = []

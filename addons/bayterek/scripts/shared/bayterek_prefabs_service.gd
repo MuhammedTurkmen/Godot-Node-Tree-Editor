@@ -1,16 +1,15 @@
 @tool
 class_name BayterekPrefabsService
 extends BayterekBaseService
-## Prefab oluşturma / senkronizasyon / silme.
+## Prefab creation / sync / deletion.
 
 signal prefab_created(prefab: BayterekPrefab)
 signal prefab_removed(prefab: BayterekPrefab)
 
-var _ref_id_to_prefab: Dictionary = {}   # reference_id -> BayterekPrefab
+var _ref_id_to_prefab: Dictionary = {}
 
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
-
 	_ref_id_to_prefab.clear()
 
 	for node_type in _tree_data.prefabs.keys():
@@ -44,7 +43,7 @@ func get_all_prefabs() -> Array:
 	return result
 
 # ============================================================
-# PREFAB OLUŞTURMA
+# CREATE PREFAB
 # ============================================================
 
 func create_prefab(node: BayterekNodeButton, is_copy: bool = false) -> BayterekPrefab:
@@ -57,35 +56,11 @@ func create_prefab(node: BayterekNodeButton, is_copy: bool = false) -> BayterekP
 	prefab.description = node.node_data.description
 	prefab.attributes = node.node_data.attributes.duplicate(true)
 	prefab.max_allocations = node.node_data.max_allocations
+	prefab.design_id = node.node_data.design_id
+	prefab.design_size = node.node_data.design_size
+	prefab.scale = node.node_data.scale
 
-	# Copy visuals from the source node
-	prefab.border_texture_locked = node.node_data.border_texture_locked
-	prefab.border_texture_normal = node.node_data.border_texture_normal
-	prefab.border_texture_hover = node.node_data.border_texture_hover
-	prefab.border_texture_max_level = node.node_data.border_texture_max_level
-
-	prefab.border_color_locked = node.node_data.border_color_locked
-	prefab.border_color_normal = node.node_data.border_color_normal
-	prefab.border_color_hover = node.node_data.border_color_hover
-	prefab.border_color_allocate = node.node_data.border_color_allocate
-	prefab.border_color_refund = node.node_data.border_color_refund
-	prefab.border_color_max_level = node.node_data.border_color_max_level
-	prefab.border_color_allocatable = node.node_data.border_color_allocatable
-	prefab.border_color_not_allocatable = node.node_data.border_color_not_allocatable
-
-	prefab.icon_texture_locked = node.node_data.icon_texture_locked
-	prefab.icon_texture_normal = node.node_data.icon_texture_normal
-	prefab.icon_texture_hover = node.node_data.icon_texture_hover
-	prefab.icon_texture_max_level = node.node_data.icon_texture_max_level
-
-	prefab.icon_color_locked = node.node_data.icon_color_locked
-	prefab.icon_color_normal = node.node_data.icon_color_normal
-	prefab.icon_color_hover = node.node_data.icon_color_hover
-	prefab.icon_color_allocate = node.node_data.icon_color_allocate
-	prefab.icon_color_refund = node.node_data.icon_color_refund
-	prefab.icon_color_max_level = node.node_data.icon_color_max_level
-	prefab.icon_color_allocatable = node.node_data.icon_color_allocatable
-	prefab.icon_color_not_allocatable = node.node_data.icon_color_not_allocatable
+	prefab.copy_layers_from(node.node_data.layers)
 
 	if not is_copy:
 		prefab.reference_id = BayterekUUIDGenerator.v4()
@@ -120,7 +95,7 @@ func make_unique(node: BayterekNodeButton) -> void:
 	node.node_data.clear_all_attribute_overrides()
 
 # ============================================================
-# PREFAB SİLME
+# DELETE PREFAB
 # ============================================================
 
 enum DeleteMode {
@@ -176,7 +151,6 @@ func delete_prefab(prefab: BayterekPrefab, mode: DeleteMode = DeleteMode.ORPHAN_
 
 	prefab_removed.emit(prefab)
 
-## Orphan prefab'ları bul (referanslı ama node'u olmayan)
 func find_orphan_prefabs() -> Array:
 	var orphans: Array = []
 	for prefab in get_all_prefabs():
@@ -186,7 +160,6 @@ func find_orphan_prefabs() -> Array:
 			orphans.append(prefab)
 	return orphans
 
-## Tüm orphan prefab'ları sil
 func cleanup_orphan_prefabs() -> int:
 	var orphans: Array = find_orphan_prefabs()
 	for prefab in orphans:
@@ -197,7 +170,6 @@ func cleanup_orphan_prefabs() -> int:
 # RESET TO PREFAB
 # ============================================================
 
-## Node'un tüm verisini prefab default'una döndür
 func reset_node_to_prefab_defaults(node: BayterekNodeButton) -> void:
 	if not node or not node.prefab or not node.node_data:
 		return
@@ -208,41 +180,16 @@ func reset_node_to_prefab_defaults(node: BayterekNodeButton) -> void:
 	node.node_data.description = prefab.description
 	node.node_data.attributes = prefab.attributes.duplicate(true)
 	node.node_data.max_allocations = prefab.max_allocations
+	node.node_data.design_id = prefab.design_id
+	node.node_data.design_size = prefab.design_size
+	node.node_data.scale = prefab.scale
 	node.node_data.clear_all_attribute_overrides()
 
-	# Reset visuals
-	node.node_data.border_texture_locked = prefab.border_texture_locked
-	node.node_data.border_texture_normal = prefab.border_texture_normal
-	node.node_data.border_texture_hover = prefab.border_texture_hover
-	node.node_data.border_texture_max_level = prefab.border_texture_max_level
-
-	node.node_data.border_color_locked = prefab.border_color_locked
-	node.node_data.border_color_normal = prefab.border_color_normal
-	node.node_data.border_color_hover = prefab.border_color_hover
-	node.node_data.border_color_allocate = prefab.border_color_allocate
-	node.node_data.border_color_refund = prefab.border_color_refund
-	node.node_data.border_color_max_level = prefab.border_color_max_level
-	node.node_data.border_color_allocatable = prefab.border_color_allocatable
-	node.node_data.border_color_not_allocatable = prefab.border_color_not_allocatable
-
-	node.node_data.icon_texture_locked = prefab.icon_texture_locked
-	node.node_data.icon_texture_normal = prefab.icon_texture_normal
-	node.node_data.icon_texture_hover = prefab.icon_texture_hover
-	node.node_data.icon_texture_max_level = prefab.icon_texture_max_level
-
-	node.node_data.icon_color_locked = prefab.icon_color_locked
-	node.node_data.icon_color_normal = prefab.icon_color_normal
-	node.node_data.icon_color_hover = prefab.icon_color_hover
-	node.node_data.icon_color_allocate = prefab.icon_color_allocate
-	node.node_data.icon_color_refund = prefab.icon_color_refund
-	node.node_data.icon_color_max_level = prefab.icon_color_max_level
-	node.node_data.icon_color_allocatable = prefab.icon_color_allocatable
-	node.node_data.icon_color_not_allocatable = prefab.icon_color_not_allocatable
+	node.node_data.copy_layers_from(prefab.layers)
 
 	if node.has_method("refresh_visuals"):
 		node.refresh_visuals()
 
-## Tek bir attribute'u prefab default'una döndür
 func reset_attribute_to_prefab_default(node: BayterekNodeButton, attr_id: String) -> void:
 	if not node or not node.prefab or not node.node_data:
 		return

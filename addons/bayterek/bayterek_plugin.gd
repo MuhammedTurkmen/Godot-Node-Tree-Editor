@@ -10,6 +10,7 @@ var _distraction: bool = false
 func _enter_tree() -> void:
 	_register_autoloads()
 	_register_settings()
+	_ensure_data_directories()
 	_create_main_screen()
 
 func _exit_tree() -> void:
@@ -41,7 +42,9 @@ func _make_visible(visible: bool) -> void:
 	if visible and not _main_screen.initialized:
 		_main_screen.init()
 
-# --- Autoloads ---
+# ============================================================
+# AUTOLOADS
+# ============================================================
 
 func _register_autoloads() -> void:
 	if not ProjectSettings.has_setting("autoload/BayterekLoader"):
@@ -53,7 +56,9 @@ func _remove_autoloads() -> void:
 	remove_autoload_singleton("BayterekLoader")
 	remove_autoload_singleton("BayterekSerializer")
 
-# --- Project settings ---
+# ============================================================
+# PROJECT SETTINGS
+# ============================================================
 
 func _register_settings() -> void:
 	_register_setting(Bayterek.ROOT_PATH_SETTING, Bayterek.DEFAULT_ROOT_PATH, PROPERTY_HINT_DIR, "res://")
@@ -70,12 +75,28 @@ func _register_setting(setting_name: String, default_value: Variant, hint: int, 
 		"hint_string": hint_string,
 	})
 
-# --- Main screen ---
+# ============================================================
+# DATA DIRECTORIES
+# ============================================================
+
+## Ensures res://bayterek_data/ and res://bayterek_data/designs/ exist.
+func _ensure_data_directories() -> void:
+	var root: String = Bayterek.get_root_path()
+	var designs: String = Bayterek.get_designs_dir()
+
+	if not DirAccess.dir_exists_absolute(root):
+		DirAccess.make_dir_recursive_absolute(root)
+	if not DirAccess.dir_exists_absolute(designs):
+		DirAccess.make_dir_recursive_absolute(designs)
+
+# ============================================================
+# MAIN SCREEN
+# ============================================================
 
 func _create_main_screen() -> void:
 	_main_screen = BayterekMainScreen.new()
 	if not _main_screen:
-		push_error("Bayterek: MainScreen oluşturulamadı.")
+		push_error("Bayterek: MainScreen could not be created.")
 		return
 
 	_main_screen.name = "BayterekMainScreen"

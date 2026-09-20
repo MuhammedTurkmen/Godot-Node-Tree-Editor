@@ -1,7 +1,7 @@
 @tool
 class_name BayterekNode
 extends Resource
-## Tek bir node'un veri modeli.
+## Data model for a single node.
 
 enum NodeType {
 	SMALL,
@@ -10,14 +10,18 @@ enum NodeType {
 	DECORATION,
 }
 
-## How this node decides whether it can be allocated, based on its
-## incoming connections (in_nodes).
 enum PrerequisiteMode {
 	ANY,
 	COUNT,
 	ALL,
 	GROUP_COMPLETE,
 }
+
+const MAX_LAYERS := 6
+
+# ============================================================
+# IDENTITY
+# ============================================================
 
 @export_storage var is_root: bool = false
 @export_storage var reference_id: String = ""
@@ -28,7 +32,21 @@ enum PrerequisiteMode {
 
 @export_storage var type: NodeType = NodeType.SMALL
 
+## Design reference — which BayterekNodeDesign this node uses.
+@export_storage var design_id: String = ""
+
+# ============================================================
+# LAYOUT
+# ============================================================
+
 @export_storage var position: Vector2 = Vector2.ZERO
+@export_storage var design_size: Vector2 = Vector2(100, 100)
+@export_storage var scale: Vector2 = Vector2.ONE
+
+# ============================================================
+# GRAPH
+# ============================================================
+
 @export_storage var line_data: Dictionary = {}
 @export_storage var out_nodes: Array[int] = []
 @export_storage var in_nodes: Array[int] = []
@@ -36,62 +54,25 @@ enum PrerequisiteMode {
 @export_storage var max_allocations: int = 1
 @export_storage var locked: bool = false
 
-# Prerequisite rules (only applies to non-root nodes)
+# ============================================================
+# PREREQUISITES
+# ============================================================
+
 @export_storage var prerequisite_mode: PrerequisiteMode = PrerequisiteMode.ANY
 @export_storage var prerequisite_count: int = 1
-
-## GROUP_COMPLETE modunda kullanılır. Bu gruptaki tüm node'lar aktifse
-## bu node allocatable olur.
 @export_storage var prerequisite_group_id: String = ""
 
-## Bu node'un bağlı olduğu grubun ID'si. Boş = gruplanmamış.
+# ============================================================
+# GROUPING
+# ============================================================
+
 @export_storage var group_id: String = ""
 
 # ============================================================
-# VISUALS — Border
+# LAYERS (max 6)
 # ============================================================
 
-@export_storage var border_texture_locked: Texture2D = null
-@export_storage var border_texture_normal: Texture2D = null
-@export_storage var border_texture_hover: Texture2D = null
-@export_storage var border_texture_max_level: Texture2D = null
-
-@export_storage var border_color_locked: Color = Color(0.5, 0.5, 0.5, 1.0)
-@export_storage var border_color_normal: Color = Color(1, 1, 1, 1)
-@export_storage var border_color_hover: Color = Color(1.2, 1.2, 1.2, 1)
-@export_storage var border_color_allocate: Color = Color(1.0, 0.9, 0.3, 1)
-@export_storage var border_color_refund: Color = Color(1.0, 0.4, 0.4, 1)
-@export_storage var border_color_max_level: Color = Color(1.0, 0.85, 0.2, 1)
-@export_storage var border_color_allocatable: Color = Color(0.6, 1.0, 0.6, 1)
-@export_storage var border_color_not_allocatable: Color = Color(0.6, 0.6, 0.6, 1)
-
-# ============================================================
-# VISUALS — Icon
-# ============================================================
-
-@export_storage var icon_texture_locked: Texture2D = null
-@export_storage var icon_texture_normal: Texture2D = null
-@export_storage var icon_texture_hover: Texture2D = null
-@export_storage var icon_texture_max_level: Texture2D = null
-
-@export_storage var icon_color_locked: Color = Color(0.5, 0.5, 0.5, 1.0)
-@export_storage var icon_color_normal: Color = Color(1, 1, 1, 1)
-@export_storage var icon_color_hover: Color = Color(1.2, 1.2, 1.2, 1)
-@export_storage var icon_color_allocate: Color = Color(1.0, 0.9, 0.3, 1)
-@export_storage var icon_color_refund: Color = Color(1.0, 0.4, 0.4, 1)
-@export_storage var icon_color_max_level: Color = Color(1.0, 0.85, 0.2, 1)
-@export_storage var icon_color_allocatable: Color = Color(0.6, 1.0, 0.6, 1)
-@export_storage var icon_color_not_allocatable: Color = Color(0.6, 0.6, 0.6, 1)
-
-# ============================================================
-# LEGACY ALIAS — `icon` = `icon_texture_normal`
-# ============================================================
-
-var icon: Texture2D:
-	get:
-		return icon_texture_normal
-	set(value):
-		icon_texture_normal = value
+@export_storage var layers: Array[BayterekLayer] = []
 
 # ============================================================
 # PREFAB OVERRIDES
@@ -112,37 +93,118 @@ func clear_all_attribute_overrides() -> void:
 	overridden_attributes.clear()
 
 # ============================================================
-# DEFAULTS
+# LAYER MANAGEMENT
 # ============================================================
 
+func can_add_layer() -> bool:
+	return layers.size() < MAX_LAYERS
+
+func get_layer_count() -> int:
+	return layers.size()
+
+func add_layer(layer: BayterekLayer) -> bool:
+	if not layer:
+		return false
+	if not can_add_layer():
+		return false
+	layers.append(layer)
+	return true
+
+func remove_layer(index: int) -> BayterekLayer:
+	if index < 0 or index >= layers.size():
+		return null
+	var removed: BayterekLayer = layers[index]
+	layers.remove_at(index)
+	return removed
+
+func move_layer(from_index: int, to_index: int) -> bool:
+	if from_index < 0 or from_index >= layers.size():
+		return false
+	if to_index < 0 or to_index >= layers.size():
+		return false
+	if from_index == to_index:
+		return false
+	var layer: BayterekLayer = layers[from_index]
+	layers.remove_at(from_index)
+	layers.insert(to_index, layer)
+	return true
+
+func get_layer(index: int) -> BayterekLayer:
+	if index < 0 or index >= layers.size():
+		return null
+	return layers[index]
+
+func clear_layers() -> void:
+	layers.clear()
+
+func copy_layers_from(source_layers: Array) -> void:
+	layers.clear()
+	for layer in source_layers:
+		if layer is BayterekLayer:
+			layers.append(layer.duplicate_layer())
+
+# ============================================================
+# DESIGN APPLICATION
+# ============================================================
+
+## Applies a specific design's layers + sizing to this node.
+func apply_design(design: BayterekNodeDesign) -> void:
+	if not design:
+		return
+	design_id = design.id
+	design_size = design.design_size
+	scale = design.scale
+	copy_layers_from(design.layers)
+
+## Applies the tree's default design (if any).
+## Called by BayterekNodesService when creating new nodes.
 func apply_defaults_from_tree(tree: BayterekTree) -> void:
 	if not tree:
 		return
+	if tree.default_design_id.is_empty():
+		return
 
-	border_texture_locked = tree.default_border_texture_locked
-	border_texture_normal = tree.default_border_texture_normal
-	border_texture_hover = tree.default_border_texture_hover
-	border_texture_max_level = tree.default_border_texture_max_level
+	var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(tree.default_design_id)
+	if not design:
+		return
 
-	border_color_locked = tree.default_border_color_locked
-	border_color_normal = tree.default_border_color_normal
-	border_color_hover = tree.default_border_color_hover
-	border_color_allocate = tree.default_border_color_allocate
-	border_color_refund = tree.default_border_color_refund
-	border_color_max_level = tree.default_border_color_max_level
-	border_color_allocatable = tree.default_border_color_allocatable
-	border_color_not_allocatable = tree.default_border_color_not_allocatable
+	apply_design(design)
 
-	icon_texture_locked = tree.default_icon_texture_locked
-	icon_texture_normal = tree.default_icon_texture_normal
-	icon_texture_hover = tree.default_icon_texture_hover
-	icon_texture_max_level = tree.default_icon_texture_max_level
+# ============================================================
+# ACTIVE STATE RESOLUTION
+# ============================================================
 
-	icon_color_locked = tree.default_icon_color_locked
-	icon_color_normal = tree.default_icon_color_normal
-	icon_color_hover = tree.default_icon_color_hover
-	icon_color_allocate = tree.default_icon_color_allocate
-	icon_color_refund = tree.default_icon_color_refund
-	icon_color_max_level = tree.default_icon_color_max_level
-	icon_color_allocatable = tree.default_icon_color_allocatable
-	icon_color_not_allocatable = tree.default_icon_color_not_allocatable
+## Returns the currently active node-level states as a Dictionary
+## {"state_name": bool}. Computed once per visual refresh, then passed
+## to each layer.
+func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+
+	var is_hovered: bool = runtime_flags.get("is_hovered", false)
+	var allocated: bool = runtime_flags.get("allocated", false)
+	var preallocated: bool = runtime_flags.get("preallocated", false)
+	var refund: bool = runtime_flags.get("refund", false)
+	var allocation_level: int = runtime_flags.get("allocation_level", 0)
+	var is_allocatable: bool = runtime_flags.get("is_allocatable", false)
+
+	result["locked"] = locked
+	result["prerefund"] = refund
+	result["preallocated"] = preallocated and not refund
+	result["max_level"] = allocated and max_allocations > 0 and allocation_level >= max_allocations
+	result["hover"] = is_hovered
+
+	if not allocated and not preallocated:
+		result["allocateable"] = is_allocatable
+		result["not_allocateable"] = not is_allocatable
+	else:
+		result["allocateable"] = false
+		result["not_allocateable"] = false
+
+	var any_special: bool = false
+	for key in ["locked", "prerefund", "preallocated", "max_level", "hover", "allocateable", "not_allocateable"]:
+		if result.get(key, false):
+			any_special = true
+			break
+	result["normal"] = not any_special
+
+	return result

@@ -8,6 +8,7 @@ signal node_deleted(node: BayterekNodeButton)
 signal selection_changed(selected: Array)
 signal node_moved(node: BayterekNodeButton)
 signal prefab_dropped(prefab: BayterekPrefab, at_tree_position: Vector2)
+signal design_dropped(design: BayterekNodeDesign, at_tree_position: Vector2)
 signal changed
 signal node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 
@@ -119,7 +120,6 @@ func _create_tooltip() -> void:
 
 	add_child(_tooltip)
 
-	# Style the panel
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
 	style.border_color = Color(0.3, 0.3, 0.3, 0.9)
@@ -211,9 +211,6 @@ func refresh_tooltip_position() -> void:
 	if _tooltip and _tooltip.visible and _hovered_node:
 		_tooltip.update_position_for(_hovered_node)
 
-## Rebuilds the tooltip content for the currently hovered node (if any).
-## Call this after any state change (allocation, refund, level) so the
-## tooltip stays in sync without waiting for a mouse move.
 func refresh_tooltip_content() -> void:
 	if not _tooltip or not _tooltip.visible:
 		return
@@ -229,7 +226,6 @@ func _gui_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
 
-	# Group frame hit-test FIRST (before camera so drag doesn't pan).
 	if _handle_group_frame_input(event):
 		return
 
@@ -356,7 +352,7 @@ func _undo_delete_nodes(nodes: Array, nodes_data: Array, indices: Array, connect
 		group_frames_service.refresh_all()
 
 # ============================================================
-# CONNECTION CREATION (Shift + Click) + ALLOCATION/SELECTION
+# CONNECTION CREATION + ALLOCATION/SELECTION
 # ============================================================
 
 func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void:
@@ -365,8 +361,6 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 	if node.node_data.locked:
 		return
 
-	# Runtime allocation: Ctrl (or Meta) held = force selection mode.
-	# This lets the user select nodes even when allocation is active.
 	var ctrl_held: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
 	if _is_allocation_active() and not ctrl_held:
 		allocation_service.on_node_pressed(node)
@@ -683,7 +677,7 @@ func _create_services() -> void:
 	group_frames_service = BayterekGroupFramesService.new(self)
 	group_frames_service.set_container(group_frames_container)
 	group_frames_service.load_tree(_tree_data)
-	group_frames_service.refresh_all() 
+	group_frames_service.refresh_all()
 
 	allocation_service = BayterekAllocationService.new(self)
 
@@ -705,7 +699,6 @@ func _create_services() -> void:
 	allocation_service.node_deallocated.connect(func(n): node_deallocated.emit(n.node_data))
 
 	prefabs_service.prefab_created.connect(func(p): prefab_created.emit(p))
-
 	connections_service.line_created.connect(func(l, f, t): line_created.emit(l, f, t))
 
 	allocation_service.load_tree(_tree_data)
@@ -746,10 +739,6 @@ func _refresh_all_allocatable_flags() -> void:
 				active_ids.append(nid)
 
 	nodes_service.refresh_allocatable_flags(active_ids)
-
-	# Keep an active tooltip in sync with the new state.
-	# This makes level/attribute changes reflect immediately after a click,
-	# without waiting for a mouse move.
 	refresh_tooltip_content()
 
 # ============================================================
@@ -769,7 +758,7 @@ func tree_to_view_local(tree_pos: Vector2) -> Vector2:
 	return get_global_transform().affine_inverse() * global_pos
 
 # ============================================================
-# PREFAB DROP
+# DRAG & DROP (prefab + design)
 # ============================================================
 
 func _drag_get_data(_at_position: Vector2) -> Variant:
@@ -778,20 +767,31 @@ func _drag_get_data(_at_position: Vector2) -> Variant:
 func _drag_can_drop(_at_position: Vector2, data: Variant) -> bool:
 	if not data is Dictionary:
 		return false
-	return data.get("type", "") == "prefab"
+	var t: String = data.get("type", "")
+	return t == "prefab" or t == "design"
 
 func _drag_drop_data(at_position: Vector2, data: Variant) -> void:
 	if not data is Dictionary:
 		return
-	var prefab = data.get("prefab", null)
-	if not prefab is BayterekPrefab:
+
+	var t: String = data.get("type", "")
+
+	if t == "design":
+		var design = data.get("design", null)
+		if design is BayterekNodeDesign:
+			var mc_global: Vector2 = nodes_container.get_global_transform() * at_position
+			var view_local: Vector2 = get_global_transform().affine_inverse() * mc_global
+			var tree_pos: Vector2 = screen_to_tree(view_local)
+			design_dropped.emit(design, tree_pos)
 		return
 
-	var nodes_container_global: Vector2 = nodes_container.get_global_transform() * at_position
-	var view_local: Vector2 = get_global_transform().affine_inverse() * nodes_container_global
-
-	var tree_pos: Vector2 = screen_to_tree(view_local)
-	prefab_dropped.emit(prefab, tree_pos)
+	if t == "prefab":
+		var prefab = data.get("prefab", null)
+		if prefab is BayterekPrefab:
+			var mc_global2: Vector2 = nodes_container.get_global_transform() * at_position
+			var view_local2: Vector2 = get_global_transform().affine_inverse() * mc_global2
+			var tree_pos2: Vector2 = screen_to_tree(view_local2)
+			prefab_dropped.emit(prefab, tree_pos2)
 
 # ============================================================
 # GROUP FRAME INPUT (manual hit-test)

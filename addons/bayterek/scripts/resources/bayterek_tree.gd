@@ -12,24 +12,12 @@ extends Resource
 @export_storage var multiallocation: bool = false
 @export_storage var chain_connection_mode: bool = true
 
-## When true, allocation requires a Confirm step (preallocation mode).
-## When false (default), clicking a node allocates it immediately.
 @export_storage var allocation_confirm: bool = false
-
-## When true, refund requires a Confirm step (staging mode).
-## When false (default), clicking a node in refund mode deallocates it immediately.
 @export_storage var refund_confirm: bool = false
 
-## Runtime'da (oyun içinde) grup frame'lerinin görünüp görünmemesi.
-## Editörde her zaman görünür — bu sadece runtime için geçerli.
 @export_storage var show_group_frames: bool = false
-
-## Frame title'larının hizalaması:
-## 0 = Sol (normal), 1 = Ortalanmış (centered)
 @export_storage var group_frame_title_align: int = 0
 
-## Tooltip alignment settings.
-## 0 = Left, 1 = Center, 2 = Right
 @export_storage var tooltip_header_align: int = 0
 @export_storage var tooltip_body_align: int = 0
 @export_storage var tooltip_footer_align: int = 1
@@ -41,9 +29,6 @@ extends Resource
 @export_storage var line_texture_intermediate: Texture2D
 @export_storage var line_texture_active: Texture2D
 
-## Texture filter for nodes, borders, icons.
-## 0 = Linear (smooth, default)
-## 1 = Nearest (pixel art)
 @export_storage var texture_filter: int = 0
 
 @export_storage var id_counter: int = 0
@@ -56,7 +41,6 @@ extends Resource
 @export_storage var prefabs: Dictionary = {}
 @export_storage var attributes: Dictionary = {}
 
-## Node groups (visual + logical prerequisite grouping)
 @export_storage var node_groups: Array[BayterekNodeGroup] = []
 
 # Editor layout
@@ -64,41 +48,9 @@ extends Resource
 @export_storage var prefabs_split_offset: int = -180
 @export_storage var inspector_split_offset: int = -320
 
-# ============================================================
-# DEFAULT NODE VISUALS — used when creating new nodes
-# ============================================================
-
-# Border textures
-@export_storage var default_border_texture_locked: Texture2D = null
-@export_storage var default_border_texture_normal: Texture2D = null
-@export_storage var default_border_texture_hover: Texture2D = null
-@export_storage var default_border_texture_max_level: Texture2D = null
-
-# Border colors
-@export_storage var default_border_color_locked: Color = Color(0.5, 0.5, 0.5, 1.0)
-@export_storage var default_border_color_normal: Color = Color(1, 1, 1, 1)
-@export_storage var default_border_color_hover: Color = Color(1.2, 1.2, 1.2, 1)
-@export_storage var default_border_color_allocate: Color = Color(1.0, 0.9, 0.3, 1)
-@export_storage var default_border_color_refund: Color = Color(1.0, 0.4, 0.4, 1)
-@export_storage var default_border_color_max_level: Color = Color(1.0, 0.85, 0.2, 1)
-@export_storage var default_border_color_allocatable: Color = Color(0.6, 1.0, 0.6, 1)
-@export_storage var default_border_color_not_allocatable: Color = Color(0.6, 0.6, 0.6, 1)
-
-# Icon textures
-@export_storage var default_icon_texture_locked: Texture2D = null
-@export_storage var default_icon_texture_normal: Texture2D = null
-@export_storage var default_icon_texture_hover: Texture2D = null
-@export_storage var default_icon_texture_max_level: Texture2D = null
-
-# Icon colors
-@export_storage var default_icon_color_locked: Color = Color(0.5, 0.5, 0.5, 1.0)
-@export_storage var default_icon_color_normal: Color = Color(1, 1, 1, 1)
-@export_storage var default_icon_color_hover: Color = Color(1.2, 1.2, 1.2, 1)
-@export_storage var default_icon_color_allocate: Color = Color(1.0, 0.9, 0.3, 1)
-@export_storage var default_icon_color_refund: Color = Color(1.0, 0.4, 0.4, 1)
-@export_storage var default_icon_color_max_level: Color = Color(1.0, 0.85, 0.2, 1)
-@export_storage var default_icon_color_allocatable: Color = Color(0.6, 1.0, 0.6, 1)
-@export_storage var default_icon_color_not_allocatable: Color = Color(0.6, 0.6, 0.6, 1)
+## Default design applied to newly created nodes.
+## Empty string → fall back to a built-in default (or nothing).
+@export_storage var default_design_id: String = ""
 
 var tree_state: BayterekTreeState
 
@@ -136,7 +88,6 @@ func get_next_id() -> int:
 func get_node_size(node_type: BayterekNode.NodeType) -> Vector2:
 	return node_size.get(node_type, Vector2.ZERO)
 
-## Returns the Godot texture filter enum value for CanvasItem.
 func get_godot_texture_filter() -> int:
 	match texture_filter:
 		1: return CanvasItem.TEXTURE_FILTER_NEAREST
@@ -164,7 +115,6 @@ func add_group(group: BayterekNodeGroup) -> void:
 func remove_group(group: BayterekNodeGroup) -> void:
 	node_groups.erase(group)
 
-## Returns the group a node belongs to, or null if ungrouped.
 func get_group_of_node(node_id: int) -> BayterekNodeGroup:
 	for node_data in nodes:
 		if node_data.id == node_id:

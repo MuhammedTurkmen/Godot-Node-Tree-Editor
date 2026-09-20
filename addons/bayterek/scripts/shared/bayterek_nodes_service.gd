@@ -45,9 +45,6 @@ func _create_node_from_data(node_data: BayterekNode) -> BayterekNodeButton:
 	node_created.emit(node)
 	return node
 
-## Creates a node from pre-built node_data. Used by paste.
-## Does NOT auto-root. Does NOT append to _tree_data.nodes
-## (the caller's undo system handles that via restore_node).
 func create_node_from_data_paste(node_data: BayterekNode) -> BayterekNodeButton:
 	if not node_data:
 		return null
@@ -99,11 +96,10 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 	node_data.position = position
 	node_data.max_allocations = 1
 
-	# Auto-root: if the tree has no root yet, make this the first root.
 	if not _tree_has_root():
 		node_data.is_root = true
 
-	# Apply default visuals from tree
+	# Apply tree's default design (copies layers + sizing)
 	node_data.apply_defaults_from_tree(_tree_data)
 
 	node.node_data = node_data
@@ -146,15 +142,24 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	node_data.max_allocations = prefab.max_allocations
 	node_data.attributes = prefab.attributes.duplicate(true)
 
-	# Auto-root: if the tree has no root yet, make this the first root.
 	if not _tree_has_root():
 		node_data.is_root = true
 
-	# Defaults from tree, then override with prefab's visuals
-	node_data.apply_defaults_from_tree(_tree_data)
-	_apply_prefab_visuals(node_data, prefab)
+	# 1) Apply prefab's design if set
+	if not prefab.design_id.is_empty():
+		var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
+		if design:
+			node_data.apply_design(design)
+		else:
+			node_data.apply_defaults_from_tree(_tree_data)
+	else:
+		# 2) Fallback: tree default design
+		node_data.apply_defaults_from_tree(_tree_data)
 
-	# Link to prefab if it's a reference prefab
+	# 3) Prefab's own layers override (if any)
+	if prefab.get_layer_count() > 0:
+		node_data.copy_layers_from(prefab.layers)
+
 	if not prefab.reference_id.is_empty():
 		node_data.reference_id = prefab.reference_id
 		node.prefab = prefab
@@ -187,7 +192,6 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 # AUTO-ROOT HELPER
 # ============================================================
 
-## Returns true if the tree already has at least one node marked as root.
 func _tree_has_root() -> bool:
 	if not _tree_data or not _tree_data.nodes:
 		return false
@@ -195,39 +199,6 @@ func _tree_has_root() -> bool:
 		if n and n.is_root:
 			return true
 	return false
-
-# ============================================================
-# PREFAB VISUAL COPY
-# ============================================================
-
-func _apply_prefab_visuals(node_data: BayterekNode, prefab: BayterekPrefab) -> void:
-	node_data.border_texture_locked = prefab.border_texture_locked
-	node_data.border_texture_normal = prefab.border_texture_normal
-	node_data.border_texture_hover = prefab.border_texture_hover
-	node_data.border_texture_max_level = prefab.border_texture_max_level
-
-	node_data.border_color_locked = prefab.border_color_locked
-	node_data.border_color_normal = prefab.border_color_normal
-	node_data.border_color_hover = prefab.border_color_hover
-	node_data.border_color_allocate = prefab.border_color_allocate
-	node_data.border_color_refund = prefab.border_color_refund
-	node_data.border_color_max_level = prefab.border_color_max_level
-	node_data.border_color_allocatable = prefab.border_color_allocatable
-	node_data.border_color_not_allocatable = prefab.border_color_not_allocatable
-
-	node_data.icon_texture_locked = prefab.icon_texture_locked
-	node_data.icon_texture_normal = prefab.icon_texture_normal
-	node_data.icon_texture_hover = prefab.icon_texture_hover
-	node_data.icon_texture_max_level = prefab.icon_texture_max_level
-
-	node_data.icon_color_locked = prefab.icon_color_locked
-	node_data.icon_color_normal = prefab.icon_color_normal
-	node_data.icon_color_hover = prefab.icon_color_hover
-	node_data.icon_color_allocate = prefab.icon_color_allocate
-	node_data.icon_color_refund = prefab.icon_color_refund
-	node_data.icon_color_max_level = prefab.icon_color_max_level
-	node_data.icon_color_allocatable = prefab.icon_color_allocatable
-	node_data.icon_color_not_allocatable = prefab.icon_color_not_allocatable
 
 # ============================================================
 # DELETE / RESTORE
@@ -278,7 +249,6 @@ func restore_node(node: BayterekNodeButton, node_data: BayterekNode, index: int 
 func update_position(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
 	if not node or not node.node_data:
 		return
-
 	node.node_data.position = pos_in_tree
 	_position_node(node, pos_in_tree)
 
@@ -290,65 +260,45 @@ func on_node_allocated(node: BayterekNodeButton) -> void:
 	if not node or node.type == BayterekNode.NodeType.DECORATION:
 		return
 	_refresh_node_state(node)
-	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
-	for neighbor_id in neighbors:
-		var neighbor: BayterekNodeButton = get_node(neighbor_id)
-		if neighbor:
-			_refresh_node_state(neighbor)
+	_refresh_neighbors(node)
 
 func on_node_deallocated(node: BayterekNodeButton) -> void:
 	if not node or node.type == BayterekNode.NodeType.DECORATION:
 		return
 	_refresh_node_state(node)
-	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
-	for neighbor_id in neighbors:
-		var neighbor: BayterekNodeButton = get_node(neighbor_id)
-		if neighbor:
-			_refresh_node_state(neighbor)
+	_refresh_neighbors(node)
 
 func on_node_preallocated(node: BayterekNodeButton) -> void:
 	if not node or node.type == BayterekNode.NodeType.DECORATION:
 		return
 	_refresh_node_state(node)
-	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
-	for neighbor_id in neighbors:
-		var neighbor: BayterekNodeButton = get_node(neighbor_id)
-		if neighbor:
-			_refresh_node_state(neighbor)
+	_refresh_neighbors(node)
 
 func on_node_unpreallocated(node: BayterekNodeButton) -> void:
 	if not node or node.type == BayterekNode.NodeType.DECORATION:
 		return
 	_refresh_node_state(node)
-	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
-	for neighbor_id in neighbors:
-		var neighbor: BayterekNodeButton = get_node(neighbor_id)
-		if neighbor:
-			_refresh_node_state(neighbor)
+	_refresh_neighbors(node)
 
 func on_node_refund_added(node: BayterekNodeButton) -> void:
 	if not node or node.type == BayterekNode.NodeType.DECORATION:
 		return
 	_refresh_node_state(node)
-	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
-	for neighbor_id in neighbors:
-		var neighbor: BayterekNodeButton = get_node(neighbor_id)
-		if neighbor:
-			_refresh_node_state(neighbor)
+	_refresh_neighbors(node)
 
 func on_node_refund_removed(node: BayterekNodeButton) -> void:
 	if not node or node.type == BayterekNode.NodeType.DECORATION:
 		return
 	_refresh_node_state(node)
+	_refresh_neighbors(node)
+
+func _refresh_neighbors(node: BayterekNodeButton) -> void:
 	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
 	for neighbor_id in neighbors:
 		var neighbor: BayterekNodeButton = get_node(neighbor_id)
 		if neighbor:
 			_refresh_node_state(neighbor)
 
-## Recomputes the visual state for a node based on its flags.
-## Now only computes the internal state machine; the actual visual
-## is picked by `BayterekNodeButton._resolve_visual_state()`.
 func _refresh_node_state(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data:
 		return
@@ -386,8 +336,6 @@ func _refresh_node_state(node: BayterekNodeButton) -> void:
 # ALLOCATABLE FLAG BROADCAST
 # ============================================================
 
-## Recomputes `is_allocatable` for every node in the tree and refreshes
-## visuals. Called by the tree view after every allocation-related change.
 func refresh_allocatable_flags(active_ids: Array) -> void:
 	for node in _nodes.values():
 		if not is_instance_valid(node) or not node.node_data:
@@ -406,8 +354,6 @@ func _compute_allocatable(node: BayterekNodeButton, active_ids: Array) -> bool:
 	if node.allocated:
 		return false
 
-	# Mirror of BayterekAllocationService._is_prerequisite_satisfied for
-	# the initial state (no exclusions).
 	var nd: BayterekNode = node.node_data
 	if nd.is_root:
 		return true
@@ -466,11 +412,9 @@ func _compute_allocatable(node: BayterekNodeButton, active_ids: Array) -> bool:
 
 func _build_node(node_type: BayterekNode.NodeType) -> BayterekNodeButton:
 	var node := BayterekNodeButton.new()
-
 	var node_size: Vector2 = _get_node_size(node_type)
 	node.size = node_size
 	node.custom_minimum_size = node_size
-
 	return node
 
 func _position_node(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
@@ -534,41 +478,16 @@ func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 
 	node_data.name = src.name
 	node_data.description = src.description
 	node_data.type = src.type
-	node_data.icon = src.icon
 	node_data.position = src.position + offset
 	node_data.max_allocations = src.max_allocations
 	node_data.attributes = src.attributes.duplicate(true)
 	node_data.is_root = false
 	node_data.external_id = src.external_id
+	node_data.design_id = src.design_id
+	node_data.design_size = src.design_size
+	node_data.scale = src.scale
 
-	# Copy visuals
-	node_data.border_texture_locked = src.border_texture_locked
-	node_data.border_texture_normal = src.border_texture_normal
-	node_data.border_texture_hover = src.border_texture_hover
-	node_data.border_texture_max_level = src.border_texture_max_level
-
-	node_data.border_color_locked = src.border_color_locked
-	node_data.border_color_normal = src.border_color_normal
-	node_data.border_color_hover = src.border_color_hover
-	node_data.border_color_allocate = src.border_color_allocate
-	node_data.border_color_refund = src.border_color_refund
-	node_data.border_color_max_level = src.border_color_max_level
-	node_data.border_color_allocatable = src.border_color_allocatable
-	node_data.border_color_not_allocatable = src.border_color_not_allocatable
-
-	node_data.icon_texture_locked = src.icon_texture_locked
-	node_data.icon_texture_normal = src.icon_texture_normal
-	node_data.icon_texture_hover = src.icon_texture_hover
-	node_data.icon_texture_max_level = src.icon_texture_max_level
-
-	node_data.icon_color_locked = src.icon_color_locked
-	node_data.icon_color_normal = src.icon_color_normal
-	node_data.icon_color_hover = src.icon_color_hover
-	node_data.icon_color_allocate = src.icon_color_allocate
-	node_data.icon_color_refund = src.icon_color_refund
-	node_data.icon_color_max_level = src.icon_color_max_level
-	node_data.icon_color_allocatable = src.icon_color_allocatable
-	node_data.icon_color_not_allocatable = src.icon_color_not_allocatable
+	node_data.copy_layers_from(src.layers)
 
 	if not src.reference_id.is_empty():
 		node_data.reference_id = src.reference_id
@@ -585,7 +504,6 @@ func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 
 	_tree_view.nodes_container.add_child(node)
 	_nodes[node_data.id] = node
 
-	# NOTE: _tree_data.nodes.append is done by editor's restore_node().
 	node.pressed.connect(_on_node_pressed.bind(node))
 	node.node_hovered.connect(_on_node_hovered)
 	node.drag_started.connect(_on_node_drag_started)

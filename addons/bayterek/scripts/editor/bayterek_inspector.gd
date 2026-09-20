@@ -18,7 +18,6 @@ var _content: VBoxContainer
 var _mode_banner: PanelContainer
 var _mode_banner_label: Label
 
-# Reset All button
 var _reset_all_btn: Button = null
 
 var _root_panel: HBoxContainer
@@ -32,6 +31,10 @@ var _max_alloc_panel: HBoxContainer
 var _max_alloc_input: SpinBox
 var _group_display: Label
 
+# Design selector
+var _design_row: HBoxContainer
+var _design_dropdown: OptionButton
+
 var _prereq_panel: HBoxContainer
 var _prereq_dropdown: OptionButton
 var _prereq_count_panel: HBoxContainer
@@ -43,46 +46,12 @@ var _transform_panel: VBoxContainer
 var _pos_x_input: SpinBox
 var _pos_y_input: SpinBox
 
-var _visuals_panel: VBoxContainer
-
-# Icon visuals
-var _icon_tex_locked: BayterekInspectorTextureInput
-var _icon_tex_normal: BayterekInspectorTextureInput
-var _icon_tex_hover: BayterekInspectorTextureInput
-var _icon_tex_max_level: BayterekInspectorTextureInput
-
-var _icon_col_locked: ColorPickerButton
-var _icon_col_normal: ColorPickerButton
-var _icon_col_hover: ColorPickerButton
-var _icon_col_allocate: ColorPickerButton
-var _icon_col_refund: ColorPickerButton
-var _icon_col_max_level: ColorPickerButton
-var _icon_col_allocatable: ColorPickerButton
-var _icon_col_not_allocatable: ColorPickerButton
-
-# Border visuals
-var _border_tex_locked: BayterekInspectorTextureInput
-var _border_tex_normal: BayterekInspectorTextureInput
-var _border_tex_hover: BayterekInspectorTextureInput
-var _border_tex_max_level: BayterekInspectorTextureInput
-
-var _border_col_locked: ColorPickerButton
-var _border_col_normal: ColorPickerButton
-var _border_col_hover: ColorPickerButton
-var _border_col_allocate: ColorPickerButton
-var _border_col_refund: ColorPickerButton
-var _border_col_max_level: ColorPickerButton
-var _border_col_allocatable: ColorPickerButton
-var _border_col_not_allocatable: ColorPickerButton
-
-# Attributes
 var _attributes_panel: VBoxContainer
 var _attributes_empty: Label
 var _attributes_list: VBoxContainer
 var _attr_checkboxes: Dictionary = {}
 var _attr_value_inputs: Dictionary = {}
 
-# Connections
 var _connections_panel: VBoxContainer
 var _connections_empty: Label
 var _connections_list: VBoxContainer
@@ -175,6 +144,22 @@ func _build_ui() -> void:
 	_name_input = _add_line_row(_info_panel, "Name", "Node display name", false)
 	_name_input.text_changed.connect(_on_name_changed)
 
+	# --- Design selector ---
+	_design_row = HBoxContainer.new()
+	_info_panel.add_child(_design_row)
+
+	var design_label := Label.new()
+	design_label.text = "Design"
+	design_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	design_label.tooltip_text = "Node design (visual layer stack)"
+	design_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	_design_row.add_child(design_label)
+
+	_design_dropdown = OptionButton.new()
+	_design_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	_design_dropdown.item_selected.connect(_on_design_changed)
+	_design_row.add_child(_design_dropdown)
+
 	var desc_row := HBoxContainer.new()
 	_info_panel.add_child(desc_row)
 	var desc_label := Label.new()
@@ -208,7 +193,7 @@ func _build_ui() -> void:
 	_max_alloc_input.value_changed.connect(_on_max_alloc_changed)
 	_max_alloc_panel.add_child(_max_alloc_input)
 
-	# --- Group display row ---
+	# --- Group display ---
 	var group_row := HBoxContainer.new()
 	_info_panel.add_child(group_row)
 
@@ -324,20 +309,6 @@ func _build_ui() -> void:
 	_pos_y_input.value_changed.connect(_on_position_changed)
 	y_row.add_child(_pos_y_input)
 
-	# --- Visuals ---
-	_visuals_panel = VBoxContainer.new()
-	_content.add_child(_visuals_panel)
-
-	var vis_sep := HSeparator.new()
-	_visuals_panel.add_child(vis_sep)
-
-	var vis_title := Label.new()
-	vis_title.text = "Visuals"
-	vis_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	_visuals_panel.add_child(vis_title)
-
-	_build_visuals_ui()
-
 	# --- Attributes ---
 	_attributes_panel = VBoxContainer.new()
 	_content.add_child(_attributes_panel)
@@ -381,148 +352,11 @@ func _build_ui() -> void:
 	_connections_panel.add_child(_connections_list)
 
 # ============================================================
-# VISUALS UI
-# ============================================================
-
-func _build_visuals_ui() -> void:
-	var icon_tex_fold := FoldableContainer.new()
-	icon_tex_fold.title = "Icon Textures"
-	icon_tex_fold.folded = true
-	_visuals_panel.add_child(icon_tex_fold)
-
-	var icon_tex_inner := VBoxContainer.new()
-	icon_tex_inner.add_theme_constant_override("separation", 4)
-	icon_tex_fold.add_child(icon_tex_inner)
-
-	_icon_tex_locked = _make_visual_texture_input(icon_tex_inner, "Locked")
-	_icon_tex_normal = _make_visual_texture_input(icon_tex_inner, "Normal")
-	_icon_tex_hover = _make_visual_texture_input(icon_tex_inner, "Hover")
-	_icon_tex_max_level = _make_visual_texture_input(icon_tex_inner, "Max Level")
-
-	var icon_col_fold := FoldableContainer.new()
-	icon_col_fold.title = "Icon Colors"
-	icon_col_fold.folded = true
-	_visuals_panel.add_child(icon_col_fold)
-
-	var icon_col_inner := VBoxContainer.new()
-	icon_col_inner.add_theme_constant_override("separation", 4)
-	icon_col_fold.add_child(icon_col_inner)
-
-	_icon_col_locked = _make_visual_color_row(icon_col_inner, "Locked")
-	_icon_col_normal = _make_visual_color_row(icon_col_inner, "Normal")
-	_icon_col_hover = _make_visual_color_row(icon_col_inner, "Hover")
-	_icon_col_allocate = _make_visual_color_row(icon_col_inner, "Allocate")
-	_icon_col_refund = _make_visual_color_row(icon_col_inner, "Refund")
-	_icon_col_max_level = _make_visual_color_row(icon_col_inner, "Max Level")
-	_icon_col_allocatable = _make_visual_color_row(icon_col_inner, "Allocatable")
-	_icon_col_not_allocatable = _make_visual_color_row(icon_col_inner, "Not Allocatable")
-
-	var border_tex_fold := FoldableContainer.new()
-	border_tex_fold.title = "Border Textures"
-	border_tex_fold.folded = true
-	_visuals_panel.add_child(border_tex_fold)
-
-	var border_tex_inner := VBoxContainer.new()
-	border_tex_inner.add_theme_constant_override("separation", 4)
-	border_tex_fold.add_child(border_tex_inner)
-
-	_border_tex_locked = _make_visual_texture_input(border_tex_inner, "Locked")
-	_border_tex_normal = _make_visual_texture_input(border_tex_inner, "Normal")
-	_border_tex_hover = _make_visual_texture_input(border_tex_inner, "Hover")
-	_border_tex_max_level = _make_visual_texture_input(border_tex_inner, "Max Level")
-
-	var border_col_fold := FoldableContainer.new()
-	border_col_fold.title = "Border Colors"
-	border_col_fold.folded = true
-	_visuals_panel.add_child(border_col_fold)
-
-	var border_col_inner := VBoxContainer.new()
-	border_col_inner.add_theme_constant_override("separation", 4)
-	border_col_fold.add_child(border_col_inner)
-
-	_border_col_locked = _make_visual_color_row(border_col_inner, "Locked")
-	_border_col_normal = _make_visual_color_row(border_col_inner, "Normal")
-	_border_col_hover = _make_visual_color_row(border_col_inner, "Hover")
-	_border_col_allocate = _make_visual_color_row(border_col_inner, "Allocate")
-	_border_col_refund = _make_visual_color_row(border_col_inner, "Refund")
-	_border_col_max_level = _make_visual_color_row(border_col_inner, "Max Level")
-	_border_col_allocatable = _make_visual_color_row(border_col_inner, "Allocatable")
-	_border_col_not_allocatable = _make_visual_color_row(border_col_inner, "Not Allocatable")
-
-func _make_visual_texture_input(parent: Control, label: String) -> BayterekInspectorTextureInput:
-	var input := BayterekInspectorTextureInput.new()
-	input.title = label
-	parent.add_child(input)
-	return input
-
-func _make_visual_color_row(parent: Control, label: String) -> ColorPickerButton:
-	var row := HBoxContainer.new()
-	parent.add_child(row)
-
-	var lbl := Label.new()
-	lbl.text = label
-	lbl.size_flags_horizontal = SIZE_EXPAND_FILL
-	row.add_child(lbl)
-
-	var picker := ColorPickerButton.new()
-	picker.size_flags_horizontal = SIZE_EXPAND_FILL
-	picker.custom_minimum_size = Vector2(0, 24)
-	row.add_child(picker)
-
-	return picker
-
-# ============================================================
 # INIT
 # ============================================================
 
-func init(tree_view: BayterekTreeView) -> void:
-	_connect_texture_signal(_icon_tex_locked, _on_icon_tex_changed.bind("locked"))
-	_connect_texture_signal(_icon_tex_normal, _on_icon_tex_changed.bind("normal"))
-	_connect_texture_signal(_icon_tex_hover, _on_icon_tex_changed.bind("hover"))
-	_connect_texture_signal(_icon_tex_max_level, _on_icon_tex_changed.bind("max_level"))
-
-	_connect_texture_signal(_border_tex_locked, _on_border_tex_changed.bind("locked"))
-	_connect_texture_signal(_border_tex_normal, _on_border_tex_changed.bind("normal"))
-	_connect_texture_signal(_border_tex_hover, _on_border_tex_changed.bind("hover"))
-	_connect_texture_signal(_border_tex_max_level, _on_border_tex_changed.bind("max_level"))
-
-	_connect_color_signal(_icon_col_locked, _on_icon_col_changed.bind("locked"))
-	_connect_color_signal(_icon_col_normal, _on_icon_col_changed.bind("normal"))
-	_connect_color_signal(_icon_col_hover, _on_icon_col_changed.bind("hover"))
-	_connect_color_signal(_icon_col_allocate, _on_icon_col_changed.bind("allocate"))
-	_connect_color_signal(_icon_col_refund, _on_icon_col_changed.bind("refund"))
-	_connect_color_signal(_icon_col_max_level, _on_icon_col_changed.bind("max_level"))
-	_connect_color_signal(_icon_col_allocatable, _on_icon_col_changed.bind("allocatable"))
-	_connect_color_signal(_icon_col_not_allocatable, _on_icon_col_changed.bind("not_allocatable"))
-
-	_connect_color_signal(_border_col_locked, _on_border_col_changed.bind("locked"))
-	_connect_color_signal(_border_col_normal, _on_border_col_changed.bind("normal"))
-	_connect_color_signal(_border_col_hover, _on_border_col_changed.bind("hover"))
-	_connect_color_signal(_border_col_allocate, _on_border_col_changed.bind("allocate"))
-	_connect_color_signal(_border_col_refund, _on_border_col_changed.bind("refund"))
-	_connect_color_signal(_border_col_max_level, _on_border_col_changed.bind("max_level"))
-	_connect_color_signal(_border_col_allocatable, _on_border_col_changed.bind("allocatable"))
-	_connect_color_signal(_border_col_not_allocatable, _on_border_col_changed.bind("not_allocatable"))
-
-func _connect_texture_signal(input: BayterekInspectorTextureInput, callback: Callable) -> void:
-	if not input:
-		return
-	if not input.texture_dropped.is_connected(callback):
-		input.texture_dropped.connect(callback)
-	var cleared_cb := func():
-		callback.call("")
-	if not input.cleared.is_connected(cleared_cb):
-		input.cleared.connect(cleared_cb)
-
-func _connect_color_signal(picker: ColorPickerButton, callback: Callable) -> void:
-	if not picker:
-		return
-	if not picker.color_changed.is_connected(callback):
-		picker.color_changed.connect(callback)
-
-# ============================================================
-# PUBLIC
-# ============================================================
+func init(_tree_view: BayterekTreeView) -> void:
+	pass
 
 func refresh_attributes() -> void:
 	_rebuild_attributes_list()
@@ -567,6 +401,7 @@ func inspect(node: BayterekNodeButton) -> void:
 	_root_panel.visible = true
 	_transform_panel.visible = true
 	_connections_panel.visible = true
+	_design_row.visible = true
 
 	_updating_ui = true
 
@@ -581,8 +416,8 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_max_alloc_panel.visible = editor and editor.tree and editor.tree.multiallocation
 
-	# Group display
 	_update_group_display(node.node_data.group_id)
+	_rebuild_design_dropdown(node.node_data.design_id)
 
 	var show_prereq: bool = not node.node_data.is_root
 	_prereq_panel.visible = show_prereq
@@ -594,8 +429,6 @@ func inspect(node: BayterekNodeButton) -> void:
 		if _prereq_group_panel.visible:
 			_rebuild_prereq_group_dropdown()
 			_select_prereq_group(node.node_data.prerequisite_group_id)
-
-	_load_visuals(node.node_data)
 
 	_updating_ui = false
 
@@ -616,6 +449,54 @@ func _update_group_display(group_id: String) -> void:
 	else:
 		_group_display.text = "(missing)"
 		_group_display.add_theme_color_override("font_color", Color(1, 0.4, 0.4))
+
+# ============================================================
+# DESIGN DROPDOWN
+# ============================================================
+
+func _rebuild_design_dropdown(selected_id: String) -> void:
+	if not _design_dropdown:
+		return
+	_design_dropdown.clear()
+	_design_dropdown.add_item("(none)", 0)
+	_design_dropdown.set_item_metadata(0, "")
+
+	var reg = Bayterek.get_designs_registry()
+	if not reg:
+		return
+
+	var idx: int = 1
+	var found_idx: int = 0
+	for design in reg.designs:
+		if not design:
+			continue
+		var label: String = design.name
+		if not design.category.is_empty():
+			label = "[%s] %s" % [design.category, design.name]
+		_design_dropdown.add_item(label, idx)
+		_design_dropdown.set_item_metadata(idx, design.id)
+		if design.id == selected_id:
+			found_idx = idx
+		idx += 1
+
+	_design_dropdown.select(found_idx)
+
+func _on_design_changed(index: int) -> void:
+	if _updating_ui or _current_prefab or not _current_node:
+		return
+	var meta = _design_dropdown.get_item_metadata(index)
+	var design_id: String = "" if meta == null else String(meta)
+
+	if design_id.is_empty():
+		_current_node.node_data.design_id = ""
+	else:
+		var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(design_id)
+		if design:
+			_current_node.node_data.apply_design(design)
+			_current_node.refresh_visuals()
+
+	changed.emit()
+	_notify_editor_dirty()
 
 # ============================================================
 # INSPECT PREFAB
@@ -641,15 +522,12 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_prereq_panel.visible = false
 	_prereq_count_panel.visible = false
 	_prereq_group_panel.visible = false
+	_design_row.visible = false
 
 	_updating_ui = true
-
 	_id_input.text = prefab.reference_id if not prefab.reference_id.is_empty() else "(copy)"
 	_name_input.text = prefab.node_name
 	_description_input.text = prefab.description
-
-	_load_visuals(prefab)
-
 	_updating_ui = false
 
 	_rebuild_attributes_list()
@@ -670,142 +548,6 @@ func update_position_only(pos: Vector2) -> void:
 	_pos_x_input.set_value_no_signal(pos.x)
 	_pos_y_input.set_value_no_signal(pos.y)
 	_updating_ui = false
-
-# ============================================================
-# LOAD VISUALS
-# ============================================================
-
-func _load_visuals(source) -> void:
-	if not source:
-		return
-
-	_set_input_texture(_icon_tex_locked, source.icon_texture_locked)
-	_set_input_texture(_icon_tex_normal, source.icon_texture_normal)
-	_set_input_texture(_icon_tex_hover, source.icon_texture_hover)
-	_set_input_texture(_icon_tex_max_level, source.icon_texture_max_level)
-
-	_set_input_texture(_border_tex_locked, source.border_texture_locked)
-	_set_input_texture(_border_tex_normal, source.border_texture_normal)
-	_set_input_texture(_border_tex_hover, source.border_texture_hover)
-	_set_input_texture(_border_tex_max_level, source.border_texture_max_level)
-
-	_icon_col_locked.color = source.icon_color_locked
-	_icon_col_normal.color = source.icon_color_normal
-	_icon_col_hover.color = source.icon_color_hover
-	_icon_col_allocate.color = source.icon_color_allocate
-	_icon_col_refund.color = source.icon_color_refund
-	_icon_col_max_level.color = source.icon_color_max_level
-	_icon_col_allocatable.color = source.icon_color_allocatable
-	_icon_col_not_allocatable.color = source.icon_color_not_allocatable
-
-	_border_col_locked.color = source.border_color_locked
-	_border_col_normal.color = source.border_color_normal
-	_border_col_hover.color = source.border_color_hover
-	_border_col_allocate.color = source.border_color_allocate
-	_border_col_refund.color = source.border_color_refund
-	_border_col_max_level.color = source.border_color_max_level
-	_border_col_allocatable.color = source.border_color_allocatable
-	_border_col_not_allocatable.color = source.border_color_not_allocatable
-
-# ============================================================
-# HELPER — set texture input
-# ============================================================
-
-func _set_input_texture(input: BayterekInspectorTextureInput, tex: Texture2D) -> void:
-	if not input:
-		return
-	if input._texture_rect:
-		input._texture_rect.texture = tex
-	if tex:
-		if input._empty_label:
-			input._empty_label.visible = false
-		if input._clear_button:
-			input._clear_button.visible = true
-	else:
-		if input._empty_label:
-			input._empty_label.visible = true
-		if input._clear_button:
-			input._clear_button.visible = false
-
-# ============================================================
-# VISUAL CHANGE HANDLERS
-# ============================================================
-
-func _on_icon_tex_changed(path: String, key: String) -> void:
-	if _updating_ui:
-		return
-	var tex: Texture2D = null
-	if not path.is_empty():
-		tex = load(path) as Texture2D
-
-	if _current_prefab:
-		_current_prefab.set_icon_visuals_from_dict({ "icon_texture_" + key: tex })
-		changed.emit()
-		_notify_editor_dirty()
-		return
-
-	if not _current_node:
-		return
-	_apply_visual_to_node(_current_node, "icon_texture_" + key, tex)
-	changed.emit()
-	_notify_editor_dirty()
-
-func _on_border_tex_changed(path: String, key: String) -> void:
-	if _updating_ui:
-		return
-	var tex: Texture2D = null
-	if not path.is_empty():
-		tex = load(path) as Texture2D
-
-	if _current_prefab:
-		_current_prefab.set_border_visuals_from_dict({ "border_texture_" + key: tex })
-		changed.emit()
-		_notify_editor_dirty()
-		return
-
-	if not _current_node:
-		return
-	_apply_visual_to_node(_current_node, "border_texture_" + key, tex)
-	changed.emit()
-	_notify_editor_dirty()
-
-func _on_icon_col_changed(color: Color, key: String) -> void:
-	if _updating_ui:
-		return
-
-	if _current_prefab:
-		_current_prefab.set_icon_visuals_from_dict({ "icon_color_" + key: color })
-		changed.emit()
-		_notify_editor_dirty()
-		return
-
-	if not _current_node:
-		return
-	_apply_visual_to_node(_current_node, "icon_color_" + key, color)
-	changed.emit()
-	_notify_editor_dirty()
-
-func _on_border_col_changed(color: Color, key: String) -> void:
-	if _updating_ui:
-		return
-
-	if _current_prefab:
-		_current_prefab.set_border_visuals_from_dict({ "border_color_" + key: color })
-		changed.emit()
-		_notify_editor_dirty()
-		return
-
-	if not _current_node:
-		return
-	_apply_visual_to_node(_current_node, "border_color_" + key, color)
-	changed.emit()
-	_notify_editor_dirty()
-
-func _apply_visual_to_node(node: BayterekNodeButton, field: String, value: Variant) -> void:
-	if not node or not node.node_data:
-		return
-	node.node_data.set(field, value)
-	node.refresh_visuals()
 
 # ============================================================
 # CHANGE HANDLERS
@@ -986,126 +728,6 @@ func _on_prereq_group_changed(index: int) -> void:
 		if typeof(meta) == TYPE_STRING:
 			gid = meta
 	_current_node.node_data.prerequisite_group_id = gid
-	changed.emit()
-	_notify_editor_dirty()
-
-# ============================================================
-# ICON PICKER
-# ============================================================
-
-func _on_icon_picker_pressed() -> void:
-	if not _selected_node_valid():
-		return
-
-	if _current_node and _current_node.type == BayterekNode.NodeType.DECORATION:
-		call_deferred("_open_quick_open_for_icon")
-		return
-
-	if icon_selector:
-		var node_type: int = BayterekNode.NodeType.SMALL
-		if _current_node:
-			node_type = _current_node.type
-		icon_selector.load_icons(node_type)
-		icon_selector.popup_centered()
-	else:
-		call_deferred("_open_quick_open_for_icon")
-
-func _open_quick_open_for_icon() -> void:
-	BayterekPicker.pick_texture(_on_icon_texture_changed, "icon")
-
-func _selected_node_valid() -> bool:
-	if _current_prefab:
-		return true
-	return _current_node != null
-
-func _on_icon_texture_changed(path: String) -> void:
-	if _updating_ui:
-		return
-	if path.is_empty():
-		_on_icon_texture_cleared()
-		return
-
-	var tex: Texture2D = load(path) as Texture2D
-	if not tex:
-		return
-
-	if _current_prefab:
-		_current_prefab.set_icon_visuals_from_dict({ "icon_texture_normal": tex })
-		changed.emit()
-		_notify_editor_dirty()
-		return
-
-	if not _current_node:
-		return
-
-	if _current_node.prefab:
-		_current_node.prefab.set_icon_visuals_from_dict({ "icon_texture_normal": tex })
-	else:
-		_current_node.node_data.icon_texture_normal = tex
-		_current_node.node_data.icon = tex
-		_current_node.refresh_visuals()
-
-	_set_input_texture(_icon_tex_normal, tex)
-	changed.emit()
-	_notify_editor_dirty()
-
-func _on_icon_texture_cleared() -> void:
-	if _updating_ui:
-		return
-
-	_set_input_texture(_icon_tex_normal, null)
-
-	if _current_prefab:
-		_current_prefab.set_icon_visuals_from_dict({ "icon_texture_normal": null })
-		changed.emit()
-		_notify_editor_dirty()
-		return
-
-	if not _current_node:
-		return
-
-	if _current_node.prefab:
-		_current_node.prefab.set_icon_visuals_from_dict({ "icon_texture_normal": null })
-	else:
-		_current_node.node_data.icon_texture_normal = null
-		_current_node.node_data.icon = null
-		_current_node.refresh_visuals()
-
-	changed.emit()
-	_notify_editor_dirty()
-
-func _on_icon_selected(node_type: int, texture: Texture2D, region: Vector2) -> void:
-	if not texture:
-		return
-
-	var icon_size: Vector2 = Vector2(64, 64)
-	if editor and editor.tree:
-		icon_size = editor.tree.icon_sizes.get(node_type, Vector2(64, 64))
-
-	if icon_size == Vector2.ZERO:
-		icon_size = Vector2(64, 64)
-
-	var atlas := AtlasTexture.new()
-	atlas.atlas = texture
-	atlas.region = Rect2(region, icon_size)
-
-	if _current_prefab:
-		_current_prefab.set_icon_visuals_from_dict({ "icon_texture_normal": atlas })
-		changed.emit()
-		_notify_editor_dirty()
-		return
-
-	if not _current_node:
-		return
-
-	if _current_node.prefab:
-		_current_node.prefab.set_icon_visuals_from_dict({ "icon_texture_normal": atlas })
-	else:
-		_current_node.node_data.icon_texture_normal = atlas
-		_current_node.node_data.icon = atlas
-		_current_node.refresh_visuals()
-
-	_set_input_texture(_icon_tex_normal, atlas)
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -1519,7 +1141,6 @@ func _create_connection_entry(to_id: int) -> void:
 	dash_len_input.value = line_data.dash_length
 	dash_len_input.value_changed.connect(_on_dash_length_changed.bind(to_id))
 	dash_len_row.add_child(dash_len_input)
-
 	dash_len_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
 
 	var dash_gap_row := HBoxContainer.new()
@@ -1537,7 +1158,6 @@ func _create_connection_entry(to_id: int) -> void:
 	dash_gap_input.value = line_data.dash_gap
 	dash_gap_input.value_changed.connect(_on_dash_gap_changed.bind(to_id))
 	dash_gap_row.add_child(dash_gap_input)
-
 	dash_gap_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
 
 	var curve_row := HBoxContainer.new()
@@ -1555,7 +1175,6 @@ func _create_connection_entry(to_id: int) -> void:
 	curve_input.value = line_data.curve_height
 	curve_input.value_changed.connect(_on_curve_height_changed.bind(to_id))
 	curve_row.add_child(curve_input)
-
 	curve_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER)
 
 	var step_row := HBoxContainer.new()
@@ -1573,7 +1192,6 @@ func _create_connection_entry(to_id: int) -> void:
 	step_input.value = line_data.step_distance
 	step_input.value_changed.connect(_on_step_distance_changed.bind(to_id))
 	step_row.add_child(step_input)
-
 	step_row.visible = (line_data.line_type == BayterekLineData.LineType.STEP)
 
 	var seg_row := HBoxContainer.new()
@@ -1591,7 +1209,6 @@ func _create_connection_entry(to_id: int) -> void:
 	seg_input.value = line_data.segments
 	seg_input.value_changed.connect(_on_segments_changed.bind(to_id))
 	seg_row.add_child(seg_input)
-
 	seg_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
 	var rev_row := HBoxContainer.new()
@@ -1606,7 +1223,6 @@ func _create_connection_entry(to_id: int) -> void:
 	rev_check.button_pressed = line_data.reversed
 	rev_check.toggled.connect(_on_reversed_changed.bind(to_id))
 	rev_row.add_child(rev_check)
-
 	rev_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
 	var start_arrow_row := HBoxContainer.new()
@@ -1662,7 +1278,6 @@ func _create_connection_entry(to_id: int) -> void:
 	arrow_size_input.value = line_data.arrow_size
 	arrow_size_input.value_changed.connect(_on_arrow_size_changed.bind(to_id))
 	arrow_size_row.add_child(arrow_size_input)
-
 	arrow_size_row.visible = (line_data.start_arrow != BayterekLineData.ArrowStyle.NONE or line_data.end_arrow != BayterekLineData.ArrowStyle.NONE)
 
 	var del_row := HBoxContainer.new()
@@ -1677,171 +1292,122 @@ func _create_connection_entry(to_id: int) -> void:
 	del_row.add_child(del_btn)
 
 func _on_line_type_changed(index: int, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
-
+	if not line_data: return
 	line_data.line_type = index as BayterekLineData.LineType
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	_rebuild_connections_list()
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_line_style_changed(index: int, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
-
+	if not line_data: return
 	line_data.line_style = index as BayterekLineData.LineStyle
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	_rebuild_connections_list()
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_dash_length_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
+	if not line_data: return
 	line_data.dash_length = value
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_dash_gap_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
+	if not line_data: return
 	line_data.dash_gap = value
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_curve_height_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
+	if not line_data: return
 	line_data.curve_height = value
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_step_distance_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
+	if not line_data: return
 	line_data.step_distance = value
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_segments_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
+	if not line_data: return
 	line_data.segments = int(value)
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_reversed_changed(pressed: bool, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
+	if not line_data: return
 	line_data.reversed = pressed
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_start_arrow_changed(index: int, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
+	if not line_data: return
 	line_data.start_arrow = index as BayterekLineData.ArrowStyle
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	_rebuild_connections_list()
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_end_arrow_changed(index: int, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
+	if not line_data: return
 	line_data.end_arrow = index as BayterekLineData.ArrowStyle
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	_rebuild_connections_list()
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_arrow_size_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node:
-		return
+	if _updating_ui or not _current_node: return
 	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		return
+	if not line_data: return
 	line_data.arrow_size = value
-
 	if editor and editor.tree_view:
 		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-
 	editor.set_dirty(true)
 	changed.emit()
 
 func _on_delete_connection(to_id: int) -> void:
-	if not _current_node:
-		return
-	if not editor or not editor.tree_view:
-		return
-
+	if not _current_node: return
+	if not editor or not editor.tree_view: return
 	editor.tree_view.connections_service.remove_connection(_current_node.id, to_id)
 	_rebuild_connections_list()
 	editor.set_dirty(true)
@@ -1898,7 +1464,6 @@ func _on_reset_all_pressed() -> void:
 		return
 	if not editor or not editor.tree_view or not editor.tree_view.prefabs_service:
 		return
-
 	editor.tree_view.prefabs_service.reset_node_to_prefab_defaults(_current_node)
 	inspect(_current_node)
 	editor.set_dirty(true)
@@ -1909,7 +1474,6 @@ func _on_reset_attr_pressed(attr_id: String) -> void:
 		return
 	if not editor or not editor.tree_view or not editor.tree_view.prefabs_service:
 		return
-
 	editor.tree_view.prefabs_service.reset_attribute_to_prefab_default(_current_node, attr_id)
 	_rebuild_attributes_list()
 	editor.set_dirty(true)

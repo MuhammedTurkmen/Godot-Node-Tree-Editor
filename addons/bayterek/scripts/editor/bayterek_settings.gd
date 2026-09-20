@@ -20,6 +20,7 @@ signal refund_confirm_changed
 signal show_group_frames_changed
 signal frame_title_align_changed
 signal texture_filter_changed
+signal default_design_changed   # NEW
 
 var editor: BayterekEditor
 
@@ -31,7 +32,6 @@ var _size_x_input: SpinBox
 var _size_y_input: SpinBox
 var _border_scale_input: SpinBox
 
-# Texture filter
 var _texture_filter_dropdown: OptionButton
 
 var _bg_color_picker: ColorPickerButton
@@ -63,47 +63,15 @@ var _chain_connection_check: CheckBox
 var _allocation_confirm_check: CheckBox
 var _refund_confirm_check: CheckBox
 
-# --- Group Frames ---
 var _show_group_frames_check: CheckBox
 var _frame_title_align_dropdown: OptionButton
 
-# --- Tooltip ---
 var _tooltip_header_align_dropdown: OptionButton
 var _tooltip_body_align_dropdown: OptionButton
 var _tooltip_footer_align_dropdown: OptionButton
 
-# --- Default node visuals ---
-# Border textures
-var _default_border_tex_locked: BayterekInspectorTextureInput
-var _default_border_tex_normal: BayterekInspectorTextureInput
-var _default_border_tex_hover: BayterekInspectorTextureInput
-var _default_border_tex_max_level: BayterekInspectorTextureInput
-
-# Border colors
-var _default_border_col_locked: ColorPickerButton
-var _default_border_col_normal: ColorPickerButton
-var _default_border_col_hover: ColorPickerButton
-var _default_border_col_allocate: ColorPickerButton
-var _default_border_col_refund: ColorPickerButton
-var _default_border_col_max_level: ColorPickerButton
-var _default_border_col_allocatable: ColorPickerButton
-var _default_border_col_not_allocatable: ColorPickerButton
-
-# Icon textures
-var _default_icon_tex_locked: BayterekInspectorTextureInput
-var _default_icon_tex_normal: BayterekInspectorTextureInput
-var _default_icon_tex_hover: BayterekInspectorTextureInput
-var _default_icon_tex_max_level: BayterekInspectorTextureInput
-
-# Icon colors
-var _default_icon_col_locked: ColorPickerButton
-var _default_icon_col_normal: ColorPickerButton
-var _default_icon_col_hover: ColorPickerButton
-var _default_icon_col_allocate: ColorPickerButton
-var _default_icon_col_refund: ColorPickerButton
-var _default_icon_col_max_level: ColorPickerButton
-var _default_icon_col_allocatable: ColorPickerButton
-var _default_icon_col_not_allocatable: ColorPickerButton
+# NEW: default design selector
+var _default_design_dropdown: OptionButton
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -177,6 +145,13 @@ func _build_ui() -> void:
 	_bg_texture_input.title = "Background Texture"
 	_content.add_child(_bg_texture_input)
 
+	# --- Default Design (NEW) ---
+	_add_separator(_content)
+	_add_section_label(_content, "Default Node Design")
+
+	_default_design_dropdown = _make_design_dropdown_row(_content)
+	_default_design_dropdown.item_selected.connect(_on_default_design_changed)
+
 	# --- Icon Sizes ---
 	_add_separator(_content)
 	_add_section_label(_content, "Icon Sizes")
@@ -236,15 +211,6 @@ func _build_ui() -> void:
 	_line_active_input = BayterekInspectorTextureInput.new()
 	_line_active_input.title = "Active"
 	_content.add_child(_line_active_input)
-
-	# --- Default Node Visuals ---
-	_add_separator(_content)
-	_add_section_label(_content, "Default Node Visuals")
-
-	_build_default_border_textures_group()
-	_build_default_border_colors_group()
-	_build_default_icon_textures_group()
-	_build_default_icon_colors_group()
 
 	# --- Interaction ---
 	_add_separator(_content)
@@ -338,96 +304,16 @@ func _build_ui() -> void:
 	_tooltip_footer_align_dropdown.item_selected.connect(_on_tooltip_footer_align_changed)
 
 # ============================================================
-# DEFAULT VISUAL GROUPS
-# ============================================================
-
-func _build_default_border_textures_group() -> void:
-	var fold := FoldableContainer.new()
-	fold.title = "Border Textures"
-	fold.folded = true
-	_content.add_child(fold)
-
-	var inner := VBoxContainer.new()
-	inner.add_theme_constant_override("separation", 4)
-	fold.add_child(inner)
-
-	_default_border_tex_locked = _make_texture_input(inner, "Locked")
-	_default_border_tex_normal = _make_texture_input(inner, "Normal")
-	_default_border_tex_hover = _make_texture_input(inner, "Hover")
-	_default_border_tex_max_level = _make_texture_input(inner, "Max Level")
-
-func _build_default_border_colors_group() -> void:
-	var fold := FoldableContainer.new()
-	fold.title = "Border Colors"
-	fold.folded = true
-	_content.add_child(fold)
-
-	var inner := VBoxContainer.new()
-	inner.add_theme_constant_override("separation", 4)
-	fold.add_child(inner)
-
-	_default_border_col_locked = _make_color_row(inner, "Locked", "")
-	_default_border_col_normal = _make_color_row(inner, "Normal", "")
-	_default_border_col_hover = _make_color_row(inner, "Hover", "")
-	_default_border_col_allocate = _make_color_row(inner, "Allocate", "")
-	_default_border_col_refund = _make_color_row(inner, "Refund", "")
-	_default_border_col_max_level = _make_color_row(inner, "Max Level", "")
-	_default_border_col_allocatable = _make_color_row(inner, "Allocatable", "")
-	_default_border_col_not_allocatable = _make_color_row(inner, "Not Allocatable", "")
-
-func _build_default_icon_textures_group() -> void:
-	var fold := FoldableContainer.new()
-	fold.title = "Icon Textures"
-	fold.folded = true
-	_content.add_child(fold)
-
-	var inner := VBoxContainer.new()
-	inner.add_theme_constant_override("separation", 4)
-	fold.add_child(inner)
-
-	_default_icon_tex_locked = _make_texture_input(inner, "Locked")
-	_default_icon_tex_normal = _make_texture_input(inner, "Normal")
-	_default_icon_tex_hover = _make_texture_input(inner, "Hover")
-	_default_icon_tex_max_level = _make_texture_input(inner, "Max Level")
-
-func _build_default_icon_colors_group() -> void:
-	var fold := FoldableContainer.new()
-	fold.title = "Icon Colors"
-	fold.folded = true
-	_content.add_child(fold)
-
-	var inner := VBoxContainer.new()
-	inner.add_theme_constant_override("separation", 4)
-	fold.add_child(inner)
-
-	_default_icon_col_locked = _make_color_row(inner, "Locked", "")
-	_default_icon_col_normal = _make_color_row(inner, "Normal", "")
-	_default_icon_col_hover = _make_color_row(inner, "Hover", "")
-	_default_icon_col_allocate = _make_color_row(inner, "Allocate", "")
-	_default_icon_col_refund = _make_color_row(inner, "Refund", "")
-	_default_icon_col_max_level = _make_color_row(inner, "Max Level", "")
-	_default_icon_col_allocatable = _make_color_row(inner, "Allocatable", "")
-	_default_icon_col_not_allocatable = _make_color_row(inner, "Not Allocatable", "")
-
-func _make_texture_input(parent: Control, label: String) -> BayterekInspectorTextureInput:
-	var input := BayterekInspectorTextureInput.new()
-	input.title = label
-	parent.add_child(input)
-	return input
-
-# ============================================================
-# SIGNAL CONNECTIONS — CALLED FROM init()
+# SIGNAL CONNECTIONS
 # ============================================================
 
 func _connect_texture_signals() -> void:
-	# Background texture
 	if _bg_texture_input:
 		if not _bg_texture_input.texture_dropped.is_connected(_on_bg_texture_changed):
 			_bg_texture_input.texture_dropped.connect(_on_bg_texture_changed)
 		if not _bg_texture_input.cleared.is_connected(_on_bg_texture_cleared):
 			_bg_texture_input.cleared.connect(_on_bg_texture_cleared)
 
-	# Line textures
 	if _line_normal_input:
 		if not _line_normal_input.texture_dropped.is_connected(_on_line_normal_changed):
 			_line_normal_input.texture_dropped.connect(_on_line_normal_changed)
@@ -445,70 +331,6 @@ func _connect_texture_signals() -> void:
 			_line_active_input.texture_dropped.connect(_on_line_active_changed)
 		if not _line_active_input.cleared.is_connected(_on_line_active_cleared):
 			_line_active_input.cleared.connect(_on_line_active_cleared)
-
-	# Default border textures
-	if _default_border_tex_locked:
-		_default_border_tex_locked.texture_dropped.connect(func(p): _on_default_border_tex_changed(p, "locked"))
-		_default_border_tex_locked.cleared.connect(func(): _on_default_border_tex_cleared("locked"))
-	if _default_border_tex_normal:
-		_default_border_tex_normal.texture_dropped.connect(func(p): _on_default_border_tex_changed(p, "normal"))
-		_default_border_tex_normal.cleared.connect(func(): _on_default_border_tex_cleared("normal"))
-	if _default_border_tex_hover:
-		_default_border_tex_hover.texture_dropped.connect(func(p): _on_default_border_tex_changed(p, "hover"))
-		_default_border_tex_hover.cleared.connect(func(): _on_default_border_tex_cleared("hover"))
-	if _default_border_tex_max_level:
-		_default_border_tex_max_level.texture_dropped.connect(func(p): _on_default_border_tex_changed(p, "max_level"))
-		_default_border_tex_max_level.cleared.connect(func(): _on_default_border_tex_cleared("max_level"))
-
-	# Default icon textures
-	if _default_icon_tex_locked:
-		_default_icon_tex_locked.texture_dropped.connect(func(p): _on_default_icon_tex_changed(p, "locked"))
-		_default_icon_tex_locked.cleared.connect(func(): _on_default_icon_tex_cleared("locked"))
-	if _default_icon_tex_normal:
-		_default_icon_tex_normal.texture_dropped.connect(func(p): _on_default_icon_tex_changed(p, "normal"))
-		_default_icon_tex_normal.cleared.connect(func(): _on_default_icon_tex_cleared("normal"))
-	if _default_icon_tex_hover:
-		_default_icon_tex_hover.texture_dropped.connect(func(p): _on_default_icon_tex_changed(p, "hover"))
-		_default_icon_tex_hover.cleared.connect(func(): _on_default_icon_tex_cleared("hover"))
-	if _default_icon_tex_max_level:
-		_default_icon_tex_max_level.texture_dropped.connect(func(p): _on_default_icon_tex_changed(p, "max_level"))
-		_default_icon_tex_max_level.cleared.connect(func(): _on_default_icon_tex_cleared("max_level"))
-
-	# Default border colors
-	if _default_border_col_locked:
-		_default_border_col_locked.color_changed.connect(func(c): _on_default_border_col_changed(c, "locked"))
-	if _default_border_col_normal:
-		_default_border_col_normal.color_changed.connect(func(c): _on_default_border_col_changed(c, "normal"))
-	if _default_border_col_hover:
-		_default_border_col_hover.color_changed.connect(func(c): _on_default_border_col_changed(c, "hover"))
-	if _default_border_col_allocate:
-		_default_border_col_allocate.color_changed.connect(func(c): _on_default_border_col_changed(c, "allocate"))
-	if _default_border_col_refund:
-		_default_border_col_refund.color_changed.connect(func(c): _on_default_border_col_changed(c, "refund"))
-	if _default_border_col_max_level:
-		_default_border_col_max_level.color_changed.connect(func(c): _on_default_border_col_changed(c, "max_level"))
-	if _default_border_col_allocatable:
-		_default_border_col_allocatable.color_changed.connect(func(c): _on_default_border_col_changed(c, "allocatable"))
-	if _default_border_col_not_allocatable:
-		_default_border_col_not_allocatable.color_changed.connect(func(c): _on_default_border_col_changed(c, "not_allocatable"))
-
-	# Default icon colors
-	if _default_icon_col_locked:
-		_default_icon_col_locked.color_changed.connect(func(c): _on_default_icon_col_changed(c, "locked"))
-	if _default_icon_col_normal:
-		_default_icon_col_normal.color_changed.connect(func(c): _on_default_icon_col_changed(c, "normal"))
-	if _default_icon_col_hover:
-		_default_icon_col_hover.color_changed.connect(func(c): _on_default_icon_col_changed(c, "hover"))
-	if _default_icon_col_allocate:
-		_default_icon_col_allocate.color_changed.connect(func(c): _on_default_icon_col_changed(c, "allocate"))
-	if _default_icon_col_refund:
-		_default_icon_col_refund.color_changed.connect(func(c): _on_default_icon_col_changed(c, "refund"))
-	if _default_icon_col_max_level:
-		_default_icon_col_max_level.color_changed.connect(func(c): _on_default_icon_col_changed(c, "max_level"))
-	if _default_icon_col_allocatable:
-		_default_icon_col_allocatable.color_changed.connect(func(c): _on_default_icon_col_changed(c, "allocatable"))
-	if _default_icon_col_not_allocatable:
-		_default_icon_col_not_allocatable.color_changed.connect(func(c): _on_default_icon_col_changed(c, "not_allocatable"))
 
 # ============================================================
 # TREE LOAD
@@ -557,35 +379,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_set_input_texture(_line_intermediate_input, tree_data.line_texture_intermediate)
 	_set_input_texture(_line_active_input, tree_data.line_texture_active)
 
-	# Default visuals
-	_set_input_texture(_default_border_tex_locked, tree_data.default_border_texture_locked)
-	_set_input_texture(_default_border_tex_normal, tree_data.default_border_texture_normal)
-	_set_input_texture(_default_border_tex_hover, tree_data.default_border_texture_hover)
-	_set_input_texture(_default_border_tex_max_level, tree_data.default_border_texture_max_level)
-
-	_set_input_texture(_default_icon_tex_locked, tree_data.default_icon_texture_locked)
-	_set_input_texture(_default_icon_tex_normal, tree_data.default_icon_texture_normal)
-	_set_input_texture(_default_icon_tex_hover, tree_data.default_icon_texture_hover)
-	_set_input_texture(_default_icon_tex_max_level, tree_data.default_icon_texture_max_level)
-
-	_default_border_col_locked.color = tree_data.default_border_color_locked
-	_default_border_col_normal.color = tree_data.default_border_color_normal
-	_default_border_col_hover.color = tree_data.default_border_color_hover
-	_default_border_col_allocate.color = tree_data.default_border_color_allocate
-	_default_border_col_refund.color = tree_data.default_border_color_refund
-	_default_border_col_max_level.color = tree_data.default_border_color_max_level
-	_default_border_col_allocatable.color = tree_data.default_border_color_allocatable
-	_default_border_col_not_allocatable.color = tree_data.default_border_color_not_allocatable
-
-	_default_icon_col_locked.color = tree_data.default_icon_color_locked
-	_default_icon_col_normal.color = tree_data.default_icon_color_normal
-	_default_icon_col_hover.color = tree_data.default_icon_color_hover
-	_default_icon_col_allocate.color = tree_data.default_icon_color_allocate
-	_default_icon_col_refund.color = tree_data.default_icon_color_refund
-	_default_icon_col_max_level.color = tree_data.default_icon_color_max_level
-	_default_icon_col_allocatable.color = tree_data.default_icon_color_allocatable
-	_default_icon_col_not_allocatable.color = tree_data.default_icon_color_not_allocatable
-
 	_revealed_check.button_pressed = tree_data.revealed
 	_allocation_check.button_pressed = tree_data.allocation
 	_preallocation_check.button_pressed = tree_data.preallocation
@@ -596,32 +389,74 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_show_group_frames_check.button_pressed = tree_data.show_group_frames
 	_frame_title_align_dropdown.select(tree_data.group_frame_title_align)
 
-	# Tooltip alignments
 	_tooltip_header_align_dropdown.select(tree_data.tooltip_header_align)
 	_tooltip_body_align_dropdown.select(tree_data.tooltip_body_align)
 	_tooltip_footer_align_dropdown.select(tree_data.tooltip_footer_align)
 
+	# Default design
+	_rebuild_default_design_dropdown(tree_data.default_design_id)
+
 	_updating_ui = false
 
 # ============================================================
-# HELPER — set texture input
+# DEFAULT DESIGN DROPDOWN
 # ============================================================
 
-func _set_input_texture(input: BayterekInspectorTextureInput, tex: Texture2D) -> void:
-	if not input:
+func _make_design_dropdown_row(parent: Control) -> OptionButton:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+
+	var label := Label.new()
+	label.text = "Default Design"
+	label.size_flags_horizontal = SIZE_EXPAND_FILL
+	label.tooltip_text = "Design applied to newly created nodes."
+	label.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(label)
+
+	var dropdown := OptionButton.new()
+	dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	row.add_child(dropdown)
+
+	return dropdown
+
+func _rebuild_default_design_dropdown(selected_id: String) -> void:
+	if not _default_design_dropdown:
 		return
-	if input._texture_rect:
-		input._texture_rect.texture = tex
-	if tex:
-		if input._empty_label:
-			input._empty_label.visible = false
-		if input._clear_button:
-			input._clear_button.visible = true
-	else:
-		if input._empty_label:
-			input._empty_label.visible = true
-		if input._clear_button:
-			input._clear_button.visible = false
+
+	_default_design_dropdown.clear()
+	_default_design_dropdown.add_item("(none)", 0)
+	_default_design_dropdown.set_item_metadata(0, "")
+
+	var reg = Bayterek.get_designs_registry()
+	if not reg:
+		_default_design_dropdown.select(0)
+		return
+
+	var idx: int = 1
+	var found_idx: int = 0
+	for design in reg.designs:
+		if not design:
+			continue
+		var label: String = design.name
+		if not design.category.is_empty():
+			label = "[%s] %s" % [design.category, design.name]
+		_default_design_dropdown.add_item(label, idx)
+		_default_design_dropdown.set_item_metadata(idx, design.id)
+		if design.id == selected_id:
+			found_idx = idx
+		idx += 1
+
+	_default_design_dropdown.select(found_idx)
+
+func _on_default_design_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	var meta = _default_design_dropdown.get_item_metadata(index)
+	var design_id: String = "" if meta == null else String(meta)
+	editor.tree.default_design_id = design_id
+	default_design_changed.emit()
+	changed.emit()
+	_notify_dirty()
 
 # ============================================================
 # HANDLERS
@@ -791,86 +626,6 @@ func _on_line_active_cleared() -> void:
 	_notify_dirty()
 
 # ============================================================
-# DEFAULT VISUAL HANDLERS
-# ============================================================
-
-func _on_default_border_tex_changed(path: String, key: String) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	var tex: Texture2D = load(path) as Texture2D
-	match key:
-		"locked":    editor.tree.default_border_texture_locked = tex
-		"normal":    editor.tree.default_border_texture_normal = tex
-		"hover":     editor.tree.default_border_texture_hover = tex
-		"max_level": editor.tree.default_border_texture_max_level = tex
-	changed.emit()
-	_notify_dirty()
-
-func _on_default_border_tex_cleared(key: String) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	match key:
-		"locked":    editor.tree.default_border_texture_locked = null
-		"normal":    editor.tree.default_border_texture_normal = null
-		"hover":     editor.tree.default_border_texture_hover = null
-		"max_level": editor.tree.default_border_texture_max_level = null
-	changed.emit()
-	_notify_dirty()
-
-func _on_default_icon_tex_changed(path: String, key: String) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	var tex: Texture2D = load(path) as Texture2D
-	match key:
-		"locked":    editor.tree.default_icon_texture_locked = tex
-		"normal":    editor.tree.default_icon_texture_normal = tex
-		"hover":     editor.tree.default_icon_texture_hover = tex
-		"max_level": editor.tree.default_icon_texture_max_level = tex
-	changed.emit()
-	_notify_dirty()
-
-func _on_default_icon_tex_cleared(key: String) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	match key:
-		"locked":    editor.tree.default_icon_texture_locked = null
-		"normal":    editor.tree.default_icon_texture_normal = null
-		"hover":     editor.tree.default_icon_texture_hover = null
-		"max_level": editor.tree.default_icon_texture_max_level = null
-	changed.emit()
-	_notify_dirty()
-
-func _on_default_border_col_changed(color: Color, key: String) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	match key:
-		"locked":          editor.tree.default_border_color_locked = color
-		"normal":          editor.tree.default_border_color_normal = color
-		"hover":           editor.tree.default_border_color_hover = color
-		"allocate":        editor.tree.default_border_color_allocate = color
-		"refund":          editor.tree.default_border_color_refund = color
-		"max_level":       editor.tree.default_border_color_max_level = color
-		"allocatable":     editor.tree.default_border_color_allocatable = color
-		"not_allocatable": editor.tree.default_border_color_not_allocatable = color
-	changed.emit()
-	_notify_dirty()
-
-func _on_default_icon_col_changed(color: Color, key: String) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	match key:
-		"locked":          editor.tree.default_icon_color_locked = color
-		"normal":          editor.tree.default_icon_color_normal = color
-		"hover":           editor.tree.default_icon_color_hover = color
-		"allocate":        editor.tree.default_icon_color_allocate = color
-		"refund":          editor.tree.default_icon_color_refund = color
-		"max_level":       editor.tree.default_icon_color_max_level = color
-		"allocatable":     editor.tree.default_icon_color_allocatable = color
-		"not_allocatable": editor.tree.default_icon_color_not_allocatable = color
-	changed.emit()
-	_notify_dirty()
-
-# ============================================================
 # INTERACTION HANDLERS
 # ============================================================
 
@@ -950,10 +705,6 @@ func _on_frame_title_align_changed(index: int) -> void:
 	changed.emit()
 	_notify_dirty()
 
-# ============================================================
-# TOOLTIP HANDLERS
-# ============================================================
-
 func _on_tooltip_header_align_changed(index: int) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
@@ -982,6 +733,22 @@ func _on_tooltip_footer_align_changed(index: int) -> void:
 func _notify_dirty() -> void:
 	if editor and editor.has_method("set_dirty"):
 		editor.set_dirty(true)
+
+func _set_input_texture(input: BayterekInspectorTextureInput, tex: Texture2D) -> void:
+	if not input:
+		return
+	if input._texture_rect:
+		input._texture_rect.texture = tex
+	if tex:
+		if input._empty_label:
+			input._empty_label.visible = false
+		if input._clear_button:
+			input._clear_button.visible = true
+	else:
+		if input._empty_label:
+			input._empty_label.visible = true
+		if input._clear_button:
+			input._clear_button.visible = false
 
 func _make_int_row(parent: Control, label_text: String, tooltip: String = "") -> SpinBox:
 	var row := HBoxContainer.new()

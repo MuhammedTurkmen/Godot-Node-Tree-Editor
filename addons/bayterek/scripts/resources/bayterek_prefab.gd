@@ -1,14 +1,24 @@
 @tool
 class_name BayterekPrefab
 extends Resource
-## Shared node template.
+## Shared node template. Mirrors BayterekNode's layer system.
+
+# ============================================================
+# SIGNALS
+# ============================================================
 
 signal name_changed(prefab: BayterekPrefab)
 signal description_changed(prefab: BayterekPrefab)
-signal icon_changed(prefab: BayterekPrefab)
-signal border_changed(prefab: BayterekPrefab)
 signal attribute_changed(prefab: BayterekPrefab, attribute_id: String, removed: bool)
 signal max_allocations_changed(prefab: BayterekPrefab)
+
+## Emitted whenever the layer stack changes (add / remove / modify / reorder / reset).
+## `change_type` is one of: "add", "remove", "modify", "reorder", "reset".
+signal layers_changed(prefab: BayterekPrefab, change_type: String)
+
+# ============================================================
+# IDENTITY
+# ============================================================
 
 @export_storage var reference_id: String
 @export_storage var id: String
@@ -19,43 +29,84 @@ signal max_allocations_changed(prefab: BayterekPrefab)
 @export_storage var max_allocations: int = 1
 
 # ============================================================
-# VISUALS — Border
+# LAYOUT
 # ============================================================
 
-@export_storage var border_texture_locked: Texture2D = null
-@export_storage var border_texture_normal: Texture2D = null
-@export_storage var border_texture_hover: Texture2D = null
-@export_storage var border_texture_max_level: Texture2D = null
-
-@export_storage var border_color_locked: Color = Color(0.5, 0.5, 0.5, 1.0)
-@export_storage var border_color_normal: Color = Color(1, 1, 1, 1)
-@export_storage var border_color_hover: Color = Color(1.2, 1.2, 1.2, 1)
-@export_storage var border_color_allocate: Color = Color(1.0, 0.9, 0.3, 1)
-@export_storage var border_color_refund: Color = Color(1.0, 0.4, 0.4, 1)
-@export_storage var border_color_max_level: Color = Color(1.0, 0.85, 0.2, 1)
-@export_storage var border_color_allocatable: Color = Color(0.6, 1.0, 0.6, 1)
-@export_storage var border_color_not_allocatable: Color = Color(0.6, 0.6, 0.6, 1)
+@export_storage var design_size: Vector2 = Vector2(100, 100)
+@export_storage var scale: Vector2 = Vector2.ONE
 
 # ============================================================
-# VISUALS — Icon
+# LAYERS
 # ============================================================
 
-@export_storage var icon_texture_locked: Texture2D = null
-@export_storage var icon_texture_normal: Texture2D = null
-@export_storage var icon_texture_hover: Texture2D = null
-@export_storage var icon_texture_max_level: Texture2D = null
+@export_storage var layers: Array[BayterekLayer] = []
 
-@export_storage var icon_color_locked: Color = Color(0.5, 0.5, 0.5, 1.0)
-@export_storage var icon_color_normal: Color = Color(1, 1, 1, 1)
-@export_storage var icon_color_hover: Color = Color(1.2, 1.2, 1.2, 1)
-@export_storage var icon_color_allocate: Color = Color(1.0, 0.9, 0.3, 1)
-@export_storage var icon_color_refund: Color = Color(1.0, 0.4, 0.4, 1)
-@export_storage var icon_color_max_level: Color = Color(1.0, 0.85, 0.2, 1)
-@export_storage var icon_color_allocatable: Color = Color(0.6, 1.0, 0.6, 1)
-@export_storage var icon_color_not_allocatable: Color = Color(0.6, 0.6, 0.6, 1)
-
-## Prefab'a bağlı runtime node'lar (kaydedilmez, runtime'da doldurulur)
+## Runtime-only: nodes bound to this prefab. Not saved.
 var nodes: Array = []
+
+# ============================================================
+# LAYER MANAGEMENT
+# ============================================================
+
+func can_add_layer() -> bool:
+	return layers.size() < BayterekNode.MAX_LAYERS
+
+func get_layer_count() -> int:
+	return layers.size()
+
+func add_layer(layer: BayterekLayer) -> bool:
+	if not layer or not can_add_layer():
+		return false
+	layers.append(layer)
+	layers_changed.emit(self, "add")
+	return true
+
+func remove_layer(index: int) -> BayterekLayer:
+	if index < 0 or index >= layers.size():
+		return null
+	var removed: BayterekLayer = layers[index]
+	layers.remove_at(index)
+	layers_changed.emit(self, "remove")
+	return removed
+
+func move_layer(from_index: int, to_index: int) -> bool:
+	if from_index < 0 or from_index >= layers.size():
+		return false
+	if to_index < 0 or to_index >= layers.size():
+		return false
+	if from_index == to_index:
+		return false
+	var layer: BayterekLayer = layers[from_index]
+	layers.remove_at(from_index)
+	layers.insert(to_index, layer)
+	layers_changed.emit(self, "reorder")
+	return true
+
+func get_layer(index: int) -> BayterekLayer:
+	if index < 0 or index >= layers.size():
+		return null
+	return layers[index]
+
+func clear_layers() -> void:
+	layers.clear()
+	layers_changed.emit(self, "reset")
+
+## Called after a layer's internal fields have been modified externally.
+## Emits the signal so bound nodes refresh.
+func notify_layer_modified() -> void:
+	layers_changed.emit(self, "modify")
+
+## Deep-copies all layers from another source.
+func copy_layers_from(source_layers: Array) -> void:
+	layers.clear()
+	for layer in source_layers:
+		if layer is BayterekLayer:
+			layers.append(layer.duplicate_layer())
+	layers_changed.emit(self, "reset")
+
+# ============================================================
+# NODE BINDING
+# ============================================================
 
 func add_node(node: BayterekNodeButton) -> void:
 	if not is_instance_valid(node):
@@ -151,45 +202,7 @@ func set_attribute_value_count(attribute_id: String, new_count: int) -> void:
 	attribute_changed.emit(self, attribute_id, false)
 
 # ============================================================
-# VISUAL SETTERS — emit border_changed/icon_changed
-# ============================================================
-
-func set_border_visuals_from_dict(data: Dictionary) -> void:
-	border_texture_locked = data.get("border_texture_locked", border_texture_locked)
-	border_texture_normal = data.get("border_texture_normal", border_texture_normal)
-	border_texture_hover = data.get("border_texture_hover", border_texture_hover)
-	border_texture_max_level = data.get("border_texture_max_level", border_texture_max_level)
-
-	border_color_locked = data.get("border_color_locked", border_color_locked)
-	border_color_normal = data.get("border_color_normal", border_color_normal)
-	border_color_hover = data.get("border_color_hover", border_color_hover)
-	border_color_allocate = data.get("border_color_allocate", border_color_allocate)
-	border_color_refund = data.get("border_color_refund", border_color_refund)
-	border_color_max_level = data.get("border_color_max_level", border_color_max_level)
-	border_color_allocatable = data.get("border_color_allocatable", border_color_allocatable)
-	border_color_not_allocatable = data.get("border_color_not_allocatable", border_color_not_allocatable)
-
-	border_changed.emit(self)
-
-func set_icon_visuals_from_dict(data: Dictionary) -> void:
-	icon_texture_locked = data.get("icon_texture_locked", icon_texture_locked)
-	icon_texture_normal = data.get("icon_texture_normal", icon_texture_normal)
-	icon_texture_hover = data.get("icon_texture_hover", icon_texture_hover)
-	icon_texture_max_level = data.get("icon_texture_max_level", icon_texture_max_level)
-
-	icon_color_locked = data.get("icon_color_locked", icon_color_locked)
-	icon_color_normal = data.get("icon_color_normal", icon_color_normal)
-	icon_color_hover = data.get("icon_color_hover", icon_color_hover)
-	icon_color_allocate = data.get("icon_color_allocate", icon_color_allocate)
-	icon_color_refund = data.get("icon_color_refund", icon_color_refund)
-	icon_color_max_level = data.get("icon_color_max_level", icon_color_max_level)
-	icon_color_allocatable = data.get("icon_color_allocatable", icon_color_allocatable)
-	icon_color_not_allocatable = data.get("icon_color_not_allocatable", icon_color_not_allocatable)
-
-	icon_changed.emit(self)
-
-# ============================================================
-# ORPHAN / SILME
+# ORPHAN / DELETE
 # ============================================================
 
 func orphan_all_nodes() -> void:

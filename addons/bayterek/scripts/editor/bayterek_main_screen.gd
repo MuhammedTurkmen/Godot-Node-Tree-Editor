@@ -1,7 +1,7 @@
 @tool
 class_name BayterekMainScreen
 extends MarginContainer
-## Ana ekran.
+## Main screen.
 
 signal update_available(version: String)
 signal dirty_changed(editor: BayterekEditor, dirty: bool)
@@ -11,6 +11,7 @@ var initialized: bool = false
 
 var tab_container: TabContainer
 var browser: BayterekBrowser
+var node_editor: BayterekNodeEditorScreen
 var save_confirmation: ConfirmationDialog
 
 var _open_editors: Dictionary = {}   # path -> BayterekEditor
@@ -46,10 +47,12 @@ func init() -> void:
 	_build_ui()
 	if browser:
 		browser.init()
+	if node_editor:
+		node_editor.refresh()
 
 	_force_layout_refresh()
 	call_deferred("_force_layout_refresh")
-	print("Bayterek: MainScreen hazır.")
+	print("Bayterek: MainScreen ready.")
 
 func _build_ui() -> void:
 	if tab_container:
@@ -66,6 +69,7 @@ func _build_ui() -> void:
 		tab_bar.tab_close_display_policy = TabBar.CLOSE_BUTTON_SHOW_ACTIVE_ONLY
 		tab_bar.tab_close_pressed.connect(_on_tab_close_pressed)
 
+	# --- Tab 0: Browser ---
 	browser = BayterekBrowser.new()
 	browser.name = "Browser"
 	browser.main_screen = self
@@ -73,6 +77,14 @@ func _build_ui() -> void:
 	browser.size_flags_vertical = SIZE_EXPAND_FILL
 	tab_container.add_child(browser)
 	tab_container.set_tab_title(0, "Browser")
+
+	# --- Tab 1: Node Editor (fixed) ---
+	node_editor = BayterekNodeEditorScreen.new()
+	node_editor.name = "NodeEditor"
+	node_editor.size_flags_horizontal = SIZE_EXPAND_FILL
+	node_editor.size_flags_vertical = SIZE_EXPAND_FILL
+	tab_container.add_child(node_editor)
+	tab_container.set_tab_title(1, "Node Editor")
 
 	save_confirmation = ConfirmationDialog.new()
 	save_confirmation.name = "SaveConfirmation"
@@ -82,41 +94,39 @@ func _build_ui() -> void:
 	save_confirmation.custom_action.connect(_on_save_custom_action)
 	add_child(save_confirmation)
 
+# ============================================================
+# TREE EDITOR MANAGEMENT
+# ============================================================
+
 func open_tree(path: String) -> void:
 	if _open_editors.has(path):
 		var existing: BayterekEditor = _open_editors[path]
 		tab_container.current_tab = tab_container.get_tab_idx_from_control(existing)
 		return
 
-	print("[BayterekMainScreen] open_tree: BayterekEditor sınıfını kontrol ediyorum...")
+	print("[BayterekMainScreen] open_tree: loading BayterekEditor...")
 
-	# --- DEBUG: BayterekEditor global sınıfı kayıtlı mı? ---
 	var editor_script = load("res://addons/bayterek/scripts/editor/bayterek_editor.gd")
 	if not editor_script:
-		push_error("[BayterekMainScreen] bayterek_editor.gd YÜKLENEMEDİ — dosyada parse hatası var!")
+		push_error("[BayterekMainScreen] bayterek_editor.gd failed to load.")
 		return
-	print("[BayterekMainScreen] bayterek_editor.gd yüklendi: ", editor_script)
 
 	if not editor_script is GDScript:
-		push_error("[BayterekMainScreen] bayterek_editor.gd bir GDScript değil!")
+		push_error("[BayterekMainScreen] bayterek_editor.gd is not a GDScript.")
 		return
 
-	# Script'in parse edilip edilmediğini kontrol et
-	var script_can_instantiate: bool = editor_script.can_instantiate()
-	if not script_can_instantiate:
-		push_error("[BayterekMainScreen] bayterek_editor.gd PARSE EDİLEMEDİ! Godot editöründe bu dosyayı aç, alt panelde parse error göreceksin.")
+	if not editor_script.can_instantiate():
+		push_error("[BayterekMainScreen] bayterek_editor.gd failed to parse.")
 		return
 
 	var editor: Control = editor_script.new()
 	if not editor:
-		push_error("[BayterekMainScreen] BayterekEditor instantiate edilemedi!")
+		push_error("[BayterekMainScreen] could not instantiate BayterekEditor.")
 		return
 
 	if not editor is BayterekEditor:
-		push_error("[BayterekMainScreen] instantiate edilen obje BayterekEditor değil: ", editor.get_class())
+		push_error("[BayterekMainScreen] instantiated object is not BayterekEditor.")
 		return
-
-	print("[BayterekMainScreen] BayterekEditor başarıyla oluşturuldu.")
 
 	editor.name = path.get_file().get_basename()
 	editor.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -132,6 +142,10 @@ func open_tree(path: String) -> void:
 	tab_container.current_tab = idx
 
 func _on_tab_close_pressed(tab_index: int) -> void:
+	# Fixed tabs (Browser = 0, Node Editor = 1) cannot be closed.
+	if tab_index <= 1:
+		return
+
 	var child: Node = tab_container.get_child(tab_index)
 	if child is BayterekEditor:
 		var editor: BayterekEditor = child

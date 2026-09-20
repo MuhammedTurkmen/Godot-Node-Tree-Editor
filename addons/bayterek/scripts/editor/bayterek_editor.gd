@@ -1,7 +1,7 @@
 @tool
 class_name BayterekEditor
 extends Control
-## Graph editor + left hierarchy + right panel + bottom prefabs bar.
+## Graph editor + left hierarchy + right panel.
 
 signal closed
 signal dirty_changed(editor: BayterekEditor, dirty: bool)
@@ -37,7 +37,6 @@ var undo_redo: UndoRedo
 
 var h_split: HSplitContainer
 var hierarchy: BayterekTreeHierarchy
-var center_v_split: VSplitContainer
 var left_container: VBoxContainer
 var menu_bar: HBoxContainer
 var tree_view: BayterekTreeView
@@ -46,20 +45,14 @@ var inspector: BayterekTreeEditorInspector
 var settings_editor: BayterekSettingsEditor
 var attributes_editor: BayterekAttributesEditor
 
-var bottom_container: VBoxContainer
-var prefabs_bar: BayterekPrefabsBar
-var prefabs_panel: Control
-
 var context_menu: PopupMenu
 var validator: BayterekValidator
 var icon_selector: BayterekIconSelector
 var rename_dialog: BayterekRenameDialog
 var group_dialog: BayterekGroupDialog
 
-# Tooltip menu reference
 var _tooltip_menu: PopupMenu
 
-# Prefab delete dialog (editor-level — like ContextMenu)
 var delete_confirmation: ConfirmationDialog
 var delete_option: OptionButton
 var delete_title_label: Label
@@ -70,8 +63,7 @@ var _last_click_pos: Vector2 = Vector2.ZERO
 var _last_save_time: int = 0
 var _resize_debounce: float = 0.0
 
-# Group dialog state
-var _group_dialog_mode: String = ""   # "create" | "edit"
+var _group_dialog_mode: String = ""
 var _group_dialog_target_id: String = ""
 
 func _ready() -> void:
@@ -133,7 +125,6 @@ func load_tree(path: String) -> void:
 
 	_build_ui()
 	_create_tree_view()
-	_create_prefabs_bar()
 	_create_context_menu()
 	_create_delete_dialog()
 	_create_rename_dialog()
@@ -156,18 +147,9 @@ func _restore_split_offsets() -> void:
 			tree.set("hierarchy_split_offset", 200)
 		h_split.split_offset = int(v)
 
-	if center_v_split and tree:
-		var v2 = tree.get("prefabs_split_offset")
-		if v2 == null or typeof(v2) != TYPE_INT:
-			v2 = -180
-			tree.set("prefabs_split_offset", -180)
-		center_v_split.split_offset = int(v2)
-
 func _connect_split_signals() -> void:
 	if h_split:
 		h_split.dragged.connect(_on_h_split_dragged)
-	if center_v_split:
-		center_v_split.dragged.connect(_on_bottom_split_dragged)
 
 # ============================================================
 # CHAIN-CONNECTION MODE
@@ -184,7 +166,6 @@ func _toggle_chain_connection_mode() -> void:
 	tree.chain_connection_mode = not tree.chain_connection_mode
 	_show_chain_mode_notification()
 
-	# Sync the settings checkbox if it exists
 	if settings_editor and settings_editor._chain_connection_check:
 		settings_editor._updating_ui = true
 		settings_editor._chain_connection_check.button_pressed = tree.chain_connection_mode
@@ -221,19 +202,12 @@ func _build_ui() -> void:
 	hierarchy.size_flags_vertical = SIZE_EXPAND_FILL
 	h_split.add_child(hierarchy)
 
-	center_v_split = VSplitContainer.new()
-	center_v_split.name = "CenterVSplit"
-	center_v_split.size_flags_horizontal = SIZE_EXPAND_FILL
-	center_v_split.size_flags_vertical = SIZE_EXPAND_FILL
-	center_v_split.split_offset = -180
-	h_split.add_child(center_v_split)
-
 	left_container = VBoxContainer.new()
 	left_container.name = "LeftContainer"
 	left_container.size_flags_horizontal = SIZE_EXPAND_FILL
 	left_container.size_flags_vertical = SIZE_EXPAND_FILL
 	left_container.add_theme_constant_override("separation", 0)
-	center_v_split.add_child(left_container)
+	h_split.add_child(left_container)
 
 	menu_bar = HBoxContainer.new()
 	menu_bar.name = "MenuBar"
@@ -338,22 +312,14 @@ func _on_tooltip_menu_pressed(id: int) -> void:
 		_tooltip_menu.set_item_checked(idx, true)
 
 	match id:
-		TOOLTIP_ID_NEAR_RIGHT:
-			tree_view.set_tooltip_near_node_right()
-		TOOLTIP_ID_NEAR_LEFT:
-			tree_view.set_tooltip_near_node_left()
-		TOOLTIP_ID_NEAR_TOP:
-			tree_view.set_tooltip_near_node_top()
-		TOOLTIP_ID_NEAR_BOTTOM:
-			tree_view.set_tooltip_near_node_bottom()
-		TOOLTIP_ID_CORNER_TL:
-			tree_view.set_tooltip_corner_top_left()
-		TOOLTIP_ID_CORNER_TR:
-			tree_view.set_tooltip_corner_top_right()
-		TOOLTIP_ID_CORNER_BL:
-			tree_view.set_tooltip_corner_bottom_left()
-		TOOLTIP_ID_CORNER_BR:
-			tree_view.set_tooltip_corner_bottom_right()
+		TOOLTIP_ID_NEAR_RIGHT:  tree_view.set_tooltip_near_node_right()
+		TOOLTIP_ID_NEAR_LEFT:   tree_view.set_tooltip_near_node_left()
+		TOOLTIP_ID_NEAR_TOP:    tree_view.set_tooltip_near_node_top()
+		TOOLTIP_ID_NEAR_BOTTOM: tree_view.set_tooltip_near_node_bottom()
+		TOOLTIP_ID_CORNER_TL:   tree_view.set_tooltip_corner_top_left()
+		TOOLTIP_ID_CORNER_TR:   tree_view.set_tooltip_corner_top_right()
+		TOOLTIP_ID_CORNER_BL:   tree_view.set_tooltip_corner_bottom_left()
+		TOOLTIP_ID_CORNER_BR:   tree_view.set_tooltip_corner_bottom_right()
 
 # ============================================================
 # TREE VIEW
@@ -386,9 +352,9 @@ func _create_tree_view() -> void:
 	tree_view.selection_changed.connect(_on_selection_changed)
 	tree_view.node_moved.connect(_on_node_moved)
 	tree_view.prefab_dropped.connect(_on_prefab_dropped_from_canvas)
+	tree_view.design_dropped.connect(_on_design_dropped_from_canvas)
 	tree_view.node_right_clicked.connect(_on_node_right_clicked)
 
-	# Default tooltip position
 	tree_view.set_tooltip_near_node_right()
 
 	if hierarchy:
@@ -417,40 +383,11 @@ func _create_tree_view() -> void:
 		attributes_editor.attribute_removed.connect(_on_attr_removed)
 		attributes_editor.attributes_list_changed.connect(_on_attrs_list_changed)
 
-func _create_prefabs_bar() -> void:
-	bottom_container = VBoxContainer.new()
-	bottom_container.name = "BottomContainer"
-	bottom_container.custom_minimum_size = Vector2(0, 180)
-	bottom_container.size_flags_horizontal = SIZE_EXPAND_FILL
-	bottom_container.size_flags_vertical = SIZE_EXPAND_FILL
-	bottom_container.add_theme_constant_override("separation", 0)
-	center_v_split.add_child(bottom_container)
-
-	prefabs_bar = BayterekPrefabsBar.new()
-	prefabs_bar.name = "PrefabsBar"
-	prefabs_bar.size_flags_horizontal = SIZE_EXPAND_FILL
-	prefabs_bar.editor = self
-	bottom_container.add_child(prefabs_bar)
-
-	prefabs_panel = VBoxContainer.new()
-	prefabs_panel.name = "PrefabsPanel"
-	prefabs_panel.size_flags_horizontal = SIZE_EXPAND_FILL
-	prefabs_panel.size_flags_vertical = SIZE_EXPAND_FILL
-	bottom_container.add_child(prefabs_panel)
-
-	prefabs_bar.init(null, bottom_container, prefabs_panel)
-
-	call_deferred("_refresh_prefabs_panels")
-
 func _create_icon_selector() -> void:
 	icon_selector = BayterekIconSelector.new()
 	icon_selector.name = "IconSelector"
 	icon_selector.editor = self
 	icon_selector.init()
-
-	if inspector:
-		icon_selector.icon_selected.connect(inspector._on_icon_selected)
-
 	add_child(icon_selector)
 
 func _create_validator() -> void:
@@ -549,7 +486,6 @@ func _on_delete_confirmed() -> void:
 	tree_view.prefabs_service.delete_prefab(prefab_to_delete, mode)
 
 	set_dirty(true)
-	_refresh_prefabs_panels()
 
 	var action_label: String = "Deleted prefab"
 	match mode:
@@ -658,7 +594,6 @@ func _on_group_dialog_applied(group_name: String, group_color: Color) -> void:
 		group.color = group_color
 		tree.node_groups.append(group)
 
-		# Assign selected nodes to this new group
 		if tree_view:
 			for node in tree_view.selected_nodes:
 				if is_instance_valid(node) and node.node_data:
@@ -804,7 +739,6 @@ func _assign_node_to_group(node: BayterekNodeButton, group_id: String) -> void:
 		if new_group:
 			new_group.add_node_id(node.id)
 
-	# Refresh affected frames
 	if tree_view and tree_view.group_frames_service:
 		if not old_group_id.is_empty():
 			tree_view.group_frames_service.refresh_group(old_group_id)
@@ -854,15 +788,12 @@ func _on_prefab_created(prefab: BayterekPrefab) -> void:
 		prefab.name_changed.connect(_on_prefab_name_changed)
 	if not prefab.description_changed.is_connected(_on_prefab_description_changed):
 		prefab.description_changed.connect(_on_prefab_description_changed)
-	if not prefab.icon_changed.is_connected(_on_prefab_icon_changed):
-		prefab.icon_changed.connect(_on_prefab_icon_changed)
-	if not prefab.border_changed.is_connected(_on_prefab_border_changed):
-		prefab.border_changed.connect(_on_prefab_border_changed)
 	if not prefab.attribute_changed.is_connected(_on_prefab_attribute_changed):
 		prefab.attribute_changed.connect(_on_prefab_attribute_changed)
 	if not prefab.max_allocations_changed.is_connected(_on_prefab_max_allocations_changed):
 		prefab.max_allocations_changed.connect(_on_prefab_max_allocations_changed)
-	call_deferred("_refresh_prefabs_panels")
+	if not prefab.layers_changed.is_connected(_on_prefab_layers_changed):
+		prefab.layers_changed.connect(_on_prefab_layers_changed)
 
 func _on_prefab_name_changed(prefab: BayterekPrefab) -> void:
 	var affected: Array = _get_nodes_of_prefab(prefab)
@@ -871,34 +802,12 @@ func _on_prefab_name_changed(prefab: BayterekPrefab) -> void:
 		node.node_data.external_id = prefab.id
 		if hierarchy:
 			hierarchy.refresh_node_display(node)
-	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
 func _on_prefab_description_changed(prefab: BayterekPrefab) -> void:
 	var affected: Array = _get_nodes_of_prefab(prefab)
 	for node in affected:
 		node.node_data.description = prefab.description
-	call_deferred("_refresh_prefabs_panels")
-	set_dirty(true)
-
-func _on_prefab_icon_changed(prefab: BayterekPrefab) -> void:
-	var affected: Array = _get_nodes_of_prefab(prefab)
-	for node in affected:
-		node.node_data.icon = prefab.icon
-		if node.has_method("refresh_visuals"):
-			node.refresh_visuals()
-	call_deferred("_refresh_prefabs_panels")
-	set_dirty(true)
-
-func _on_prefab_border_changed(prefab: BayterekPrefab) -> void:
-	var affected: Array = _get_nodes_of_prefab(prefab)
-	for node in affected:
-		node.node_data.border_normal = prefab.border_normal
-		node.node_data.border_intermediate = prefab.border_intermediate
-		node.node_data.border_active = prefab.border_active
-		if node.has_method("refresh_visuals"):
-			node.refresh_visuals()
-	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
 func _on_prefab_attribute_changed(prefab: BayterekPrefab, attribute_id: String, removed: bool) -> void:
@@ -910,7 +819,6 @@ func _on_prefab_attribute_changed(prefab: BayterekPrefab, attribute_id: String, 
 			node.node_data.attributes[attribute_id] = prefab.attributes[attribute_id].duplicate(true)
 		if inspector and inspector._current_node == node:
 			inspector.refresh_attributes()
-	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
 func _on_prefab_max_allocations_changed(prefab: BayterekPrefab) -> void:
@@ -919,16 +827,16 @@ func _on_prefab_max_allocations_changed(prefab: BayterekPrefab) -> void:
 		node.node_data.max_allocations = prefab.max_allocations
 		if inspector and inspector._current_node == node:
 			inspector.refresh_attributes()
-	call_deferred("_refresh_prefabs_panels")
 	set_dirty(true)
 
-func _refresh_prefabs_panels() -> void:
-	if not prefabs_panel:
-		return
-	for i in prefabs_panel.get_child_count():
-		var panel = prefabs_panel.get_child(i)
-		if panel.has_method("refresh"):
-			panel.refresh()
+func _on_prefab_layers_changed(prefab: BayterekPrefab, _change_type: String) -> void:
+	var affected: Array = _get_nodes_of_prefab(prefab)
+	for node in affected:
+		if not is_instance_valid(node):
+			continue
+		if node.has_method("refresh_visuals"):
+			node.refresh_visuals()
+	set_dirty(true)
 
 # ============================================================
 # CONTEXT MENU
@@ -953,7 +861,6 @@ func _create_context_menu() -> void:
 	context_menu.add_item("Duplicate", CM_DUPLICATE)
 	context_menu.add_separator()
 
-	# Assign to Group submenu
 	var group_submenu := PopupMenu.new()
 	group_submenu.name = "GroupSubmenu"
 	group_submenu.id_pressed.connect(_on_group_submenu_pressed)
@@ -999,7 +906,6 @@ func _on_tree_view_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			var global_pos: Vector2 = tree_view.get_global_transform() * event.position
-
 			_last_click_pos = event.position
 			_update_context_menu_state()
 			context_menu.position = Vector2i(global_pos)
@@ -1032,7 +938,6 @@ func _update_context_menu_state() -> void:
 	else:
 		_set_item_disabled_by_id(CM_MAKE_ROOT, true)
 
-	# Rebuild group submenu
 	_rebuild_group_submenu()
 
 func _set_item_disabled_by_id(item_id: int, disabled: bool) -> void:
@@ -1055,8 +960,6 @@ func _on_context_menu_pressed(id: int) -> void:
 # ============================================================
 
 func _rebuild_group_submenu() -> void:
-	# The Assign-to-Group submenu was created as a child of context_menu
-	# with name "GroupSubmenu". Find it via get_node_or_null.
 	var submenu_node: Node = context_menu.get_node_or_null("GroupSubmenu")
 	if not submenu_node is PopupMenu:
 		return
@@ -1117,7 +1020,6 @@ func _cleanup_orphan_prefabs() -> void:
 		return
 	var count: int = tree_view.prefabs_service.cleanup_orphan_prefabs()
 	if count > 0:
-		_refresh_prefabs_panels()
 		set_dirty(true)
 		BayterekToast.success(tree_view, "Cleaned up %d orphan prefab%s" % [count, "s" if count > 1 else ""])
 		print("Bayterek: %d orphan prefab cleaned up." % count)
@@ -1137,25 +1039,12 @@ func _save_selected_as_prefab(is_copy: bool) -> void:
 		tree_view.prefabs_service.create_prefab(node, is_copy)
 		count += 1
 
-	_refresh_prefabs_panels()
 	set_dirty(true)
-	if prefabs_bar and not tree_view.selected_nodes.is_empty():
-		var node = tree_view.selected_nodes[0]
-		var tab_idx: int = _node_type_to_panel_index(node.node_data.type)
-		prefabs_bar.current_tab = tab_idx
 
 	if count > 0:
 		var label: String = "copy" if is_copy else "prefab"
 		var plural: String = "s" if count > 1 else ""
 		BayterekToast.success(tree_view, "Saved %d %s%s" % [count, label, plural])
-
-func _node_type_to_panel_index(t: BayterekNode.NodeType) -> int:
-	match t:
-		BayterekNode.NodeType.SMALL: return 0
-		BayterekNode.NodeType.MEDIUM: return 1
-		BayterekNode.NodeType.LARGE: return 2
-		BayterekNode.NodeType.DECORATION: return 3
-	return 0
 
 func _make_selected_unique() -> void:
 	if not tree_view or not tree_view.prefabs_service:
@@ -1167,7 +1056,6 @@ func _make_selected_unique() -> void:
 			tree_view.prefabs_service.make_unique(node)
 			count += 1
 
-	_refresh_prefabs_panels()
 	set_dirty(true)
 	if count > 0:
 		var plural: String = "s" if count > 1 else ""
@@ -1192,7 +1080,6 @@ func _delete_selected() -> void:
 			var plural: String = "s" if count > 1 else ""
 			BayterekToast.info(tree_view, "Deleted %d node%s" % [count, plural])
 
-	# Refresh hierarchy in case group membership changed
 	if hierarchy:
 		hierarchy.refresh_all()
 
@@ -1318,6 +1205,7 @@ func _node_to_dict(node_data: BayterekNode) -> Dictionary:
 	d["locked"] = node_data.locked
 	d["external_id"] = node_data.external_id
 	d["reference_id"] = node_data.reference_id
+	d["design_id"] = node_data.design_id
 	d["group_id"] = node_data.group_id
 	d["prerequisite_group_id"] = node_data.prerequisite_group_id
 
@@ -1337,32 +1225,9 @@ func _node_to_dict(node_data: BayterekNode) -> Dictionary:
 	d["prerequisite_mode"] = int(node_data.prerequisite_mode)
 	d["prerequisite_count"] = node_data.prerequisite_count
 
-	d["border_texture_locked"] = _tex_to_path(node_data.border_texture_locked)
-	d["border_texture_normal"] = _tex_to_path(node_data.border_texture_normal)
-	d["border_texture_hover"] = _tex_to_path(node_data.border_texture_hover)
-	d["border_texture_max_level"] = _tex_to_path(node_data.border_texture_max_level)
-	d["icon_texture_locked"] = _tex_to_path(node_data.icon_texture_locked)
-	d["icon_texture_normal"] = _tex_to_path(node_data.icon_texture_normal)
-	d["icon_texture_hover"] = _tex_to_path(node_data.icon_texture_hover)
-	d["icon_texture_max_level"] = _tex_to_path(node_data.icon_texture_max_level)
-
-	d["border_color_locked"] = _color_to_dict(node_data.border_color_locked)
-	d["border_color_normal"] = _color_to_dict(node_data.border_color_normal)
-	d["border_color_hover"] = _color_to_dict(node_data.border_color_hover)
-	d["border_color_allocate"] = _color_to_dict(node_data.border_color_allocate)
-	d["border_color_refund"] = _color_to_dict(node_data.border_color_refund)
-	d["border_color_max_level"] = _color_to_dict(node_data.border_color_max_level)
-	d["border_color_allocatable"] = _color_to_dict(node_data.border_color_allocatable)
-	d["border_color_not_allocatable"] = _color_to_dict(node_data.border_color_not_allocatable)
-
-	d["icon_color_locked"] = _color_to_dict(node_data.icon_color_locked)
-	d["icon_color_normal"] = _color_to_dict(node_data.icon_color_normal)
-	d["icon_color_hover"] = _color_to_dict(node_data.icon_color_hover)
-	d["icon_color_allocate"] = _color_to_dict(node_data.icon_color_allocate)
-	d["icon_color_refund"] = _color_to_dict(node_data.icon_color_refund)
-	d["icon_color_max_level"] = _color_to_dict(node_data.icon_color_max_level)
-	d["icon_color_allocatable"] = _color_to_dict(node_data.icon_color_allocatable)
-	d["icon_color_not_allocatable"] = _color_to_dict(node_data.icon_color_not_allocatable)
+	d["design_size"] = {"x": node_data.design_size.x, "y": node_data.design_size.y}
+	d["scale"] = {"x": node_data.scale.x, "y": node_data.scale.y}
+	d["layers"] = _layers_to_dicts(node_data.layers)
 
 	return d
 
@@ -1470,7 +1335,6 @@ func _paste_nodes() -> void:
 		var plural: String = "s" if created.size() > 1 else ""
 		BayterekToast.success(tree_view, "Pasted %d node%s" % [created.size(), plural])
 
-	# Refresh group frames in case pasted nodes brought group membership
 	if tree_view.group_frames_service:
 		tree_view.group_frames_service.refresh_all()
 
@@ -1501,6 +1365,7 @@ func _dict_to_node(nd: Dictionary, new_id: int, id_map: Dictionary, offset: Vect
 	node_data.is_root = bool(nd.get("is_root", false))
 	node_data.locked = bool(nd.get("locked", false))
 	node_data.external_id = nd.get("external_id", "")
+	node_data.design_id = nd.get("design_id", "")
 
 	var old_ref: String = nd.get("reference_id", "")
 	var prefab_exists: bool = false
@@ -1512,7 +1377,6 @@ func _dict_to_node(nd: Dictionary, new_id: int, id_map: Dictionary, offset: Vect
 	else:
 		node_data.reference_id = ""
 
-	# Group assignment: keep only if the group exists in this tree
 	var old_group_id: String = nd.get("group_id", "")
 	if not old_group_id.is_empty() and tree:
 		var grp: BayterekNodeGroup = tree.get_group_by_id(old_group_id)
@@ -1532,32 +1396,14 @@ func _dict_to_node(nd: Dictionary, new_id: int, id_map: Dictionary, offset: Vect
 	node_data.prerequisite_mode = int(nd.get("prerequisite_mode", 0)) as BayterekNode.PrerequisiteMode
 	node_data.prerequisite_count = int(nd.get("prerequisite_count", 1))
 
-	node_data.border_texture_locked = _path_to_tex(nd.get("border_texture_locked", ""))
-	node_data.border_texture_normal = _path_to_tex(nd.get("border_texture_normal", ""))
-	node_data.border_texture_hover = _path_to_tex(nd.get("border_texture_hover", ""))
-	node_data.border_texture_max_level = _path_to_tex(nd.get("border_texture_max_level", ""))
-	node_data.icon_texture_locked = _path_to_tex(nd.get("icon_texture_locked", ""))
-	node_data.icon_texture_normal = _path_to_tex(nd.get("icon_texture_normal", ""))
-	node_data.icon_texture_hover = _path_to_tex(nd.get("icon_texture_hover", ""))
-	node_data.icon_texture_max_level = _path_to_tex(nd.get("icon_texture_max_level", ""))
+	node_data.design_size = _dict_to_vector2(nd.get("design_size", {}), Vector2(100, 100))
+	node_data.scale = _dict_to_vector2(nd.get("scale", {}), Vector2.ONE)
 
-	node_data.border_color_locked = _dict_to_color(nd.get("border_color_locked", {}), node_data.border_color_locked)
-	node_data.border_color_normal = _dict_to_color(nd.get("border_color_normal", {}), node_data.border_color_normal)
-	node_data.border_color_hover = _dict_to_color(nd.get("border_color_hover", {}), node_data.border_color_hover)
-	node_data.border_color_allocate = _dict_to_color(nd.get("border_color_allocate", {}), node_data.border_color_allocate)
-	node_data.border_color_refund = _dict_to_color(nd.get("border_color_refund", {}), node_data.border_color_refund)
-	node_data.border_color_max_level = _dict_to_color(nd.get("border_color_max_level", {}), node_data.border_color_max_level)
-	node_data.border_color_allocatable = _dict_to_color(nd.get("border_color_allocatable", {}), node_data.border_color_allocatable)
-	node_data.border_color_not_allocatable = _dict_to_color(nd.get("border_color_not_allocatable", {}), node_data.border_color_not_allocatable)
-
-	node_data.icon_color_locked = _dict_to_color(nd.get("icon_color_locked", {}), node_data.icon_color_locked)
-	node_data.icon_color_normal = _dict_to_color(nd.get("icon_color_normal", {}), node_data.icon_color_normal)
-	node_data.icon_color_hover = _dict_to_color(nd.get("icon_color_hover", {}), node_data.icon_color_hover)
-	node_data.icon_color_allocate = _dict_to_color(nd.get("icon_color_allocate", {}), node_data.icon_color_allocate)
-	node_data.icon_color_refund = _dict_to_color(nd.get("icon_color_refund", {}), node_data.icon_color_refund)
-	node_data.icon_color_max_level = _dict_to_color(nd.get("icon_color_max_level", {}), node_data.icon_color_max_level)
-	node_data.icon_color_allocatable = _dict_to_color(nd.get("icon_color_allocatable", {}), node_data.icon_color_allocatable)
-	node_data.icon_color_not_allocatable = _dict_to_color(nd.get("icon_color_not_allocatable", {}), node_data.icon_color_not_allocatable)
+	var layers_data: Array = nd.get("layers", [])
+	for ld in layers_data:
+		var layer = _dict_to_layer(ld)
+		if layer:
+			node_data.layers.append(layer)
 
 	var line_data_dict: Dictionary = nd.get("line_data", {})
 	for old_to_id_str in line_data_dict.keys():
@@ -1633,6 +1479,163 @@ func _dict_to_color(d: Variant, fallback: Color) -> Color:
 		float(d.get("a", fallback.a))
 	)
 
+func _dict_to_vector2(d: Variant, fallback: Vector2) -> Vector2:
+	if not d is Dictionary:
+		return fallback
+	return Vector2(
+		float(d.get("x", fallback.x)),
+		float(d.get("y", fallback.y))
+	)
+
+# ============================================================
+# LAYER SERIALIZATION
+# ============================================================
+
+func _layers_to_dicts(layers: Array) -> Array:
+	var result: Array = []
+	for layer in layers:
+		if layer is BayterekLayer:
+			result.append(_layer_to_dict(layer))
+	return result
+
+func _layer_to_dict(layer: BayterekLayer) -> Dictionary:
+	var d: Dictionary = {}
+	d["layer_name"] = layer.layer_name
+	d["visible"] = layer.visible
+	d["animation_id"] = layer.animation_id
+	d["animated"] = layer.animated
+	d["transform"] = _transform_to_dict(layer.transform)
+
+	if layer is BayterekShapeLayer:
+		d["_type"] = "shape"
+		d["shape_type"] = int(layer.shape_type)
+		d["fill_enabled"] = layer.fill_enabled
+		d["fill_configs"] = _configs_to_dict(layer.fill_configs)
+		d["border_enabled"] = layer.border_enabled
+		d["border_width"] = layer.border_width
+		d["border_configs"] = _configs_to_dict(layer.border_configs)
+		d["shadow_enabled"] = layer.shadow_enabled
+		d["shadow_color"] = _color_to_dict(layer.shadow_color)
+		d["shadow_size"] = {"x": layer.shadow_size.x, "y": layer.shadow_size.y}
+		d["shadow_blur"] = layer.shadow_blur
+
+	elif layer is BayterekTextureLayer:
+		d["_type"] = "texture"
+		d["icon_enabled"] = layer.icon_enabled
+		d["icon_configs"] = _icon_configs_to_dict(layer.icon_configs)
+		d["tint_enabled"] = layer.tint_enabled
+		d["tint_configs"] = _configs_to_dict(layer.tint_configs)
+
+	return d
+
+func _transform_to_dict(t: BayterekLayerTransform) -> Dictionary:
+	if not t:
+		return {}
+	return {
+		"position": {"x": t.position.x, "y": t.position.y},
+		"size": {"x": t.size.x, "y": t.size.y},
+		"rotation": t.rotation,
+		"skew": {"x": t.skew.x, "y": t.skew.y},
+		"pivot": {"x": t.pivot.x, "y": t.pivot.y},
+		"pivot_mode": int(t.pivot_mode),
+	}
+
+func _configs_to_dict(configs: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for state in configs.keys():
+		var entry = configs[state]
+		if not entry is Dictionary:
+			continue
+		out[str(state)] = {
+			"enabled": entry.get("enabled", false),
+			"color": _color_to_dict(entry.get("color", Color.WHITE)),
+		}
+	return out
+
+func _icon_configs_to_dict(configs: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for state in configs.keys():
+		var entry = configs[state]
+		if not entry is Dictionary:
+			continue
+		out[str(state)] = {
+			"enabled": entry.get("enabled", false),
+			"texture": _tex_to_path(entry.get("texture", null)),
+		}
+	return out
+
+func _dict_to_layer(d: Dictionary) -> BayterekLayer:
+	var type_str: String = d.get("_type", "")
+
+	var layer: BayterekLayer = null
+	if type_str == "shape":
+		layer = BayterekShapeLayer.new()
+	elif type_str == "texture":
+		layer = BayterekTextureLayer.new()
+	else:
+		return null
+
+	layer.layer_name = d.get("layer_name", "Layer")
+	layer.visible = d.get("visible", true)
+	layer.animation_id = d.get("animation_id", "")
+	layer.animated = d.get("animated", false)
+
+	layer.transform = _dict_to_transform(d.get("transform", {}))
+
+	if layer is BayterekShapeLayer:
+		layer.shape_type = int(d.get("shape_type", 0)) as BayterekShapeLayer.ShapeType
+		layer.fill_enabled = d.get("fill_enabled", true)
+		layer.fill_configs = _dict_to_configs(d.get("fill_configs", {}))
+		layer.border_enabled = d.get("border_enabled", false)
+		layer.border_width = float(d.get("border_width", 2.0))
+		layer.border_configs = _dict_to_configs(d.get("border_configs", {}))
+		layer.shadow_enabled = d.get("shadow_enabled", false)
+		layer.shadow_color = _dict_to_color(d.get("shadow_color", {}), Color(0, 0, 0, 0.5))
+		layer.shadow_size = _dict_to_vector2(d.get("shadow_size", {}), Vector2(4, 4))
+		layer.shadow_blur = float(d.get("shadow_blur", 0.0))
+
+	elif layer is BayterekTextureLayer:
+		layer.icon_enabled = d.get("icon_enabled", true)
+		layer.icon_configs = _dict_to_icon_configs(d.get("icon_configs", {}))
+		layer.tint_enabled = d.get("tint_enabled", false)
+		layer.tint_configs = _dict_to_configs(d.get("tint_configs", {}))
+
+	return layer
+
+func _dict_to_transform(d: Dictionary) -> BayterekLayerTransform:
+	var t := BayterekLayerTransform.new()
+	t.position = _dict_to_vector2(d.get("position", {}), Vector2.ZERO)
+	t.size = _dict_to_vector2(d.get("size", {}), Vector2.ZERO)
+	t.rotation = float(d.get("rotation", 0.0))
+	t.skew = _dict_to_vector2(d.get("skew", {}), Vector2.ZERO)
+	t.pivot = _dict_to_vector2(d.get("pivot", {}), Vector2(0.5, 0.5))
+	t.pivot_mode = int(d.get("pivot_mode", BayterekLayerTransform.PivotMode.CENTER)) as BayterekLayerTransform.PivotMode
+	return t
+
+func _dict_to_configs(d: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for state in d.keys():
+		var entry = d[state]
+		if not entry is Dictionary:
+			continue
+		out[String(state)] = {
+			"enabled": entry.get("enabled", false),
+			"color": _dict_to_color(entry.get("color", {}), Color.WHITE),
+		}
+	return out
+
+func _dict_to_icon_configs(d: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for state in d.keys():
+		var entry = d[state]
+		if not entry is Dictionary:
+			continue
+		out[String(state)] = {
+			"enabled": entry.get("enabled", false),
+			"texture": _path_to_tex(entry.get("texture", "")),
+		}
+	return out
+
 # ============================================================
 # SELECTION
 # ============================================================
@@ -1694,11 +1697,6 @@ func _on_h_split_dragged(offset: int) -> void:
 		tree.hierarchy_split_offset = offset
 		set_dirty(true)
 
-func _on_bottom_split_dragged(offset: int) -> void:
-	if tree:
-		tree.prefabs_split_offset = offset
-		set_dirty(true)
-
 # ============================================================
 # SETTINGS HANDLERS
 # ============================================================
@@ -1736,14 +1734,11 @@ func _on_settings_border_scale_changed() -> void:
 func _on_settings_texture_filter_changed() -> void:
 	if not tree_view or not tree:
 		return
-
 	for node in tree_view.nodes_service.get_all_nodes():
 		if node.has_method("refresh_visuals"):
 			node.refresh_visuals()
 
 func _on_settings_chain_connection_changed() -> void:
-	# Settings toggle already updated tree.chain_connection_mode.
-	# Nothing more to do here, but keep the hook for consistency.
 	pass
 
 # ============================================================
@@ -1808,6 +1803,26 @@ func _do_create_node_from_prefab(prefab: BayterekPrefab, pos_in_tree: Vector2) -
 		BayterekToast.info(tree_view, "Added prefab \"%s\"" % prefab.node_name)
 	else:
 		BayterekToast.info(tree_view, "Added prefab")
+
+func _on_design_dropped_from_canvas(design: BayterekNodeDesign, tree_pos: Vector2) -> void:
+	if not tree_view or not tree_view.nodes_service:
+		return
+	if not design:
+		return
+	undo_redo.create_action("Create Node From Design")
+	undo_redo.add_do_method(_do_create_node_from_design.bind(design, tree_pos))
+	undo_redo.add_undo_method(_undo_create_node)
+	undo_redo.commit_action()
+
+func _do_create_node_from_design(design: BayterekNodeDesign, pos_in_tree: Vector2) -> void:
+	if not tree_view or not tree_view.nodes_service:
+		return
+	var node: BayterekNodeButton = tree_view.nodes_service.create_node(pos_in_tree, BayterekNode.NodeType.SMALL)
+	if node and node.node_data:
+		node.node_data.apply_design(design)
+		node.refresh_visuals()
+	set_dirty(true)
+	BayterekToast.info(tree_view, "Added design \"%s\"" % design.name)
 
 # ============================================================
 # MENU

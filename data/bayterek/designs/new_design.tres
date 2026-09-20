@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://cs1hc4ww5gsk6"]
+
+[ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="1_a6nu6"]
+[ext_resource type="Script" uid="uid://bnggwadduoie5" path="res://addons/bayterek/scripts/resources/layers/bayterek_shape_layer.gd" id="2_3ujw7"]
+[ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="3_paddw"]
+[ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="4_u1mso"]
+
+[sub_resource type="Resource" id="Resource_joamw"]
+script = ExtResource("3_paddw")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_5qdsx"]
+script = ExtResource("2_3ujw7")
+shape_type = 1
+fill_configs = {
+"normal": {
+"color": Color(0.4, 0.7, 1, 1),
+"enabled": true
+}
+}
+border_enabled = true
+border_configs = {
+"normal": {
+"color": Color(1, 1, 1, 1),
+"enabled": true
+}
+}
+layer_name = "Background"
+transform = SubResource("Resource_joamw")
+
+[resource]
+script = ExtResource("4_u1mso")
+id = "new_design"
+layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_5qdsx")])
