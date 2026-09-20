@@ -473,6 +473,7 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	shape_inner.add_theme_constant_override("separation", 4)
 	shape_fold.add_child(shape_inner)
 
+	# --- Shape type ---
 	var type_row := HBoxContainer.new()
 	shape_inner.add_child(type_row)
 
@@ -492,30 +493,39 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	type_dropdown.item_selected.connect(func(i: int):
 		layer.shape_type = i as BayterekShapeLayer.ShapeType
 		design.notify_layer_modified()
+		# Refresh the form so the corner-R limit updates for the new shape.
+		call_deferred("_rebuild_detail_form")
 		changed.emit()
 	)
 	type_row.add_child(type_dropdown)
 
-	# Corner radius
+	# --- Corner radius (auto-clamped) ---
 	var cr_row := HBoxContainer.new()
 	shape_inner.add_child(cr_row)
+
 	var cr_label := Label.new()
 	cr_label.text = "Corner R"
 	cr_label.custom_minimum_size = Vector2(80, 0)
-	cr_label.tooltip_text = "Corner rounding radius in pixels (0 = sharp)"
 	cr_row.add_child(cr_label)
+
 	var cr_input := SpinBox.new()
 	cr_input.size_flags_horizontal = SIZE_EXPAND_FILL
 	cr_input.min_value = 0.0
-	cr_input.max_value = 200.0
+	cr_input.max_value = 9999.0
 	cr_input.step = 0.5
 	cr_input.value = layer.corner_radius
 	cr_input.value_changed.connect(func(v: float):
 		layer.corner_radius = v
 		design.notify_layer_modified()
 		changed.emit()
+		# Sync the SpinBox to the effective (clamped) value.
+		_sync_corner_radius_ui(layer, cr_input, cr_label)
 	)
 	cr_row.add_child(cr_input)
+
+	# Initial tooltip + sync (also clamps the visible value on open).
+	_update_corner_radius_tooltip(layer, cr_label, cr_input)
+	_sync_corner_radius_ui(layer, cr_input, cr_label)
 
 	# --- Fill fold ---
 	var fill_fold := _make_fold("Fill")
@@ -675,6 +685,52 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 		changed.emit()
 	)
 	shadow_blur_row.add_child(sb_input)
+
+## Updates the corner radius label + input tooltip to show the current
+## geometric clamp limit and the effective (post-clamp) value.
+func _update_corner_radius_tooltip(
+	layer: BayterekShapeLayer,
+	label: Label,
+	input: SpinBox
+) -> void:
+	var effective_size: Vector2 = design.design_size if design else Vector2(100, 100)
+	var limit: float = layer._corner_radius_limit(effective_size)
+	var effective: float = layer.get_clamped_corner_radius(effective_size)
+
+	var text: String = (
+		"Corner rounding radius in pixels.\n" +
+		"Auto-clamped to min(w,h)/2 * 0.99 = %.2f for this shape.\n" % limit +
+		"Effective value: %.2f" % effective
+	)
+
+	if label:
+		label.tooltip_text = text
+	if input:
+		input.tooltip_text = text
+
+## Syncs the SpinBox to the effective (clamped) corner radius without
+## re-triggering the value_changed signal. Also refreshes the tooltip.
+##
+## The underlying `layer.corner_radius` is NOT modified — only the
+## displayed value is clamped. So the user can type a large number,
+## see the effective value, and later reduce or increase the shape size
+## without losing their intent.
+func _sync_corner_radius_ui(
+	layer: BayterekShapeLayer,
+	input: SpinBox,
+	label: Label
+) -> void:
+	if not layer or not input:
+		return
+
+	var effective_size: Vector2 = design.design_size if design else Vector2(100, 100)
+	var effective: float = layer.get_clamped_corner_radius(effective_size)
+
+	# Block signals so we don't loop back into value_changed.
+	if not is_equal_approx(input.value, effective):
+		input.set_value_no_signal(effective)
+
+	_update_corner_radius_tooltip(layer, label, input)
 
 func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	var icon_fold := _make_fold("Icon")

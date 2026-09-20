@@ -2,26 +2,35 @@
 class_name BayterekShapeLayer
 extends BayterekLayer
 ## Shape layer — circle, square, triangle, pentagon, hexagon.
-## Supports fill, border and shadow. Border sits INSIDE the shape bounds.
-## Corners can be rounded with `corner_radius`.
+## Supports fill, border and shadow.
 ##
 ## BORDER GEOMETRY
 ## ----------------
-##   effective_size          = size                       (outer bound)
-##   border_width            = w
-##   fill                    = size - 2w                  (inset by w on each side)
-##   border centerline       = size - w                   (midway between outer & inner)
+##   outer_size        = effective_size              (outer bound, = button size)
+##   border_width      = w
+##   inner_size        = effective_size - 2w         (fill bound)
+##   corner_radius     = outer polygon corner radius (auto-clamped)
 ##
-## The border is drawn as a polyline stroked with thickness = w, centered on
-## the centerline polygon. draw_polyline expands w/2 outward and w/2 inward:
-##   outer edge = (size - w) + w = size                   ✅ matches outer bound
-##   inner edge = (size - w) - w = size - 2w              ✅ meets the fill
+## INNER CORNER RADIUS
+## -------------------
+## The inner polygon's corner radius is derived automatically as
+## `max(0, corner_radius - border_width)`, so the border stays roughly
+## constant-thickness in the rounded corners. It is NOT user-configurable.
 ##
-## ROUNDED CORNER CONSISTENCY
-## --------------------------
-## All three polygons (outer, centerline, fill) share the SAME arc centers
-## and arc angles. Only the arc radius differs (r, r-w, r-2w). This keeps
-## rounded corners concentric — otherwise the border would look warped.
+## CORNER RADIUS CLAMP
+## -------------------
+## `corner_radius` is auto-clamped to:
+##
+##     min(effective_size.x, effective_size.y) / 2 * 0.99
+##
+## i.e. 99% of half the smaller dimension. This prevents the rounding
+## from eating past the shape's centerline and collapsing the shape.
+##
+## CRITICAL — WINDING-AWARE ARC SWEEP
+## ----------------------------------
+## Arcs must sweep in the same direction as the polygon's winding, or the
+## polygon becomes self-intersecting and draw_colored_polygon fails with
+## "Invalid polygon data, triangulation failed".
 
 enum ShapeType {
 	CIRCLE,
@@ -34,7 +43,7 @@ enum ShapeType {
 @export_storage var shape_type: ShapeType = ShapeType.CIRCLE
 
 ## Corner rounding radius in pixels. 0 = sharp corners.
-## Applies to SQUARE, TRIANGLE, PENTAGON, HEXAGON. Ignored for CIRCLE.
+## Auto-clamped to `min(width, height) / 2 * 0.99`.
 @export_storage var corner_radius: float = 0.0
 
 # --- Fill ---
@@ -54,15 +63,15 @@ enum ShapeType {
 @export_storage var shadow_size: Vector2 = Vector2(4, 4)
 @export_storage var shadow_blur: float = 0.0
 
+## Corner radius clamp factor — max radius = min(w, h) / 2 * CLAMP_FACTOR
+const CORNER_RADIUS_CLAMP_FACTOR := 0.99
+
 func _init() -> void:
 	super._init()
 	layer_name = "Shape"
 	fill_configs = _make_default_fill_configs()
 	border_configs = _make_default_border_configs()
 
-## Default fill colors for every state. All disabled by default — the
-## user enables the ones they want. Colors are pre-populated so enabling
-## a state gives an immediate, meaningful result.
 static func _make_default_fill_configs() -> Dictionary:
 	return {
 		"normal":           {"enabled": false, "color": Color("7FB8FF")},
@@ -75,7 +84,6 @@ static func _make_default_fill_configs() -> Dictionary:
 		"not_allocateable": {"enabled": false, "color": Color("FF6666")},
 	}
 
-## Default border colors — same palette, tuned for edge contrast.
 static func _make_default_border_configs() -> Dictionary:
 	return {
 		"normal":           {"enabled": false, "color": Color("F2F2F2")},
@@ -162,22 +170,74 @@ func ensure_border_config(state: String) -> void:
 		border_configs[state] = {"enabled": false, "color": Color.WHITE}
 
 # ============================================================
+# INNER CORNER RADIUS (auto-derived, not user-editable)
+# ============================================================
+
+## Auto-derived inner corner radius:
+##   inner_r = max(0, corner_radius - border_width)
+## The inner polygon's arc radius shrinks by `border_width` to keep the
+## border roughly constant-thickness in rounded corners.
+func get_inner_corner_radius(effective_size: Vector2) -> float:
+	var cr: float = get_clamped_corner_radius(effective_size)
+	return maxf(0.0, cr - border_width)
+
+# ============================================================
+# CLAMPED CORNER RADIUS
+# ============================================================
+
+## Returns `corner_radius` clamped to:
+##
+##     min(effective_size.x, effective_size.y) / 2 * 0.99
+##
+## i.e. 99% of half the smaller dimension.
+func get_clamped_corner_radius(effective_size: Vector2) -> float:
+	if corner_radius <= 0.0:
+		return 0.0
+	var limit: float = _corner_radius_limit(effective_size)
+	return minf(corner_radius, limit)
+
+## Maximum radius allowed by the shape's geometry:
+##   min(width, height) / 2 * 0.99
+func _corner_radius_limit(effective_size: Vector2) -> float:
+	var smaller_dim: float = minf(effective_size.x, effective_size.y)
+	if smaller_dim <= 0.0:
+		return 0.0
+	return smaller_dim * 0.5 * CORNER_RADIUS_CLAMP_FACTOR
+
+# ============================================================
 # VERTEX COMPUTATION
 # ============================================================
 
-## Base polygon at the given size, centered at (0, 0).
-##
-## `inset` (>= 0): how far the polygon is pushed inward from `effective_size`.
-##   inset = 0   → outer polygon
-##   inset = w   → border centerline polygon
-##   inset = 2w  → fill polygon
-##
-## When `inset > 0`, the polygon is sized `effective_size - 2*inset` and its
-## arc centers/angles are derived from the OUTER polygon's corner geometry,
-## so all concentric polygons share the same corner arc centers. This keeps
-## rounded borders visually uniform.
-func get_polygon_vertices(effective_size: Vector2, inset: float = 0.0) -> PackedVector2Array:
-	var half: Vector2 = (effective_size * 0.5) - Vector2(inset, inset)
+## Outer polygon at `effective_size`, rounded with the clamped corner radius.
+func get_polygon_vertices(effective_size: Vector2) -> PackedVector2Array:
+	return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
+
+## Fill polygon: size shrunk by `2*border_width`, rounded with the
+## auto-derived inner corner radius.
+func get_fill_vertices(effective_size: Vector2) -> PackedVector2Array:
+	if not border_enabled or border_width <= 0.0:
+		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
+
+	var inner_size: Vector2 = effective_size - Vector2(border_width, border_width) * 2.0
+	if inner_size.x <= 0.5 or inner_size.y <= 0.5:
+		return PackedVector2Array()
+
+	return _build_polygon(inner_size, get_inner_corner_radius(effective_size))
+
+## Kept for API compatibility — returns the outer polygon.
+func get_border_centerline_vertices(effective_size: Vector2) -> PackedVector2Array:
+	return get_polygon_vertices(effective_size)
+
+## Returns the outer polygon for shadow / outline use.
+func get_border_vertices(effective_size: Vector2) -> PackedVector2Array:
+	return get_polygon_vertices(effective_size)
+
+# ============================================================
+# INTERNAL POLYGON BUILDER
+# ============================================================
+
+func _build_polygon(size_vec: Vector2, radius: float) -> PackedVector2Array:
+	var half: Vector2 = size_vec * 0.5
 	if half.x <= 0.0 or half.y <= 0.0:
 		return PackedVector2Array()
 
@@ -185,8 +245,8 @@ func get_polygon_vertices(effective_size: Vector2, inset: float = 0.0) -> Packed
 
 	match shape_type:
 		ShapeType.CIRCLE:
-			var radius: float = min(half.x, half.y)
-			return _make_circle_vertices(radius, 32)
+			var r: float = minf(half.x, half.y)
+			return _make_circle_vertices(r, 48)
 		ShapeType.SQUARE:
 			base_verts = PackedVector2Array([
 				Vector2(-half.x, -half.y),
@@ -203,61 +263,9 @@ func get_polygon_vertices(effective_size: Vector2, inset: float = 0.0) -> Packed
 		_:
 			return PackedVector2Array()
 
-	# Rounded corners: outer radius reduced by `inset` so the arc stays
-	# concentric with the outer arc. But the arc CENTER must be computed
-	# from the outer polygon's geometry, not from this (smaller) polygon.
-	if corner_radius > 0.0:
-		var outer_half: Vector2 = effective_size * 0.5
-		var outer_verts: PackedVector2Array = _make_base_polygon(outer_half)
-		var r_outer: float = corner_radius
-		var r_this: float = max(0.0, corner_radius - inset)
-		if r_this <= 0.01:
-			return base_verts
-		return _apply_shared_corner_rounding(outer_verts, base_verts, r_outer, r_this)
-
+	if radius > 0.0:
+		return _apply_corner_rounding(base_verts, radius)
 	return base_verts
-
-## Builds the raw (un-rounded) polygon for the OUTER size, used to derive
-## the shared corner arc geometry.
-func _make_base_polygon(outer_half: Vector2) -> PackedVector2Array:
-	match shape_type:
-		ShapeType.SQUARE:
-			return PackedVector2Array([
-				Vector2(-outer_half.x, -outer_half.y),
-				Vector2( outer_half.x, -outer_half.y),
-				Vector2( outer_half.x,  outer_half.y),
-				Vector2(-outer_half.x,  outer_half.y),
-			])
-		ShapeType.TRIANGLE:
-			return _make_regular_polygon(outer_half, 3, -PI * 0.5)
-		ShapeType.PENTAGON:
-			return _make_regular_polygon(outer_half, 5, -PI * 0.5)
-		ShapeType.HEXAGON:
-			return _make_regular_polygon(outer_half, 6, -PI * 0.5)
-		_:
-			return PackedVector2Array()
-
-## Vertices for the FILL. When a border is active, the fill is inset by
-## `2 * border_width` total (i.e. `border_width` on each side) and its corner
-## radius is reduced accordingly, so:
-##   outer edge of border  = effective_size
-##   inner edge of border  = effective_size - 2*border_width
-##   fill boundary         = inner edge (they meet exactly)
-func get_fill_vertices(effective_size: Vector2) -> PackedVector2Array:
-	if not border_enabled or border_width <= 0.0:
-		return get_polygon_vertices(effective_size, 0.0)
-	return get_polygon_vertices(effective_size, border_width)
-
-## Vertices for the BORDER's CENTERLINE.
-##   centerline = (outer + inner) / 2 = (size + size - 2w)/2 = size - w
-func get_border_centerline_vertices(effective_size: Vector2) -> PackedVector2Array:
-	if border_width <= 0.0:
-		return get_polygon_vertices(effective_size, 0.0)
-	return get_polygon_vertices(effective_size, border_width * 0.5)
-
-## Vertices used for the BORDER's outer edge — the full shape outline.
-func get_border_vertices(effective_size: Vector2) -> PackedVector2Array:
-	return get_polygon_vertices(effective_size, 0.0)
 
 func _make_circle_vertices(radius: float, segments: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
@@ -270,142 +278,32 @@ func _make_circle_vertices(radius: float, segments: int) -> PackedVector2Array:
 func _make_regular_polygon(half: Vector2, sides: int, start_angle: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	pts.resize(sides)
-	var radius: float = min(half.x, half.y)
+	var radius: float = minf(half.x, half.y)
 	for i in sides:
 		var angle: float = start_angle + TAU * float(i) / float(sides)
 		pts[i] = Vector2(cos(angle), sin(angle)) * radius
 	return pts
 
-## Applies rounded corners to `inner_verts` using arc geometry derived from
-## `outer_verts` and the OUTER corner radius. This guarantees that the arc
-## center and arc angles are identical for the outer and inner polygons —
-## only the arc radius shrinks by the inset amount.
+## Rounds each corner of the polygon with an arc of the given radius.
 ##
-## Each vertex in `inner_verts` is assumed to correspond to the same corner
-## as the same-index vertex in `outer_verts`.
-func _apply_shared_corner_rounding(
-	outer_verts: PackedVector2Array,
-	inner_verts: PackedVector2Array,
-	r_outer: float,
-	r_inner: float
-) -> PackedVector2Array:
-	if r_inner <= 0.01 or inner_verts.size() < 3:
-		return inner_verts
-	if outer_verts.size() != inner_verts.size():
-		# Shape mismatch — fall back to per-polygon rounding.
-		return _apply_corner_rounding(inner_verts, r_inner)
-
-	var result := PackedVector2Array()
-	var n: int = outer_verts.size()
-
-	for i in n:
-		var o_prev: Vector2 = outer_verts[(i - 1 + n) % n]
-		var o_curr: Vector2 = outer_verts[i]
-		var o_next: Vector2 = outer_verts[(i + 1) % n]
-
-		var to_prev: Vector2 = o_prev - o_curr
-		var to_next: Vector2 = o_next - o_curr
-		var len_prev: float = to_prev.length()
-		var len_next: float = to_next.length()
-		if len_prev < 0.0001 or len_next < 0.0001:
-			result.append(inner_verts[i])
-			continue
-
-		var dir_prev: Vector2 = to_prev / len_prev
-		var dir_next: Vector2 = to_next / len_next
-
-		var cos_angle: float = clampf(dir_prev.dot(dir_next), -1.0, 1.0)
-		var angle: float = acos(cos_angle)
-
-		if angle < 0.01 or angle > PI - 0.01:
-			result.append(inner_verts[i])
-			continue
-
-		var half_angle: float = angle * 0.5
-		var tan_half: float = tan(half_angle)
-		if tan_half < 0.0001:
-			result.append(inner_verts[i])
-			continue
-
-		var sin_half: float = sin(half_angle)
-		if absf(sin_half) < 0.0001:
-			result.append(inner_verts[i])
-			continue
-
-		# Outer corner geometry — limits and center.
-		var d_outer: float = r_outer / tan_half
-		d_outer = min(d_outer, len_prev * 0.5, len_next * 0.5)
-		var r_outer_eff: float = d_outer * tan_half
-
-		var bisector: Vector2 = dir_prev + dir_next
-		if bisector.length_squared() < 0.0001:
-			result.append(inner_verts[i])
-			continue
-		bisector = bisector.normalized()
-
-		# Arc center measured from the OUTER corner vertex.
-		var arc_center: Vector2 = o_curr + bisector * (r_outer_eff / sin_half)
-
-		# Inner radius is reduced by the inset.
-		var r_this: float = max(0.0, r_outer_eff - (r_outer - r_inner))
-		if r_this <= 0.01:
-			result.append(inner_verts[i])
-			continue
-
-		# Tangent points on the INNER polygon: offset from inner corner
-		# along the same edge directions used for the outer polygon.
-		var d_inner: float = r_this / tan_half
-		var i_curr: Vector2 = inner_verts[i]
-		var i_prev: Vector2 = inner_verts[(i - 1 + n) % n]
-		var i_next: Vector2 = inner_verts[(i + 1) % n]
-
-		var i_to_prev: Vector2 = i_prev - i_curr
-		var i_to_next: Vector2 = i_next - i_curr
-		var i_len_prev: float = i_to_prev.length()
-		var i_len_next: float = i_to_next.length()
-		if i_len_prev < 0.0001 or i_len_next < 0.0001:
-			result.append(inner_verts[i])
-			continue
-
-		var i_dir_prev: Vector2 = i_to_prev / i_len_prev
-		var i_dir_next: Vector2 = i_to_next / i_len_next
-
-		d_inner = min(d_inner, i_len_prev * 0.5, i_len_next * 0.5)
-		r_this = d_inner * tan_half
-
-		var p_start: Vector2 = i_curr + i_dir_prev * d_inner
-		var p_end: Vector2 = i_curr + i_dir_next * d_inner
-
-		var ang_start: float = (p_start - arc_center).angle()
-		var ang_end: float = (p_end - arc_center).angle()
-
-		var delta: float = ang_end - ang_start
-		while delta > PI:
-			delta -= TAU
-		while delta < -PI:
-			delta += TAU
-
-		var segments: int = clampi(int(ceil(r_this * 0.75)), 4, 24)
-		for s in range(segments + 1):
-			if s == 0:
-				result.append(p_start)
-				continue
-			if s == segments:
-				result.append(p_end)
-				continue
-			var t: float = float(s) / float(segments)
-			var ang: float = ang_start + delta * t
-			result.append(arc_center + Vector2(cos(ang), sin(ang)) * r_this)
-
-	return result
-
-## Legacy per-polygon rounding (fallback only).
+## CRITICAL: The arc must sweep in the SAME direction as the polygon's
+## winding, otherwise the arc folds back on itself and the resulting
+## polygon is self-intersecting → draw_colored_polygon fails with
+## "Invalid polygon data, triangulation failed".
 func _apply_corner_rounding(verts: PackedVector2Array, radius: float) -> PackedVector2Array:
 	if radius <= 0.01 or verts.size() < 3:
 		return verts
 
 	var result := PackedVector2Array()
 	var n: int = verts.size()
+
+	# --- Detect polygon winding via signed area ---
+	var signed_area: float = 0.0
+	for i in n:
+		var a: Vector2 = verts[i]
+		var b: Vector2 = verts[(i + 1) % n]
+		signed_area += (a.x * b.y - b.x * a.y)
+	var positive_winding: bool = signed_area > 0.0
 
 	for i in n:
 		var prev_v: Vector2 = verts[(i - 1 + n) % n]
@@ -426,22 +324,26 @@ func _apply_corner_rounding(verts: PackedVector2Array, radius: float) -> PackedV
 		var cos_angle: float = clampf(dir_prev.dot(dir_next), -1.0, 1.0)
 		var angle: float = acos(cos_angle)
 
-		if angle < 0.01 or angle > PI - 0.01:
+		if angle < 0.001 or angle > PI - 0.001:
 			result.append(curr_v)
 			continue
 
 		var half_angle: float = angle * 0.5
 		var tan_half: float = tan(half_angle)
-		if tan_half < 0.0001:
+		var sin_half: float = sin(half_angle)
+		if tan_half < 0.0001 or absf(sin_half) < 0.0001:
 			result.append(curr_v)
 			continue
 
+		# Tangent distance from the corner along each edge.
+		# NOTE: minf() only takes 2 arguments, so we nest the call.
 		var d: float = radius / tan_half
-		d = min(d, len_prev * 0.5, len_next * 0.5)
+		d = minf(d, minf(len_prev * 0.5, len_next * 0.5))
 
 		var p_start: Vector2 = curr_v + dir_prev * d
 		var p_end: Vector2 = curr_v + dir_next * d
 
+		# Arc center along the inward bisector.
 		var bisector: Vector2 = dir_prev + dir_next
 		if bisector.length_squared() < 0.0001:
 			result.append(curr_v)
@@ -449,32 +351,28 @@ func _apply_corner_rounding(verts: PackedVector2Array, radius: float) -> PackedV
 		bisector = bisector.normalized()
 
 		var r_eff: float = d * tan_half
-		var sin_half: float = sin(half_angle)
-		if absf(sin_half) < 0.0001:
-			result.append(curr_v)
-			continue
-
 		var arc_center: Vector2 = curr_v + bisector * (r_eff / sin_half)
 
-		var ang_start: float = (p_start - arc_center).angle()
-		var ang_end: float = (p_end - arc_center).angle()
+		# --- Winding-aware arc sweep ---
+		var a_start: float = (p_start - arc_center).angle()
+		var a_end: float = (p_end - arc_center).angle()
+		var delta: float = a_end - a_start
 
-		var delta: float = ang_end - ang_start
-		while delta > PI:
-			delta -= TAU
-		while delta < -PI:
-			delta += TAU
+		if positive_winding:
+			while delta <= 0.0:
+				delta += TAU
+			while delta > TAU:
+				delta -= TAU
+		else:
+			while delta >= 0.0:
+				delta -= TAU
+			while delta < -TAU:
+				delta += TAU
 
-		var segments: int = clampi(int(ceil(radius * 0.75)), 4, 24)
+		var segments: int = clampi(int(ceil(radius * 0.75)), 4, 32)
 		for s in range(segments + 1):
-			if s == 0:
-				result.append(p_start)
-				continue
-			if s == segments:
-				result.append(p_end)
-				continue
 			var t: float = float(s) / float(segments)
-			var ang: float = ang_start + delta * t
+			var ang: float = a_start + delta * t
 			result.append(arc_center + Vector2(cos(ang), sin(ang)) * r_eff)
 
 	return result
