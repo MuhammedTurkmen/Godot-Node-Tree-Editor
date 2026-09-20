@@ -3,21 +3,37 @@ class_name BayterekLayerStateColors
 extends VBoxContainer
 ## 8-row state color editor.
 ## Each row: [CheckBox] [Label] [ColorPicker]
+##
+## Right-click on any color swatch opens a small menu with Copy / Paste.
+## The copied color is stored in a static variable, so it can be pasted
+## across different layers, designs, and editor sessions (within the
+## same Godot run).
 
 signal changed
+
+## Shared clipboard for color copy/paste across all state color editors.
+static var _copied_color: Color = Color.WHITE
+static var _has_copied_color: bool = false
+
+# Context menu IDs
+const CM_COPY := 1
+const CM_PASTE := 2
 
 var _configs: Dictionary = {}
 var _updating: bool = false
 
 var _rows: Dictionary = {}  # state -> {check: CheckBox, picker: ColorPickerButton}
 var _owner_layer: BayterekLayer = null
-var _config_key: String = ""  # "fill_configs" or "border_configs" or "tint_configs"
+var _config_key: String = ""  # "fill_configs" | "border_configs" | "tint_configs"
 
 var _ui_ready: bool = false
+var _context_menu: PopupMenu
+var _context_state: String = ""
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 2)
 	_build_ui()
+	_build_context_menu()
 	_ui_ready = true
 	if _owner_layer:
 		_refresh_from_data()
@@ -42,15 +58,23 @@ func _build_ui() -> void:
 		picker.size_flags_horizontal = SIZE_EXPAND_FILL
 		picker.custom_minimum_size = Vector2(0, 22)
 		picker.color_changed.connect(_on_color_changed.bind(state))
+		# Right-click handler on the picker.
+		picker.gui_input.connect(_on_picker_gui_input.bind(state))
 		row.add_child(picker)
 
 		_rows[state] = {"check": check, "picker": picker}
+
+func _build_context_menu() -> void:
+	_context_menu = PopupMenu.new()
+	_context_menu.add_item("Copy Color", CM_COPY)
+	_context_menu.add_item("Paste Color", CM_PASTE)
+	_context_menu.id_pressed.connect(_on_context_menu_pressed)
+	add_child(_context_menu)
 
 # ============================================================
 # PUBLIC
 # ============================================================
 
-## Binds to a layer and a config key ("fill_configs", "border_configs", "tint_configs").
 func bind(layer: BayterekLayer, config_key: String) -> void:
 	_owner_layer = layer
 	_config_key = config_key
@@ -61,7 +85,6 @@ func _refresh_from_data() -> void:
 	if not _owner_layer:
 		return
 
-	# Guard: UI not built
 	if not _ui_ready:
 		return
 	if _rows.size() < BayterekLayer.STATES.size():
@@ -69,10 +92,8 @@ func _refresh_from_data() -> void:
 
 	_updating = true
 
-	# Read source dictionary
 	var configs = _owner_layer.get(_config_key)
 
-	# Normalize into a clean dictionary — this also repairs malformed data
 	var normalized: Dictionary = {}
 	if configs is Dictionary:
 		for state in configs.keys():
@@ -83,7 +104,6 @@ func _refresh_from_data() -> void:
 					"color": entry.get("color", Color.WHITE),
 				}
 			else:
-				# Malformed entry (e.g. bare Color) — treat as disabled with default color
 				normalized[state] = {
 					"enabled": false,
 					"color": entry if entry is Color else Color.WHITE,
@@ -93,7 +113,6 @@ func _refresh_from_data() -> void:
 
 	_configs = normalized
 
-	# Apply to UI rows
 	for state in BayterekLayer.STATES:
 		if not _rows.has(state):
 			continue
@@ -145,3 +164,60 @@ func _push_configs_to_layer() -> void:
 	_owner_layer.set(_config_key, _configs)
 	if _owner_layer.has_method("notify_modified"):
 		_owner_layer.notify_modified()
+
+# ============================================================
+# CONTEXT MENU (right click on color swatch)
+# ============================================================
+
+func _on_picker_gui_input(event: InputEvent, state: String) -> void:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			_context_state = state
+			var picker: ColorPickerButton = _rows[state].get("picker")
+			if not picker:
+				return
+
+			# Enable/disable Paste based on clipboard state.
+			var copy_idx: int = _context_menu.get_item_index(CM_COPY)
+			var paste_idx: int = _context_menu.get_item_index(CM_PASTE)
+			_context_menu.set_item_disabled(copy_idx, false)
+			_context_menu.set_item_disabled(paste_idx, not _has_copied_color)
+
+			# Position below the picker.
+			var global_pos: Vector2 = picker.get_screen_position() + Vector2(0, picker.size.y)
+			_context_menu.position = Vector2i(global_pos)
+			_context_menu.popup()
+
+			# Prevent the ColorPickerButton popup from opening on this click.
+			picker.accept_event()
+
+func _on_context_menu_pressed(id: int) -> void:
+	match id:
+		CM_COPY: _copy_color(_context_state)
+		CM_PASTE: _paste_color(_context_state)
+
+func _copy_color(state: String) -> void:
+	if not _configs.has(state):
+		return
+	var entry = _configs[state]
+	if not entry is Dictionary:
+		return
+	_copied_color = entry.get("color", Color.WHITE)
+	_has_copied_color = true
+
+func _paste_color(state: String) -> void:
+	if not _owner_layer or not _has_copied_color:
+		return
+
+	_ensure_config(state)
+	_configs[state]["color"] = _copied_color
+
+	# Update the visual picker (block signal to avoid double-changed).
+	_updating = true
+	var picker: ColorPickerButton = _rows[state].get("picker")
+	if picker:
+		picker.color = _copied_color
+	_updating = false
+
+	_push_configs_to_layer()
+	changed.emit()

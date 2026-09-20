@@ -19,8 +19,20 @@ func _init() -> void:
 	icon_configs = {
 		"normal": {"enabled": true, "texture": null},
 	}
-	tint_configs = {
-		"normal": {"enabled": true, "color": Color.WHITE},
+	tint_configs = _make_default_tint_configs()
+
+## Default tint colors — same palette as shape fill.
+## All disabled by default — user enables the states they want.
+static func _make_default_tint_configs() -> Dictionary:
+	return {
+		"normal":           {"enabled": false, "color": Color("7FB8FF")},
+		"hover":            {"enabled": false, "color": Color("FFD966")},
+		"locked":           {"enabled": false, "color": Color("666666")},
+		"preallocated":     {"enabled": false, "color": Color("FFA640")},
+		"prerefund":        {"enabled": false, "color": Color("FF8080")},
+		"max_level":        {"enabled": false, "color": Color("FFE066")},
+		"allocateable":     {"enabled": false, "color": Color("8EF58E")},
+		"not_allocateable": {"enabled": false, "color": Color("FF6666")},
 	}
 
 # ============================================================

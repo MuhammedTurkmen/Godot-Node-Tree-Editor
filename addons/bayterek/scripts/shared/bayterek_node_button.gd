@@ -215,15 +215,15 @@ func _draw_shape_layer(
 	var draw_border: bool = layer.should_draw_border(state_key)
 	var draw_fill: bool = layer.should_draw_fill(state_key)
 
-	# --- Border ---
+	# --- Border (thick polyline centered on the border's centerline) ---
 	if draw_border:
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
-			var outer_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
-			if not outer_verts.is_empty():
-				_draw_shape_border(outer_verts, combined, border_color, layer.border_width)
+			var center_verts: PackedVector2Array = layer.get_border_centerline_vertices(effective_size)
+			if not center_verts.is_empty():
+				_draw_shape_border(center_verts, combined, border_color, layer.border_width)
 
-	# --- Fill on top (covers the inner half of the border) ---
+	# --- Fill on top (its edge lines up with the border's inner edge) ---
 	if draw_fill:
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
@@ -240,10 +240,17 @@ func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Colo
 		transformed[i] = xform * verts[i]
 	draw_colored_polygon(transformed, color)
 
-## Draws the border as a thick polyline centered on the outline.
-## Line width stays constant along the whole path, including on rounded
-## corners — unlike a quad-strip ring, which doubles up at arc joins.
-## The inner half of the stroke will be covered by the fill drawn on top.
+## Draws the border as a thick polyline centered on the given outline.
+##
+## draw_polyline strokes symmetrically around the path: half of `width` goes
+## outward and half goes inward. The centerline polygon passed in has size
+## `effective_size - border_width`, so stroking with thickness = `width`
+## yields:
+##   outer edge = (size - w) + w = size           ✅ matches the outer bound
+##   inner edge = (size - w) - w = size - 2w      ✅ meets the fill
+##
+## NOTE: Do NOT pass `width * 2.0` — that would push the outer edge to
+## `size + w`, overflowing the button's bounds.
 func _draw_shape_border(verts: PackedVector2Array, xform: Transform2D, color: Color, width: float) -> void:
 	if verts.size() < 2:
 		return
@@ -254,9 +261,8 @@ func _draw_shape_border(verts: PackedVector2Array, xform: Transform2D, color: Co
 		pts[i] = xform * verts[i]
 	pts[verts.size()] = pts[0]
 
-	# Double the width because polyline is centered: outer half visible,
-	# inner half is hidden under the fill.
-	draw_polyline(pts, color, width * 2.0, true)
+	# ✅ DÜZELTİLDİ: width (not width * 2.0)
+	draw_polyline(pts, color, width, true)
 
 ## Draws the shadow with optional multi-pass blur.
 func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:

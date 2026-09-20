@@ -216,15 +216,15 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 	var draw_border: bool = layer.should_draw_border(state_key)
 	var draw_fill: bool = layer.should_draw_fill(state_key)
 
-	# --- Border ---
+	# --- Border (thick polyline centered on the border's centerline) ---
 	if draw_border:
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
-			var outer_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
-			if not outer_verts.is_empty():
-				_draw_border_polyline(outer_verts, xform, border_color, layer.border_width)
+			var center_verts: PackedVector2Array = layer.get_border_centerline_vertices(effective_size)
+			if not center_verts.is_empty():
+				_draw_border_polyline(center_verts, xform, border_color, layer.border_width)
 
-	# --- Fill on top (covers the inner half of the border) ---
+	# --- Fill on top ---
 	if draw_fill:
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
@@ -234,17 +234,13 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 			if not verts.is_empty():
 				_draw_fill(verts, xform, fill_color)
 
-	# --- DEBUG visualization (remove once corners are tuned) ---
-	if layer.corner_radius > 0.0:
-		var raw_verts: PackedVector2Array = layer._make_raw_polygon(effective_size)
-		if raw_verts.size() >= 2:
-			var raw_pts := PackedVector2Array()
-			raw_pts.resize(raw_verts.size() + 1)
-			for i in raw_verts.size():
-				raw_pts[i] = xform * raw_verts[i]
-			raw_pts[raw_verts.size()] = raw_pts[0]
-			draw_polyline(raw_pts, Color(0.3, 0.5, 1.0, 0.6), 1.0)
-
+## Draws the border as a thick polyline centered on the given outline.
+## See BayterekNodeButton._draw_shape_border for the math.
+##
+## Do NOT multiply the width by 2 — the centerline polygon is already sized
+## `effective_size - border_width`, so stroking with `border_width` yields:
+##   outer edge = (size - w) + w = size
+##   inner edge = (size - w) - w = size - 2w
 func _draw_border_polyline(verts: PackedVector2Array, xform: Transform2D, color: Color, width: float) -> void:
 	if verts.size() < 2:
 		return
@@ -256,7 +252,8 @@ func _draw_border_polyline(verts: PackedVector2Array, xform: Transform2D, color:
 		pts[i] = xform * verts[i]
 	pts[verts.size()] = pts[0]
 
-	draw_polyline(pts, color, scaled_width * 2.0, true)
+	# ✅ DÜZELTİLDİ: scaled_width (not scaled_width * 2.0)
+	draw_polyline(pts, color, scaled_width, true)
 
 func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
 	var offset: Vector2 = layer.shadow_size * preview_scale

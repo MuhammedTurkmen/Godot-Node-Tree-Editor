@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="BayterekDesignRegistry" format=3 uid="uid://bek66uyifk1x0"]
 
 [ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="1_goi1q"]
-[ext_resource type="Resource" uid="uid://cs1hc4ww5gsk6" path="res://data/bayterek/designs/attack.tres" id="2_4yrud"]
+[ext_resource type="Resource" uid="uid://cs1hc4ww5gsk6" path="res://data/bayterek/designs/new_design.tres" id="2_4yrud"]
 [ext_resource type="Script" uid="uid://c0n6ownvawymv" path="res://addons/bayterek/scripts/resources/bayterek_design_registry.gd" id="2_8ybkw"]
 
 [resource]
