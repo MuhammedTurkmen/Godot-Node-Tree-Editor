@@ -207,27 +207,42 @@ func _get_simulated_states() -> Dictionary:
 	}
 
 func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: Vector2, xform: Transform2D) -> void:
-	# --- Shadow (based on outer border outline) ---
+	# --- Shadow (based on full outline) ---
 	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
-		var outer_verts: PackedVector2Array = layer.get_border_vertices(effective_size)
-		if not outer_verts.is_empty():
-			_draw_shape_shadow(layer, outer_verts, xform)
+		var full_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
+		if not full_verts.is_empty():
+			_draw_shape_shadow(layer, full_verts, xform)
 
-	# --- Border (outer outline) ---
-	if layer.should_draw_border(state_key):
+	var draw_border: bool = layer.should_draw_border(state_key)
+	var draw_fill: bool = layer.should_draw_fill(state_key)
+
+	# --- Border ---
+	if draw_border:
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
-			var border_verts: PackedVector2Array = layer.get_border_vertices(effective_size)
-			if not border_verts.is_empty():
-				_draw_fill(border_verts, xform, border_color)
+			var outer_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
+			var inner_verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
 
-	# --- Fill (inset) ---
-	if layer.should_draw_fill(state_key):
+			if draw_fill:
+				# Fill will cover the interior — draw only the outer polygon.
+				if not outer_verts.is_empty():
+					_draw_fill(outer_verts, xform, border_color)
+			else:
+				# No fill — draw as a ring so the interior stays empty.
+				if not outer_verts.is_empty() and not inner_verts.is_empty():
+					_draw_ring(inner_verts, outer_verts, xform, border_color)
+				elif not outer_verts.is_empty():
+					_draw_fill(outer_verts, xform, border_color)
+
+	# --- Fill ---
+	if draw_fill:
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
-			var fill_verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
-			if not fill_verts.is_empty():
-				_draw_fill(fill_verts, xform, fill_color)
+			var verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
+			if verts.is_empty():
+				verts = layer.get_polygon_vertices(effective_size)
+			if not verts.is_empty():
+				_draw_fill(verts, xform, fill_color)
 
 func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
 	var offset: Vector2 = layer.shadow_size * preview_scale
@@ -263,6 +278,22 @@ func _draw_fill(verts: PackedVector2Array, xform: Transform2D, color: Color) -> 
 	for i in verts.size():
 		transformed[i] = xform * verts[i]
 	draw_colored_polygon(transformed, color)
+
+## Draws a ring between two concentric polygons with the same vertex count.
+func _draw_ring(inner_verts: PackedVector2Array, outer_verts: PackedVector2Array, xform: Transform2D, color: Color) -> void:
+	var n: int = min(inner_verts.size(), outer_verts.size())
+	if n < 2:
+		return
+
+	for i in n:
+		var next_i: int = (i + 1) % n
+		var quad := PackedVector2Array([
+			xform * inner_verts[i],
+			xform * outer_verts[i],
+			xform * outer_verts[next_i],
+			xform * inner_verts[next_i],
+		])
+		draw_colored_polygon(quad, color)
 
 func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Array:
 	var out := PackedVector2Array()

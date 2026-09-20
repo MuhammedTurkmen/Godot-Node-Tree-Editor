@@ -2,25 +2,27 @@
 class_name BayterekDesignListPanel
 extends VBoxContainer
 ## Left sidebar of the Node Editor — collapsible design list + CRUD.
-## Behaves like a website sidebar: toggle button collapses to a thin strip.
+## When collapsed, only the toggle button remains visible.
 
 signal design_selected(design: BayterekNodeDesign)
 signal collapsed_changed(collapsed: bool)
 
-const COLLAPSED_WIDTH := 32
+const COLLAPSED_WIDTH := 24
+const EXPANDED_WIDTH := 220
 
 var _search_input: LineEdit
 var _tree: Tree
 var _root_item: TreeItem
 var _selected_design_id: String = ""
 
-var _content_root: VBoxContainer
+var _header_row: HBoxContainer
+var _title_label: Label
 var _toggle_btn: Button
+var _content_root: VBoxContainer
 var _bottom_box: HBoxContainer
 
 var _collapsed: bool = false
 
-# id -> TreeItem
 var _id_to_item: Dictionary = {}
 
 func _ready() -> void:
@@ -29,23 +31,23 @@ func _ready() -> void:
 	_build_ui()
 
 func _build_ui() -> void:
-	# --- Header row: title + toggle ---
-	var header_row := HBoxContainer.new()
-	header_row.add_theme_constant_override("separation", 4)
-	add_child(header_row)
+	# --- Header row ---
+	_header_row = HBoxContainer.new()
+	_header_row.add_theme_constant_override("separation", 4)
+	add_child(_header_row)
 
-	var title := Label.new()
-	title.text = "Designs"
-	title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	title.size_flags_horizontal = SIZE_EXPAND_FILL
-	header_row.add_child(title)
+	_title_label = Label.new()
+	_title_label.text = "Designs"
+	_title_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	_title_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	_header_row.add_child(_title_label)
 
 	_toggle_btn = Button.new()
 	_toggle_btn.text = "◀"
 	_toggle_btn.tooltip_text = "Collapse / expand"
-	_toggle_btn.custom_minimum_size = Vector2(24, 24)
+	_toggle_btn.custom_minimum_size = Vector2(20, 20)
 	_toggle_btn.pressed.connect(_on_toggle_pressed)
-	header_row.add_child(_toggle_btn)
+	_header_row.add_child(_toggle_btn)
 
 	# --- Collapsible content ---
 	_content_root = VBoxContainer.new()
@@ -54,7 +56,6 @@ func _build_ui() -> void:
 	_content_root.add_theme_constant_override("separation", 4)
 	add_child(_content_root)
 
-	# --- Toolbar: search + add ---
 	var top := HBoxContainer.new()
 	_content_root.add_child(top)
 
@@ -71,7 +72,6 @@ func _build_ui() -> void:
 	add_btn.pressed.connect(_on_add_pressed)
 	top.add_child(add_btn)
 
-	# --- List ---
 	_tree = Tree.new()
 	_tree.hide_root = true
 	_tree.select_mode = Tree.SELECT_ROW
@@ -85,7 +85,6 @@ func _build_ui() -> void:
 
 	_root_item = _tree.create_item()
 
-	# --- Bottom actions ---
 	_bottom_box = HBoxContainer.new()
 	_content_root.add_child(_bottom_box)
 
@@ -112,12 +111,17 @@ func _on_toggle_pressed() -> void:
 func _apply_collapsed() -> void:
 	if _content_root:
 		_content_root.visible = not _collapsed
+	if _title_label:
+		_title_label.visible = not _collapsed
 	if _toggle_btn:
 		_toggle_btn.text = "▶" if _collapsed else "◀"
+
+	# When collapsed, shrink the whole panel to a thin strip.
 	if _collapsed:
 		custom_minimum_size.x = COLLAPSED_WIDTH
 	else:
-		custom_minimum_size.x = 220
+		custom_minimum_size.x = EXPANDED_WIDTH
+
 	collapsed_changed.emit(_collapsed)
 
 func is_collapsed() -> bool:

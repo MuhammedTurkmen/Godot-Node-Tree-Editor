@@ -3,8 +3,7 @@ class_name BayterekLayerEditor
 extends VBoxContainer
 ## Middle-column layer editor.
 ## Top: layer list + toolbar.
-## Bottom: detail form for the selected layer.
-## Preview lives in a separate panel (BayterekLayerPreviewPanel).
+## Bottom: detail form for the selected layer, grouped into foldable sections.
 
 signal changed
 
@@ -22,14 +21,24 @@ var _delete_btn: Button
 var _up_btn: Button
 var _down_btn: Button
 
+var _context_menu: PopupMenu
+
 var _selected_layer_index: int = -1
 var _updating_ui: bool = false
+
+# Context menu IDs
+const CM_RENAME := 1
+const CM_DUPLICATE := 2
+const CM_DELETE := 3
+const CM_MOVE_UP := 4
+const CM_MOVE_DOWN := 5
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
 	size_flags_horizontal = SIZE_EXPAND_FILL
 	size_flags_vertical = SIZE_EXPAND_FILL
 	_build_ui()
+	_build_context_menu()
 
 func _build_ui() -> void:
 	var top_box := VBoxContainer.new()
@@ -80,17 +89,16 @@ func _build_ui() -> void:
 	_layer_tree = Tree.new()
 	_layer_tree.hide_root = true
 	_layer_tree.select_mode = Tree.SELECT_ROW
-	_layer_tree.custom_minimum_size = Vector2(0, 140)
+	_layer_tree.custom_minimum_size = Vector2(0, 165)
 	_layer_tree.size_flags_horizontal = SIZE_EXPAND_FILL
 	_layer_tree.item_selected.connect(_on_layer_selected)
 	_layer_tree.button_clicked.connect(_on_layer_button_clicked)
+	_layer_tree.gui_input.connect(_on_layer_gui_input)
 	top_box.add_child(_layer_tree)
 	_layer_root = _layer_tree.create_item()
 
-	# Divider
 	add_child(HSeparator.new())
 
-	# Detail form
 	_detail_scroll = ScrollContainer.new()
 	_detail_scroll.size_flags_horizontal = SIZE_EXPAND_FILL
 	_detail_scroll.size_flags_vertical = SIZE_EXPAND_FILL
@@ -100,6 +108,18 @@ func _build_ui() -> void:
 	_detail_root.size_flags_horizontal = SIZE_EXPAND_FILL
 	_detail_root.add_theme_constant_override("separation", 6)
 	_detail_scroll.add_child(_detail_root)
+
+func _build_context_menu() -> void:
+	_context_menu = PopupMenu.new()
+	_context_menu.add_item("Rename", CM_RENAME)
+	_context_menu.add_item("Duplicate", CM_DUPLICATE)
+	_context_menu.add_separator()
+	_context_menu.add_item("Move Up", CM_MOVE_UP)
+	_context_menu.add_item("Move Down", CM_MOVE_DOWN)
+	_context_menu.add_separator()
+	_context_menu.add_item("Delete", CM_DELETE)
+	_context_menu.id_pressed.connect(_on_context_menu_pressed)
+	add_child(_context_menu)
 
 # ============================================================
 # PUBLIC
@@ -191,6 +211,130 @@ func _on_layer_button_clicked(item: TreeItem, _column: int, id: int, mouse_butto
 	_rebuild_layer_list()
 	changed.emit()
 
+func _on_layer_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			var item: TreeItem = _layer_tree.get_item_at_position(event.position)
+			if item:
+				item.select(0)
+				_show_layer_context_menu(event.position)
+
+# ============================================================
+# CONTEXT MENU
+# ============================================================
+
+func _show_layer_context_menu(pos: Vector2) -> void:
+	if not design or _selected_layer_index < 0:
+		return
+
+	var idx: int = _selected_layer_index
+	var count: int = design.get_layer_count()
+
+	var rename_i: int = _context_menu.get_item_index(CM_RENAME)
+	var dup_i: int = _context_menu.get_item_index(CM_DUPLICATE)
+	var del_i: int = _context_menu.get_item_index(CM_DELETE)
+	var up_i: int = _context_menu.get_item_index(CM_MOVE_UP)
+	var down_i: int = _context_menu.get_item_index(CM_MOVE_DOWN)
+
+	_context_menu.set_item_disabled(rename_i, false)
+	_context_menu.set_item_disabled(dup_i, false)
+	_context_menu.set_item_disabled(del_i, false)
+	_context_menu.set_item_disabled(up_i, idx <= 0)
+	_context_menu.set_item_disabled(down_i, idx >= count - 1)
+
+	_context_menu.position = Vector2i(_layer_tree.get_screen_position() + pos)
+	_context_menu.popup()
+
+func _on_context_menu_pressed(id: int) -> void:
+	match id:
+		CM_RENAME: _rename_layer_dialog()
+		CM_DUPLICATE: _duplicate_selected_layer()
+		CM_DELETE: _on_delete_pressed()
+		CM_MOVE_UP: _on_up_pressed()
+		CM_MOVE_DOWN: _on_down_pressed()
+
+# ============================================================
+# RENAME LAYER
+# ============================================================
+
+func _rename_layer_dialog() -> void:
+	if not design or _selected_layer_index < 0:
+		return
+	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not layer:
+		return
+
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Rename Layer"
+	dialog.ok_button_text = "Rename"
+	dialog.cancel_button_text = "Cancel"
+	dialog.unresizable = true
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	dialog.add_child(vbox)
+
+	var name_row := HBoxContainer.new()
+	vbox.add_child(name_row)
+	var lbl := Label.new()
+	lbl.text = "Name:"
+	lbl.custom_minimum_size = Vector2(60, 0)
+	name_row.add_child(lbl)
+	var name_input := LineEdit.new()
+	name_input.text = layer.layer_name
+	name_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	name_row.add_child(name_input)
+
+	dialog.confirmed.connect(func():
+		var new_name: String = name_input.text.strip_edges()
+		if not new_name.is_empty():
+			layer.layer_name = new_name
+			design.notify_layer_modified()
+			_rebuild_layer_list()
+			_rebuild_detail_form()
+			changed.emit()
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func(): dialog.queue_free())
+
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(360, 140))
+	name_input.call_deferred("grab_focus")
+	name_input.call_deferred("select_all")
+
+# ============================================================
+# DUPLICATE LAYER
+# ============================================================
+
+func _duplicate_selected_layer() -> void:
+	if not design or _selected_layer_index < 0:
+		return
+	if not design.can_add_layer():
+		BayterekToast.warning(_layer_tree, "Maximum 6 layers")
+		return
+
+	var source: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not source:
+		return
+
+	var dup: BayterekLayer = source.duplicate_layer()
+	if not dup:
+		return
+	dup.layer_name = "%s Copy" % source.layer_name
+
+	var insert_at: int = _selected_layer_index + 1
+	design.layers.insert(insert_at, dup)
+	design.notify_layer_modified()
+
+	_selected_layer_index = insert_at
+	_rebuild_layer_list()
+	_rebuild_detail_form()
+	changed.emit()
+
+# ============================================================
+# ADD / DELETE / MOVE
+# ============================================================
+
 func _on_add_shape_pressed() -> void:
 	if not design:
 		return
@@ -224,8 +368,17 @@ func _on_add_texture_pressed() -> void:
 func _on_delete_pressed() -> void:
 	if not design or _selected_layer_index < 0:
 		return
-	design.remove_layer(_selected_layer_index)
-	_selected_layer_index = -1
+
+	var removed_idx: int = _selected_layer_index
+	design.remove_layer(removed_idx)
+
+	# Prefer the previous layer; fall back to first remaining layer.
+	var new_idx: int = -1
+	var count: int = design.get_layer_count()
+	if count > 0:
+		new_idx = max(0, removed_idx - 1)
+
+	_selected_layer_index = new_idx
 	_rebuild_layer_list()
 	_rebuild_detail_form()
 	changed.emit()
@@ -282,7 +435,7 @@ func _rebuild_detail_form() -> void:
 	if not layer:
 		return
 
-	# --- Common: name ---
+	# --- Name row ---
 	var name_row := HBoxContainer.new()
 	_detail_root.add_child(name_row)
 
@@ -302,13 +455,13 @@ func _rebuild_detail_form() -> void:
 	)
 	name_row.add_child(name_input)
 
-	_detail_root.add_child(HSeparator.new())
+	# --- Transform fold ---
+	var transform_fold := _make_fold("Transform")
+	_detail_root.add_child(transform_fold)
 
-	# --- Transform ---
-	var transform_title := Label.new()
-	transform_title.text = "Transform"
-	transform_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	_detail_root.add_child(transform_title)
+	var transform_inner := VBoxContainer.new()
+	transform_inner.add_theme_constant_override("separation", 6)
+	transform_fold.add_child(transform_inner)
 
 	var transform_form := BayterekLayerTransformForm.new()
 	transform_form.set_transform(layer.transform)
@@ -316,22 +469,28 @@ func _rebuild_detail_form() -> void:
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(transform_form)
+	transform_inner.add_child(transform_form)
 
-	_detail_root.add_child(HSeparator.new())
-
-	# --- Type-specific ---
+	# --- Type-specific folds ---
 	if layer is BayterekShapeLayer:
 		_build_shape_detail(layer)
 	elif layer is BayterekTextureLayer:
 		_build_texture_detail(layer)
 
 func _build_shape_detail(layer: BayterekShapeLayer) -> void:
+	# --- Shape fold ---
+	var shape_fold := _make_fold("Shape")
+	_detail_root.add_child(shape_fold)
+
+	var shape_inner := VBoxContainer.new()
+	shape_inner.add_theme_constant_override("separation", 4)
+	shape_fold.add_child(shape_inner)
+
 	var type_row := HBoxContainer.new()
-	_detail_root.add_child(type_row)
+	shape_inner.add_child(type_row)
 
 	var type_label := Label.new()
-	type_label.text = "Shape"
+	type_label.text = "Type"
 	type_label.custom_minimum_size = Vector2(80, 0)
 	type_row.add_child(type_label)
 
@@ -350,16 +509,23 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	type_row.add_child(type_dropdown)
 
-	# --- Fill ---
+	# --- Fill fold ---
+	var fill_fold := _make_fold("Fill")
+	_detail_root.add_child(fill_fold)
+
+	var fill_inner := VBoxContainer.new()
+	fill_inner.add_theme_constant_override("separation", 4)
+	fill_fold.add_child(fill_inner)
+
 	var fill_check := CheckBox.new()
-	fill_check.text = "Fill"
+	fill_check.text = "Enabled"
 	fill_check.button_pressed = layer.fill_enabled
 	fill_check.toggled.connect(func(p: bool):
 		layer.fill_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(fill_check)
+	fill_inner.add_child(fill_check)
 
 	var fill_colors := BayterekLayerStateColors.new()
 	fill_colors.bind(layer, "fill_configs")
@@ -367,21 +533,28 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(fill_colors)
+	fill_inner.add_child(fill_colors)
 
-	# --- Border ---
+	# --- Border fold ---
+	var border_fold := _make_fold("Border")
+	_detail_root.add_child(border_fold)
+
+	var border_inner := VBoxContainer.new()
+	border_inner.add_theme_constant_override("separation", 4)
+	border_fold.add_child(border_inner)
+
 	var border_check := CheckBox.new()
-	border_check.text = "Border"
+	border_check.text = "Enabled"
 	border_check.button_pressed = layer.border_enabled
 	border_check.toggled.connect(func(p: bool):
 		layer.border_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(border_check)
+	border_inner.add_child(border_check)
 
 	var bw_row := HBoxContainer.new()
-	_detail_root.add_child(bw_row)
+	border_inner.add_child(bw_row)
 	var bw_label := Label.new()
 	bw_label.text = "Width"
 	bw_label.custom_minimum_size = Vector2(80, 0)
@@ -405,21 +578,28 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(border_colors)
+	border_inner.add_child(border_colors)
 
-	# --- Shadow ---
+	# --- Shadow fold ---
+	var shadow_fold := _make_fold("Shadow")
+	_detail_root.add_child(shadow_fold)
+
+	var shadow_inner := VBoxContainer.new()
+	shadow_inner.add_theme_constant_override("separation", 4)
+	shadow_fold.add_child(shadow_inner)
+
 	var shadow_check := CheckBox.new()
-	shadow_check.text = "Shadow"
+	shadow_check.text = "Enabled"
 	shadow_check.button_pressed = layer.shadow_enabled
 	shadow_check.toggled.connect(func(p: bool):
 		layer.shadow_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(shadow_check)
+	shadow_inner.add_child(shadow_check)
 
 	var shadow_color_row := HBoxContainer.new()
-	_detail_root.add_child(shadow_color_row)
+	shadow_inner.add_child(shadow_color_row)
 	var sc_label := Label.new()
 	sc_label.text = "Color"
 	sc_label.custom_minimum_size = Vector2(80, 0)
@@ -435,7 +615,7 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	shadow_color_row.add_child(sc_picker)
 
 	var shadow_offset_row := HBoxContainer.new()
-	_detail_root.add_child(shadow_offset_row)
+	shadow_inner.add_child(shadow_offset_row)
 	var so_label := Label.new()
 	so_label.text = "Offset"
 	so_label.custom_minimum_size = Vector2(80, 0)
@@ -468,7 +648,7 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	shadow_offset_row.add_child(so_y)
 
 	var shadow_blur_row := HBoxContainer.new()
-	_detail_root.add_child(shadow_blur_row)
+	shadow_inner.add_child(shadow_blur_row)
 	var sb_label := Label.new()
 	sb_label.text = "Blur"
 	sb_label.custom_minimum_size = Vector2(80, 0)
@@ -489,15 +669,23 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	shadow_blur_row.add_child(sb_input)
 
 func _build_texture_detail(layer: BayterekTextureLayer) -> void:
+	# --- Icon fold ---
+	var icon_fold := _make_fold("Icon")
+	_detail_root.add_child(icon_fold)
+
+	var icon_inner := VBoxContainer.new()
+	icon_inner.add_theme_constant_override("separation", 4)
+	icon_fold.add_child(icon_inner)
+
 	var icon_check := CheckBox.new()
-	icon_check.text = "Icon"
+	icon_check.text = "Enabled"
 	icon_check.button_pressed = layer.icon_enabled
 	icon_check.toggled.connect(func(p: bool):
 		layer.icon_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(icon_check)
+	icon_inner.add_child(icon_check)
 
 	var icon_editor := BayterekLayerStateTextures.new()
 	icon_editor.bind(layer)
@@ -505,17 +693,25 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(icon_editor)
+	icon_inner.add_child(icon_editor)
+
+	# --- Tint fold ---
+	var tint_fold := _make_fold("Tint")
+	_detail_root.add_child(tint_fold)
+
+	var tint_inner := VBoxContainer.new()
+	tint_inner.add_theme_constant_override("separation", 4)
+	tint_fold.add_child(tint_inner)
 
 	var tint_check := CheckBox.new()
-	tint_check.text = "Tint"
+	tint_check.text = "Enabled"
 	tint_check.button_pressed = layer.tint_enabled
 	tint_check.toggled.connect(func(p: bool):
 		layer.tint_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(tint_check)
+	tint_inner.add_child(tint_check)
 
 	var tint_editor := BayterekLayerStateColors.new()
 	tint_editor.bind(layer, "tint_configs")
@@ -523,4 +719,14 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	_detail_root.add_child(tint_editor)
+	tint_inner.add_child(tint_editor)
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+func _make_fold(title: String) -> FoldableContainer:
+	var fold := FoldableContainer.new()
+	fold.title = title
+	fold.folded = false
+	return fold
