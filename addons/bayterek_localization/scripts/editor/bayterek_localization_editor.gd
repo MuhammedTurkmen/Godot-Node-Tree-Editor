@@ -10,7 +10,6 @@ const KeyRow = preload("res://addons/bayterek_localization/scripts/editor/ui/bay
 const SIDEBAR_EXPANDED := 220
 const SIDEBAR_COLLAPSED := 28
 
-# --- State ---
 var current_locale: String = ""
 var original_locale: String = ""
 var is_original_locale: bool = false
@@ -21,10 +20,7 @@ var dirty: bool = false
 
 var _rows_by_key: Dictionary = {}
 
-# --- UI refs ---
 var _h_split: HSplitContainer
-
-# Sidebar
 var _sidebar_root: VBoxContainer
 var _sidebar_header: HBoxContainer
 var _sidebar_toggle_btn: Button
@@ -33,7 +29,6 @@ var _sidebar_content: VBoxContainer
 var _sidebar_search: LineEdit
 var _sidebar_list: ItemList
 
-# Toolbar
 var _toolbar: HBoxContainer
 var _save_btn: Button
 var _add_key_btn: Button
@@ -42,7 +37,6 @@ var _search_input: LineEdit
 var _missing_label: Label
 var _locale_label: Label
 
-# Rows
 var _main_panel: VBoxContainer
 var _rows_scroll: ScrollContainer
 var _rows_container: VBoxContainer
@@ -50,10 +44,6 @@ var _empty_label: Label
 
 var _sidebar_collapsed: bool = false
 var _suppress_sidebar_signal: bool = false
-
-# ============================================================
-# LIFECYCLE
-# ============================================================
 
 func _ready() -> void:
 	add_theme_constant_override("margin_left", 4)
@@ -87,8 +77,6 @@ func _build_ui() -> void:
 	_build_main_panel()
 
 func _build_sidebar() -> void:
-	# Sidebar as a VBoxContainer, always present in HSplit.
-	# When collapsed: only the toggle button remains visible.
 	_sidebar_root = VBoxContainer.new()
 	_sidebar_root.name = "SidebarRoot"
 	_sidebar_root.custom_minimum_size = Vector2(SIDEBAR_COLLAPSED, 0)
@@ -96,7 +84,6 @@ func _build_sidebar() -> void:
 	_sidebar_root.add_theme_constant_override("separation", 2)
 	_h_split.add_child(_sidebar_root)
 
-	# --- Header: toggle button is ALWAYS visible ---
 	_sidebar_header = HBoxContainer.new()
 	_sidebar_header.name = "SidebarHeader"
 	_sidebar_header.add_theme_constant_override("separation", 2)
@@ -118,7 +105,6 @@ func _build_sidebar() -> void:
 	_sidebar_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
 	_sidebar_header.add_child(_sidebar_title)
 
-	# --- Content block (search + list) — hidden when collapsed ---
 	_sidebar_content = VBoxContainer.new()
 	_sidebar_content.name = "SidebarContent"
 	_sidebar_content.size_flags_vertical = SIZE_EXPAND_FILL
@@ -148,7 +134,6 @@ func _build_main_panel() -> void:
 	_main_panel.add_theme_constant_override("separation", 4)
 	_h_split.add_child(_main_panel)
 
-	# --- Toolbar ---
 	_toolbar = HBoxContainer.new()
 	_toolbar.name = "Toolbar"
 	_toolbar.add_theme_constant_override("separation", 6)
@@ -200,7 +185,6 @@ func _build_main_panel() -> void:
 	_missing_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.4))
 	_toolbar.add_child(_missing_label)
 
-	# --- Column header row ---
 	var header := HBoxContainer.new()
 	header.name = "ColumnHeader"
 	header.add_theme_constant_override("separation", 4)
@@ -227,7 +211,6 @@ func _build_main_panel() -> void:
 	h_trans.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
 	header.add_child(h_trans)
 
-	# --- Rows scroll area ---
 	_rows_scroll = ScrollContainer.new()
 	_rows_scroll.name = "RowsScroll"
 	_rows_scroll.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -241,7 +224,6 @@ func _build_main_panel() -> void:
 	_rows_container.add_theme_constant_override("separation", 1)
 	_rows_scroll.add_child(_rows_container)
 
-	# --- Empty label (overlay when no locale open) ---
 	_empty_label = Label.new()
 	_empty_label.name = "EmptyLabel"
 	_empty_label.text = "Double-click a region in the Browser tab to open its translation editor."
@@ -325,6 +307,7 @@ func _add_row(key: String, orig_val: String, trans_val: String) -> void:
 	row.setup(key, orig_val, trans_val, is_original_locale)
 	row.value_changed.connect(_on_row_value_changed)
 	row.row_selected.connect(_on_row_selected)
+	row.navigate_requested.connect(_on_row_navigate_requested)
 	_rows_by_key[key] = row
 
 func _clear_rows() -> void:
@@ -373,7 +356,6 @@ func _refresh_sidebar() -> void:
 func _on_sidebar_toggle() -> void:
 	_sidebar_collapsed = not _sidebar_collapsed
 
-	# Only hide the CONTENT, never the header (which holds the toggle button).
 	_sidebar_content.visible = not _sidebar_collapsed
 	_sidebar_title.visible = not _sidebar_collapsed
 
@@ -463,6 +445,36 @@ func _scroll_to_row(key: String) -> void:
 		var r: BayterekLocalizationKeyRow = _rows_by_key[k]
 		if is_instance_valid(r):
 			r.set_row_selected(k == key)
+
+func _on_row_navigate_requested(key: String, direction: int) -> void:
+	if direction == 0:
+		return
+
+	var visible_keys: Array = []
+	var sorted: Array = _rows_by_key.keys()
+	sorted.sort()
+	for k in sorted:
+		var r: BayterekLocalizationKeyRow = _rows_by_key[k]
+		if is_instance_valid(r) and r.visible:
+			visible_keys.append(k)
+
+	if visible_keys.is_empty():
+		return
+
+	var idx: int = visible_keys.find(key)
+	if idx == -1:
+		return
+
+	var next_idx: int = idx + direction
+	if next_idx < 0 or next_idx >= visible_keys.size():
+		return
+
+	var next_key: String = visible_keys[next_idx]
+	_scroll_to_row(next_key)
+
+	var next_row: BayterekLocalizationKeyRow = _rows_by_key[next_key]
+	if is_instance_valid(next_row):
+		next_row.focus_translation()
 
 # ============================================================
 # ADD / DELETE KEY
@@ -654,3 +666,31 @@ func _input(event: InputEvent) -> void:
 		if dirty:
 			_on_save_pressed()
 		get_viewport().set_input_as_handled()
+		return
+
+	if key == KEY_UP or key == KEY_DOWN:
+		var dir: int = -1 if key == KEY_UP else 1
+		_navigate_from_focused(dir)
+		get_viewport().set_input_as_handled()
+		return
+
+func _navigate_from_focused(direction: int) -> void:
+	var current_key: String = ""
+	for k in _rows_by_key.keys():
+		var r: BayterekLocalizationKeyRow = _rows_by_key[k]
+		if is_instance_valid(r) and r.has_field_focus():
+			current_key = k
+			break
+
+	if current_key.is_empty():
+		var sorted: Array = _rows_by_key.keys()
+		sorted.sort()
+		for k in sorted:
+			var r: BayterekLocalizationKeyRow = _rows_by_key[k]
+			if is_instance_valid(r) and r.visible:
+				_scroll_to_row(k)
+				r.focus_translation()
+				return
+		return
+
+	_on_row_navigate_requested(current_key, direction)
