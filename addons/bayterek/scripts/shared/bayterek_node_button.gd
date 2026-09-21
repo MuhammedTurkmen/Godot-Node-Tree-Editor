@@ -36,7 +36,6 @@ var _press_pos: Vector2 = Vector2.ZERO
 var _active_states: Dictionary = {}
 
 ## Tracks whether design layers have been applied to this button's node_data.
-## Set to false when design_id/prefab changes so the next refresh re-applies.
 var _design_applied: bool = false
 
 var id: int:
@@ -85,16 +84,16 @@ func _build_children() -> void:
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_select_border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_select_border.offset_left = -3
-	_select_border.offset_top = -3
-	_select_border.offset_right = 3
-	_select_border.offset_bottom = 3
+	_select_border.offset_left = -Bayterek.SELECTION_BORDER_OFFSET
+	_select_border.offset_top = -Bayterek.SELECTION_BORDER_OFFSET
+	_select_border.offset_right = Bayterek.SELECTION_BORDER_OFFSET
+	_select_border.offset_bottom = Bayterek.SELECTION_BORDER_OFFSET
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0, 0, 0, 0)
-	style.border_color = Color(1, 0.6, 0.1, 1)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(2)
+	style.border_color = Bayterek.SELECTION_BORDER_COLOR
+	style.set_border_width_all(Bayterek.SELECTION_BORDER_WIDTH)
+	style.set_corner_radius_all(Bayterek.SELECTION_BORDER_RADIUS)
 	_select_border.add_theme_stylebox_override("panel", style)
 	_select_border.visible = false
 	add_child(_select_border)
@@ -105,10 +104,10 @@ func _build_children() -> void:
 	_crown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_crown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_crown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_crown_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
-	_crown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	_crown_label.add_theme_constant_override("outline_size", 2)
-	_crown_label.add_theme_font_size_override("font_size", 18)
+	_crown_label.add_theme_color_override("font_color", Bayterek.CROWN_COLOR)
+	_crown_label.add_theme_color_override("font_outline_color", Bayterek.CROWN_OUTLINE_COLOR)
+	_crown_label.add_theme_constant_override("outline_size", Bayterek.CROWN_OUTLINE_SIZE)
+	_crown_label.add_theme_font_size_override("font_size", Bayterek.CROWN_FONT_SIZE)
 	_crown_label.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_crown_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_crown_label.offset_left = -20
@@ -146,7 +145,6 @@ func refresh_visuals() -> void:
 	if not node_data:
 		return
 
-	# Apply design layers + exported overrides only once.
 	if not _design_applied:
 		_design_applied = true
 		if not node_data.design_id.is_empty():
@@ -165,13 +163,10 @@ func refresh_visuals() -> void:
 
 	queue_redraw()
 
-## Rebuilds layers from design and re-applies overrides.
-## Call when design_id, prefab, or exported values/overrides changed.
 func rebuild_from_design() -> void:
 	_design_applied = false
 	refresh_visuals()
 
-## Ensures this button's size matches design_size * scale.
 func _sync_size_with_design() -> void:
 	var target: Vector2 = node_data.design_size * node_data.scale
 	if target.x <= 0.0 or target.y <= 0.0:
@@ -223,6 +218,10 @@ func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transfo
 	elif layer is BayterekTextureLayer:
 		_draw_texture_layer(layer, state_key, effective_size, layer_matrix, base_xform)
 
+# ============================================================
+# SHAPE DRAWING
+# ============================================================
+
 func _draw_shape_layer(
 	layer: BayterekShapeLayer,
 	state_key: String,
@@ -250,11 +249,18 @@ func _draw_shape_layer(
 				_draw_shape_fill(fill_verts, combined, fill_color)
 
 	if draw_border:
-		var border_color: Color = layer.get_border_color_for_state(state_key)
-		if border_color.a > 0.0 and layer.border_width > 0.0:
-			var center_verts: PackedVector2Array = layer.get_border_centerline_vertices(effective_size)
-			if not center_verts.is_empty():
-				_draw_shape_border_ring(center_verts, combined, border_color, layer.border_width)
+		if layer.border_mode == BayterekShapeLayer.BorderMode.TEXTURE and layer.border_texture:
+			_draw_shape_border_texture(layer, combined, effective_size)
+		else:
+			var border_color: Color = layer.get_border_color_for_state(state_key)
+			if border_color.a > 0.0 and layer.border_width > 0.0:
+				var center_verts: PackedVector2Array = layer.get_border_centerline_vertices(effective_size)
+				if not center_verts.is_empty():
+					# Scale ile border width'i orantılı hale getir.
+					var s: Vector2 = node_data.scale if node_data else Vector2.ONE
+					var avg_scale: float = (absf(s.x) + absf(s.y)) * 0.5
+					var scaled_width: float = layer.border_width * avg_scale
+					_draw_shape_border_ring(center_verts, combined, border_color, scaled_width)
 
 func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Color) -> void:
 	var transformed := PackedVector2Array()
@@ -279,6 +285,75 @@ func _draw_shape_border_ring(
 	pts[verts.size()] = pts[0]
 
 	draw_polyline(pts, color, width, true)
+
+## Draws a 9-slice texture border. Center tile is skipped; fill covers it.
+func _draw_shape_border_texture(
+	layer: BayterekShapeLayer,
+	xform: Transform2D,
+	effective_size: Vector2
+) -> void:
+	var tex: Texture2D = layer.border_texture
+	if not tex:
+		return
+
+	var tex_size: Vector2 = tex.get_size()
+	if tex_size.x <= 0 or tex_size.y <= 0:
+		return
+
+	# Effective 9-slice margin, clamped to texture and half-size.
+	var requested_margin: float = float(layer.border_texture_margin)
+	var max_margin_x: float = tex_size.x * 0.5
+	var max_margin_y: float = tex_size.y * 0.5
+	var margin_x: float = minf(requested_margin, max_margin_x)
+	var margin_y: float = minf(requested_margin, max_margin_y)
+
+	var half: Vector2 = effective_size * 0.5
+	var margin: Vector2 = Vector2(margin_x, margin_y)
+
+	# Draw in local (centered) coordinates via `draw_set_transform_matrix`.
+	draw_set_transform_matrix(xform)
+
+	# 4 corners (fixed size)
+	_draw_texture_region(tex, Rect2(Vector2(0, 0), margin),
+		Rect2(Vector2(-half.x, -half.y), margin))
+	_draw_texture_region(tex, Rect2(Vector2(tex_size.x - margin.x, 0), margin),
+		Rect2(Vector2(half.x - margin.x, -half.y), margin))
+	_draw_texture_region(tex, Rect2(Vector2(0, tex_size.y - margin.y), margin),
+		Rect2(Vector2(-half.x, half.y - margin.y), margin))
+	_draw_texture_region(tex, Rect2(Vector2(tex_size.x - margin.x, tex_size.y - margin.y), margin),
+		Rect2(Vector2(half.x - margin.x, half.y - margin.y), margin))
+
+	# 4 edges (tiled / stretched along one axis)
+	var edge_src_h: Vector2 = Vector2(tex_size.x - margin.x * 2.0, margin.y)
+	var edge_dst_h: Vector2 = Vector2(effective_size.x - margin.x * 2.0, margin.y)
+
+	var edge_src_v: Vector2 = Vector2(margin.x, tex_size.y - margin.y * 2.0)
+	var edge_dst_v: Vector2 = Vector2(margin.x, effective_size.y - margin.y * 2.0)
+
+	# Top edge
+	if edge_dst_h.x > 0:
+		_draw_texture_region(tex,
+			Rect2(Vector2(margin.x, 0), edge_src_h),
+			Rect2(Vector2(-half.x + margin.x, -half.y), edge_dst_h))
+		# Bottom edge
+		_draw_texture_region(tex,
+			Rect2(Vector2(margin.x, tex_size.y - margin.y), edge_src_h),
+			Rect2(Vector2(-half.x + margin.x, half.y - margin.y), edge_dst_h))
+
+	# Left edge
+	if edge_dst_v.y > 0:
+		_draw_texture_region(tex,
+			Rect2(Vector2(0, margin.y), edge_src_v),
+			Rect2(Vector2(-half.x, -half.y + margin.y), edge_dst_v))
+		# Right edge
+		_draw_texture_region(tex,
+			Rect2(Vector2(tex_size.x - margin.x, margin.y), edge_src_v),
+			Rect2(Vector2(half.x - margin.x, -half.y + margin.y), edge_dst_v))
+
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+func _draw_texture_region(tex: Texture2D, src: Rect2, dst: Rect2) -> void:
+	draw_texture_rect_region(tex, dst, src)
 
 func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
 	var offset: Vector2 = layer.shadow_size
@@ -318,6 +393,10 @@ func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Arr
 			dir = dir.normalized()
 		out[i] = v + dir * offset
 	return out
+
+# ============================================================
+# TEXTURE DRAWING (icon layer)
+# ============================================================
 
 func _draw_texture_layer(
 	layer: BayterekTextureLayer,

@@ -19,27 +19,28 @@ var _clear_button: Button
 var _empty_label: Label
 
 var _current_texture: Texture2D
+var _ui_ready: bool = false
 
 func _ready() -> void:
 	_build_ui()
+	_ui_ready = true
+	# _ready öncesi set_texture çağrıldıysa uygula
+	_apply_texture()
 
 func _build_ui() -> void:
 	add_theme_constant_override("separation", 4)
 
-	# Sol: başlık
 	_label = Label.new()
 	_label.text = title
 	_label.custom_minimum_size = Vector2(80, 0)
 	_label.size_flags_horizontal = SIZE_EXPAND_FILL
 	add_child(_label)
 
-	# Sağ: thumbnail + butonlar
 	var thumb_container := Control.new()
 	thumb_container.custom_minimum_size = Vector2(64, 64)
 	thumb_container.size_flags_horizontal = SIZE_EXPAND_FILL
 	add_child(thumb_container)
 
-	# Texture thumbnail
 	_texture_rect = TextureRect.new()
 	_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -47,7 +48,6 @@ func _build_ui() -> void:
 	thumb_container.add_child(_texture_rect)
 	_texture_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	# Boş label
 	_empty_label = Label.new()
 	_empty_label.text = "Empty"
 	_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -57,7 +57,6 @@ func _build_ui() -> void:
 	thumb_container.add_child(_empty_label)
 	_empty_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	# Yükle butonu (thumbnail üstünde sağ alt)
 	_load_button = Button.new()
 	_load_button.text = "..."
 	_load_button.tooltip_text = "Texture seç"
@@ -71,7 +70,6 @@ func _build_ui() -> void:
 	_load_button.offset_right = 0
 	_load_button.offset_bottom = 0
 
-	# Temizle butonu (thumbnail üstünde sağ üst)
 	_clear_button = Button.new()
 	_clear_button.text = "X"
 	_clear_button.tooltip_text = "Temizle"
@@ -85,7 +83,6 @@ func _build_ui() -> void:
 	_clear_button.offset_right = 0
 	_clear_button.offset_bottom = 20
 
-	# Sinyaller
 	_load_button.pressed.connect(_on_load_pressed)
 	_clear_button.pressed.connect(_on_clear_pressed)
 
@@ -95,19 +92,33 @@ func _build_ui() -> void:
 
 func set_texture(texture: Texture2D) -> void:
 	_current_texture = texture
-	_texture_rect.texture = texture
-
-	if texture:
-		_empty_label.visible = false
-		_clear_button.visible = true
-		_load_button.visible = true
-	else:
-		_empty_label.visible = true
-		_clear_button.visible = false
-		_load_button.visible = true
+	if not _ui_ready:
+		# _ready henüz çağrılmadı — sakla, _ready'de uygulanacak.
+		return
+	_apply_texture()
 
 func get_texture() -> Texture2D:
 	return _current_texture
+
+func _apply_texture() -> void:
+	if not _texture_rect:
+		return
+	_texture_rect.texture = _current_texture
+
+	if _current_texture:
+		if _empty_label:
+			_empty_label.visible = false
+		if _clear_button:
+			_clear_button.visible = true
+		if _load_button:
+			_load_button.visible = true
+	else:
+		if _empty_label:
+			_empty_label.visible = true
+		if _clear_button:
+			_clear_button.visible = false
+		if _load_button:
+			_load_button.visible = true
 
 # ============================================================
 # HANDLER'LAR

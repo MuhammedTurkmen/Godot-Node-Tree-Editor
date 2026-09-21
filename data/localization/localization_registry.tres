@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="LocalizationRegistry" format=3 uid="uid://4p2juxijdv7d"]
+
+[ext_resource type="Script" uid="uid://dnfuflirg327x" path="res://addons/bayterek_localization/scripts/resources/localization_registry.gd" id="1_8qjge"]
+[ext_resource type="Script" uid="uid://crcrhyhokadjw" path="res://addons/bayterek_localization/scripts/resources/localization_language.gd" id="1_h0r5q"]
+[ext_resource type="Script" uid="uid://dgm0ag8qen374" path="res://addons/bayterek_localization/scripts/resources/localization_region.gd" id="2_na31a"]
+
+[sub_resource type="Resource" id="Resource_1tpuh"]
+script = ExtResource("2_na31a")
+code = "US"
+name = "United States"
+language_code = "en"
+file_path = "res://data/localization/languages/en-US.json"
+
+[sub_resource type="Resource" id="Resource_5wenj"]
+script = ExtResource("1_h0r5q")
+code = "en"
+name = "English"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_1tpuh")])
+
+[sub_resource type="Resource" id="Resource_na31a"]
+script = ExtResource("2_na31a")
+code = "TR"
+name = "Türkiye"
+language_code = "tr"
+file_path = "res://data/localization/languages/tr-TR.json"
+
+[sub_resource type="Resource" id="Resource_2ypsp"]
+script = ExtResource("1_h0r5q")
+code = "tr"
+name = "Türkçe"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_na31a")])
+
+[resource]
+script = ExtResource("1_8qjge")
+languages = Array[ExtResource("1_h0r5q")]([SubResource("Resource_5wenj"), SubResource("Resource_2ypsp")])
+original_locale = "en-US"

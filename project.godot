@@ -19,6 +19,8 @@ config/icon="res://assets/icon.svg"
 
 BayterekLoader="*uid://nkd7mhbs2vhv"
 BayterekSerializer="*uid://bncb0tmve5k7w"
+GameLocalization="*uid://brfo61g2bql3o"
+BayterekLocalizationLoader="*uid://cjmtxiyjohf62"
 
 [debug]
 
@@ -35,7 +37,7 @@ project/assembly_name="TestProject"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/bayterek/plugin.cfg", "res://addons/file_exporter/plugin.cfg")
+enabled=PackedStringArray("res://addons/bayterek/plugin.cfg", "res://addons/bayterek_localization/plugin.cfg", "res://addons/file_exporter/plugin.cfg")
 
 [physics]
 

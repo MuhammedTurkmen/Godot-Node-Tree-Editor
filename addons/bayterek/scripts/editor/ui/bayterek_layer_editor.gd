@@ -471,7 +471,7 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	shape_inner.add_theme_constant_override("separation", 4)
 	shape_fold.add_child(shape_inner)
 
-	# --- Shape type ---
+	# Shape type
 	var type_row := HBoxContainer.new()
 	type_row.add_theme_constant_override("separation", 4)
 	shape_inner.add_child(type_row)
@@ -500,7 +500,7 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	var field_st: String = "layers.%s.shape_type" % layer.layer_id
 	BayterekExportHelper.make_exportable(type_row, field_st, design, _on_export_changed)
 
-	# --- Corner radius ---
+	# Corner radius
 	var cr_row := HBoxContainer.new()
 	cr_row.add_theme_constant_override("separation", 4)
 	shape_inner.add_child(cr_row)
@@ -591,29 +591,120 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	var field_be: String = "layers.%s.border_enabled" % layer.layer_id
 	BayterekExportHelper.make_exportable(border_check_row, field_be, design, _on_export_changed)
 
-	var bw_row := HBoxContainer.new()
-	bw_row.add_theme_constant_override("separation", 4)
-	border_inner.add_child(bw_row)
-	var bw_label := Label.new()
-	bw_label.text = "Width"
-	bw_label.custom_minimum_size = Vector2(80, 0)
-	bw_row.add_child(bw_label)
-	var bw_input := SpinBox.new()
-	bw_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	bw_input.min_value = 0.0
-	bw_input.max_value = 100.0
-	bw_input.step = 0.5
-	bw_input.value = layer.border_width
-	bw_input.value_changed.connect(func(v: float):
-		layer.border_width = v
+	# Border Mode (Vector / Texture)
+	var bmode_row := HBoxContainer.new()
+	bmode_row.add_theme_constant_override("separation", 4)
+	border_inner.add_child(bmode_row)
+
+	var bmode_label := Label.new()
+	bmode_label.text = "Mode"
+	bmode_label.custom_minimum_size = Vector2(80, 0)
+	bmode_row.add_child(bmode_label)
+
+	var bmode_dropdown := OptionButton.new()
+	bmode_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	bmode_dropdown.add_item("Vector (line)", BayterekShapeLayer.BorderMode.VECTOR)
+	bmode_dropdown.add_item("Texture (pixel art)", BayterekShapeLayer.BorderMode.TEXTURE)
+	bmode_dropdown.select(int(layer.border_mode))
+	bmode_dropdown.item_selected.connect(func(i: int):
+		layer.border_mode = i as BayterekShapeLayer.BorderMode
 		design.notify_layer_modified()
+		# Mode değişince form'u yeniden kur (Width veya Texture satırları değişir)
+		call_deferred("_rebuild_detail_form")
 		changed.emit()
 	)
-	bw_row.add_child(bw_input)
+	bmode_row.add_child(bmode_dropdown)
 
-	var field_bw: String = "layers.%s.border_width" % layer.layer_id
-	BayterekExportHelper.make_exportable(bw_row, field_bw, design, _on_export_changed)
+	var field_bm: String = "layers.%s.border_mode" % layer.layer_id
+	BayterekExportHelper.make_exportable(bmode_row, field_bm, design, _on_export_changed)
 
+	# Mode'a göre farklı UI
+	if layer.border_mode == BayterekShapeLayer.BorderMode.VECTOR:
+		# Width
+		var bw_row := HBoxContainer.new()
+		bw_row.add_theme_constant_override("separation", 4)
+		border_inner.add_child(bw_row)
+		var bw_label := Label.new()
+		bw_label.text = "Width"
+		bw_label.custom_minimum_size = Vector2(80, 0)
+		bw_row.add_child(bw_label)
+		var bw_input := SpinBox.new()
+		bw_input.size_flags_horizontal = SIZE_EXPAND_FILL
+		bw_input.min_value = 0.0
+		bw_input.max_value = 100.0
+		bw_input.step = 0.5
+		bw_input.value = layer.border_width
+		bw_input.value_changed.connect(func(v: float):
+			layer.border_width = v
+			design.notify_layer_modified()
+			changed.emit()
+		)
+		bw_row.add_child(bw_input)
+
+		var field_bw: String = "layers.%s.border_width" % layer.layer_id
+		BayterekExportHelper.make_exportable(bw_row, field_bw, design, _on_export_changed)
+
+	elif layer.border_mode == BayterekShapeLayer.BorderMode.TEXTURE:
+		# Texture input
+		var tex_row := HBoxContainer.new()
+		tex_row.add_theme_constant_override("separation", 4)
+		border_inner.add_child(tex_row)
+
+		var tex_label := Label.new()
+		tex_label.text = "Texture"
+		tex_label.custom_minimum_size = Vector2(80, 0)
+		tex_row.add_child(tex_label)
+
+		var tex_input := BayterekInspectorTextureInput.new()
+		tex_input.title = ""
+		tex_input.size_flags_horizontal = SIZE_EXPAND_FILL
+		tex_input.set_texture(layer.border_texture)
+		tex_input.texture_dropped.connect(func(path: String):
+			var tex: Texture2D = load(path) as Texture2D
+			if tex:
+				layer.border_texture = tex
+				design.notify_layer_modified()
+				call_deferred("_rebuild_detail_form")
+				changed.emit()
+		)
+		tex_input.cleared.connect(func():
+			layer.border_texture = null
+			design.notify_layer_modified()
+			changed.emit()
+		)
+		tex_row.add_child(tex_input)
+
+		var field_bt: String = "layers.%s.border_texture" % layer.layer_id
+		BayterekExportHelper.make_exportable(tex_row, field_bt, design, _on_export_changed)
+
+		# 9-slice margin
+		var margin_row := HBoxContainer.new()
+		margin_row.add_theme_constant_override("separation", 4)
+		border_inner.add_child(margin_row)
+
+		var margin_label := Label.new()
+		margin_label.text = "Slice"
+		margin_label.custom_minimum_size = Vector2(80, 0)
+		margin_label.tooltip_text = "9-slice margin in pixels (kullanıcı texture'ın kenar kalınlığını belirler)."
+		margin_row.add_child(margin_label)
+
+		var margin_input := SpinBox.new()
+		margin_input.size_flags_horizontal = SIZE_EXPAND_FILL
+		margin_input.min_value = 1
+		margin_input.max_value = 256
+		margin_input.step = 1
+		margin_input.value = layer.border_texture_margin
+		margin_input.value_changed.connect(func(v: float):
+			layer.border_texture_margin = int(v)
+			design.notify_layer_modified()
+			changed.emit()
+		)
+		margin_row.add_child(margin_input)
+
+		var field_bmarg: String = "layers.%s.border_texture_margin" % layer.layer_id
+		BayterekExportHelper.make_exportable(margin_row, field_bmarg, design, _on_export_changed)
+
+	# Border state colors
 	var border_colors := BayterekLayerStateColors.new()
 	border_inner.add_child(border_colors)
 	border_colors.bind(layer, "border_configs")

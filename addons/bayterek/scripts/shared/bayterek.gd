@@ -21,12 +21,102 @@ const DESIGN_ICON := "PackedScene"
 
 const BlankIcon: Texture2D = null
 
-# --- Editor visual constants ---
+# --- Editor canvas grid ---
 const GRID_CELL_SIZE := Vector2(16, 16)
 const GRID_PRIMARY_STEP := 4
 const GRID_LINE_COLOR := Color(1, 1, 1, 0.12)
 const GRID_LINE_WIDTH := 1.0
 const DEFAULT_TREE_SIZE := Vector2(5000, 5000)
+
+# ============================================================
+# RENDER / SHAPE CONSTANTS
+# ============================================================
+
+## Number of segments used to smooth each rounded corner of a polygon.
+## Higher = smoother, slower. Applied to every corner of every shape.
+const CORNER_SEGMENTS := 20
+
+## Maximum corner radius as a fraction of min(width, height) / 2.
+## 0.99 = almost a full circle for the corner geometry.
+const CORNER_RADIUS_CLAMP_FACTOR := 0.99
+
+## Number of segments used to approximate a full circle shape.
+const CIRCLE_SEGMENTS := 48
+
+# ============================================================
+# NODE VISUAL CONSTANTS
+# ============================================================
+
+const CROWN_FONT_SIZE := 18
+const CROWN_COLOR := Color(1.0, 0.85, 0.35)
+const CROWN_OUTLINE_COLOR := Color(0, 0, 0, 0.9)
+const CROWN_OUTLINE_SIZE := 2
+
+const SELECTION_BORDER_COLOR := Color(1, 0.6, 0.1, 1)
+const SELECTION_BORDER_WIDTH := 2
+const SELECTION_BORDER_RADIUS := 2
+const SELECTION_BORDER_OFFSET := 3
+
+# ============================================================
+# CAMERA CONSTANTS
+# ============================================================
+
+const CAMERA_MIN_ZOOM := 0.4
+const CAMERA_MAX_ZOOM := 3.0
+const CAMERA_ZOOM_STEP := 0.1
+
+# ============================================================
+# LAYER PREVIEW CONSTANTS (Node Editor)
+# ============================================================
+
+const PREVIEW_MARGIN := 20.0
+const PREVIEW_MIN_USER_ZOOM := 0.1
+const PREVIEW_MAX_USER_ZOOM := 8.0
+const PREVIEW_ZOOM_STEP := 1.15
+
+# ============================================================
+# PREFAB BAR CONSTANTS
+# ============================================================
+
+const PREFABS_BAR_COLLAPSED_HEIGHT := 28
+const PREFABS_BAR_EXPANDED_HEIGHT := 120
+
+const PREFAB_CARD_WIDTH := 80
+const PREFAB_CARD_HEIGHT := 100
+const PREFAB_CARD_THUMB_SIZE := 64
+
+const PREFAB_THUMBNAIL_PADDING := 4.0
+
+# ============================================================
+# GROUP FRAME CONSTANTS
+# ============================================================
+
+const GROUP_FRAME_PADDING := 20.0
+const GROUP_FRAME_TITLE_HEIGHT := 22.0
+const GROUP_FRAME_BORDER_WIDTH := 2.0
+
+# ============================================================
+# TOAST CONSTANTS
+# ============================================================
+
+const TOAST_BOTTOM_MARGIN := 50.0
+const TOAST_LEFT_MARGIN := 16.0
+const TOAST_MIN_WIDTH := 220.0
+const TOAST_PADDING_X := 12
+const TOAST_PADDING_Y := 5
+
+# ============================================================
+# LINE / CONNECTION CONSTANTS
+# ============================================================
+
+const LINE_DEFAULT_WIDTH := 4.0
+const LINE_DEFAULT_COLOR := Color(0.7, 0.7, 0.7, 0.9)
+const LINE_DASH_LENGTH := 12.0
+const LINE_DASH_GAP := 6.0
+
+# ============================================================
+# ENUMS
+# ============================================================
 
 enum AllocationState {
 	NORMAL,
@@ -78,7 +168,6 @@ static func save_editor_registry() -> Error:
 	_purge_dead_references()
 	return ResourceSaver.save(_editor_registry, get_registry_path())
 
-## Removes groups and trees whose backing .tres files no longer exist.
 static func _purge_dead_references() -> void:
 	if not _editor_registry:
 		return

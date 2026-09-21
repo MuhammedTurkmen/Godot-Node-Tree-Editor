@@ -11,8 +11,12 @@
 ## HARD
 [] yetenek ağacındaki çerçeve tipleri
 	[] başlıklı dikdörtgen
-	[] başlık altı çizili 
-[] düğüm düzenleyici ekleyelim
+	[] başlık altı çizili
+[] shape layer  border için stiller 
+	[] solid
+	[] dashed
+	[] dotted
+	[] dash dot
 
 # Bugs 
 
@@ -20,10 +24,10 @@
 
 ## MEDIUM
 [] gruplanmamış düğümleri toplu silince hiyerarşide doğru güncellenmedi
-- ungrouped kısmı silinmiyor hiyerarşiden
+	[] ungrouped kısmı silinmiyor hiyerarşiden
 
 ## HARD
-[] araç bilgisi
+[] araç bilgisi (tooltip)
 	[] açıklama formatlanabilir olacak içinde attribute kullanabilicez 
 	[] lokalizasyonla bağla
 [] line 2d hataları çözülecek

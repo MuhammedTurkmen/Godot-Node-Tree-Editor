@@ -52,6 +52,7 @@ fill_configs = {
 }
 }
 border_enabled = true
+border_mode = 1
 border_configs = {
 "allocateable": {
 "color": Color(0.3019608, 0.85882354, 0.3019608, 1),
@@ -90,13 +91,11 @@ border_configs = {
 "enabled": false
 }
 }
-layer_id = "7a4f0fda-5192-4f6b-9219-9160b84a6444"
+layer_id = "72bc1dfc-871e-4140-8ee3-ff5b19c213ac"
 layer_name = "Background"
 transform = SubResource("Resource_joamw")
 
 [resource]
 script = ExtResource("4_u1mso")
 id = "new_design"
-name = "YeniTasarım"
-category = "Katego"
 layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_5qdsx")])
