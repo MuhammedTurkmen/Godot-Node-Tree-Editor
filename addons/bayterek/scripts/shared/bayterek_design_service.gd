@@ -48,7 +48,6 @@ static func get_designs_grouped_by_category() -> Dictionary:
 			groups[cat] = []
 		groups[cat].append(design)
 
-	# Build sorted Dictionary (Godot Dictionary preserves insertion order)
 	var named: Array = []
 	var uncategorized: Array = []
 	for key in groups.keys():
@@ -67,7 +66,6 @@ static func get_designs_grouped_by_category() -> Dictionary:
 
 	return result
 
-## Returns all unique categories (including "Uncategorized" if any design has empty category).
 static func get_all_categories() -> Array:
 	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
 	if not reg:
@@ -190,49 +188,27 @@ static func save_design(design: BayterekNodeDesign) -> Error:
 
 	return ResourceSaver.save(design, design.resource_path)
 
+## Renames a design — only the visible name changes.
+## The `id` (and therefore the file on disk) stays the same, so
+## prefabs and nodes that reference this design by id keep working.
 static func rename_design(design: BayterekNodeDesign, new_name: String) -> bool:
 	if not design:
 		return false
-	if new_name.strip_edges().is_empty():
-		return false
 
 	var trimmed: String = new_name.strip_edges()
+	if trimmed.is_empty():
+		return false
 	if trimmed == design.name:
 		return true
 
-	var old_id: String = design.id
-	var new_snake: String = Bayterek.to_snake_case(trimmed)
-	var old_path: String = design.resource_path
-	var new_path: String = "%s/%s.tres" % [Bayterek.get_designs_dir(), new_snake]
-
-	if new_snake == design.id:
-		design.set_design_name(trimmed)
-		save_design(design)
-		Bayterek.save_designs_registry()
-		return true
-
-	if FileAccess.file_exists(new_path):
-		push_warning("Bayterek: Design file already exists: %s" % new_path)
-		return false
-
-	if Bayterek.get_designs_registry().has_design_id(new_snake):
-		push_warning("Bayterek: Design id already in use: %s" % new_snake)
-		return false
-
-	if not old_path.is_empty() and FileAccess.file_exists(old_path):
-		var rename_err: Error = DirAccess.rename_absolute(old_path, new_path)
-		if rename_err != OK:
-			push_error("Bayterek: Could not rename design file (%d)" % rename_err)
-			return false
-
-	design.id = new_snake
 	design.set_design_name(trimmed)
-	design.resource_path = new_path
 
-	save_design(design)
+	var err: Error = save_design(design)
+	if err != OK:
+		push_error("Bayterek: Could not save renamed design (%d)" % err)
+		return false
+
 	Bayterek.save_designs_registry()
-	EditorInterface.get_resource_filesystem().scan()
-
 	return true
 
 # ============================================================

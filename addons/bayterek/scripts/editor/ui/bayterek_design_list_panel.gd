@@ -306,7 +306,7 @@ func _show_context_menu(pos: Vector2) -> void:
 	menu.popup()
 
 # ============================================================
-# RENAME DIALOG (kategori dropdown + "+ New Category")
+# RENAME DIALOG
 # ============================================================
 
 func _rename_selected() -> void:
@@ -337,7 +337,7 @@ func _rename_selected() -> void:
 	name_input.size_flags_horizontal = SIZE_EXPAND_FILL
 	name_row.add_child(name_input)
 
-	# --- Category (dropdown + "+ New Category") ---
+	# --- Category ---
 	var cat_row := HBoxContainer.new()
 	vbox.add_child(cat_row)
 	var cat_lbl := Label.new()
@@ -411,14 +411,18 @@ func _rebuild_category_dropdown(dropdown: OptionButton, current_category: String
 
 	dropdown.select(found_idx)
 
+# ============================================================
+# NEW CATEGORY DIALOG
+# ============================================================
+
 ## Opens a small dialog to enter a new category name.
-## `parent_dialog` — the currently open Rename ConfirmationDialog.
-## We hide it while the category dialog is open so both aren't exclusive.
-func _open_new_category_dialog(dropdown: OptionButton, parent_dialog: ConfirmationDialog) -> void:
+## Non-exclusive — parent rename dialog stays visible underneath.
+func _open_new_category_dialog(dropdown: OptionButton, _parent_dialog: ConfirmationDialog) -> void:
 	var dlg := AcceptDialog.new()
 	dlg.title = "New Category"
 	dlg.ok_button_text = "Create"
 	dlg.unresizable = true
+	dlg.exclusive = false
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
@@ -445,8 +449,8 @@ func _open_new_category_dialog(dropdown: OptionButton, parent_dialog: Confirmati
 		if new_cat.is_empty():
 			error_lbl.text = "Category name cannot be empty."
 			error_lbl.visible = true
-			# Re-open to force refresh of size (AcceptDialog auto-closes on confirm)
-			dlg.popup_centered(Vector2i(360, 180))
+			# AcceptDialog auto-closes on confirm; reopen to show error.
+			dlg.popup_centered(Vector2i(360, 200))
 			return
 
 		var existing: Array = BayterekDesignService.get_all_categories()
@@ -454,7 +458,7 @@ func _open_new_category_dialog(dropdown: OptionButton, parent_dialog: Confirmati
 			if String(cat) == new_cat:
 				error_lbl.text = "Category \"%s\" already exists." % new_cat
 				error_lbl.visible = true
-				dlg.popup_centered(Vector2i(360, 180))
+				dlg.popup_centered(Vector2i(360, 200))
 				return
 
 		var next_idx: int = dropdown.item_count
@@ -465,23 +469,6 @@ func _open_new_category_dialog(dropdown: OptionButton, parent_dialog: Confirmati
 		dlg.queue_free()
 	)
 
-	# Parent'ı gizle (exclusive çakışması olmasın)
-	if parent_dialog:
-		parent_dialog.hide()
-
-	dlg.canceled.connect(func():
-		# Parent'ı geri getir
-		if parent_dialog and is_instance_valid(parent_dialog):
-			parent_dialog.popup_centered(Vector2i(440, 200))
-		dlg.queue_free()
-	)
-
-	dlg.close_requested.connect(func():
-		if parent_dialog and is_instance_valid(parent_dialog):
-			parent_dialog.popup_centered(Vector2i(440, 200))
-		dlg.queue_free()
-	)
-
 	add_child(dlg)
-	dlg.popup_centered(Vector2i(360, 180))
+	dlg.popup_centered(Vector2i(360, 200))
 	input.call_deferred("grab_focus")

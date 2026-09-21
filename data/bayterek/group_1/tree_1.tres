@@ -1,0 +1,125 @@
+[gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://cgt7fuj0gnifp"]
+
+[ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_immpc"]
+[ext_resource type="Script" uid="uid://de6ng2pbq3gss" path="res://addons/bayterek/scripts/resources/bayterek_node_group.gd" id="2_3oq2p"]
+[ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="3_ak1rv"]
+[ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_k1nh3"]
+[ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="4_ak1rv"]
+[ext_resource type="Script" uid="uid://bnggwadduoie5" path="res://addons/bayterek/scripts/resources/layers/bayterek_shape_layer.gd" id="4_ke383"]
+[ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="5_e1v5k"]
+
+[sub_resource type="Resource" id="Resource_ak1rv"]
+script = ExtResource("5_e1v5k")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_ke383"]
+script = ExtResource("4_ke383")
+shape_type = 1
+corner_radius = 15.0
+fill_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.4, 0.7, 1, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+border_enabled = true
+border_configs = {
+"allocateable": {
+"color": Color(0.3019608, 0.85882354, 0.3019608, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.65882355, 0.47843137, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.7490196, 0, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.26666668, 0.26666668, 0.26666668, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8, 0, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(1, 1, 1, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.2, 0.2, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.5019608, 0, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.3019608, 0.3019608, 1),
+"enabled": false
+}
+}
+layer_id = "7a4f0fda-5192-4f6b-9219-9160b84a6444"
+layer_name = "Background"
+transform = SubResource("Resource_ak1rv")
+
+[sub_resource type="Resource" id="Resource_qlprm"]
+script = ExtResource("1_immpc")
+is_root = true
+reference_id = "8e1f377f-39ec-4496-ac74-049fe2663d2c"
+id = 1
+name = "YeniTasarım"
+design_id = "new_design"
+position = Vector2(-133, 55.5)
+scale = Vector2(2, 2)
+layers = Array[ExtResource("3_ak1rv")]([SubResource("Resource_ke383")])
+
+[sub_resource type="Resource" id="Resource_e1v5k"]
+script = ExtResource("3_k1nh3")
+reference_id = "8e1f377f-39ec-4496-ac74-049fe2663d2c"
+id = "yenitasar_m"
+node_name = "YeniTasarım"
+design_id = "new_design"
+
+[resource]
+script = ExtResource("4_ak1rv")
+id = "tree_1"
+name = "Tree 1"
+id_counter = 1
+nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_qlprm")])
+prefabs = Array[ExtResource("3_k1nh3")]([SubResource("Resource_e1v5k")])
+hierarchy_split_offset = -467

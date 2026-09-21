@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="BayterekRegistry" format=3 uid="uid://l3q5qeh7cmtx"]
+
+[ext_resource type="Script" uid="uid://cv2pfk4jn6sim" path="res://addons/bayterek/scripts/resources/bayterek_group.gd" id="1_1ns4c"]
+[ext_resource type="Script" uid="uid://h4hgkvn6o0fm" path="res://addons/bayterek/scripts/resources/bayterek_registry.gd" id="2_2xa0y"]
+[ext_resource type="Resource" uid="uid://dajn47pjrul6u" path="res://data/bayterek/group_1/group_1.tres" id="2_4ygmg"]
+
+[resource]
+script = ExtResource("2_2xa0y")
+groups = Array[ExtResource("1_1ns4c")]([ExtResource("2_4ygmg")])

@@ -85,6 +85,7 @@ func _build_ui() -> void:
 	node_editor.size_flags_vertical = SIZE_EXPAND_FILL
 	tab_container.add_child(node_editor)
 	tab_container.set_tab_title(1, "Node Editor")
+	node_editor.design_category_changed.connect(_on_design_category_changed)
 
 	save_confirmation = ConfirmationDialog.new()
 	save_confirmation.name = "SaveConfirmation"
@@ -95,11 +96,26 @@ func _build_ui() -> void:
 	add_child(save_confirmation)
 
 # ============================================================
+# DESIGN CATEGORY CHANGE → REFRESH ALL OPEN EDITORS' PREFAB BARS
+# ============================================================
+
+func _on_design_category_changed() -> void:
+	print("[MainScreen] design_category_changed received — ", _open_editors.size(), " open editors")
+	for path in _open_editors.keys():
+		var editor = _open_editors[path]
+		if not is_instance_valid(editor):
+			print("[MainScreen]   SKIP invalid editor for ", path)
+			continue
+		if not editor.prefabs_bar:
+			print("[MainScreen]   SKIP: editor has no prefabs_bar (", path, ")")
+			continue
+		print("[MainScreen]   refreshing prefabs_bar on ", editor.name)
+		editor.prefabs_bar.refresh_categories()
+
+# ============================================================
 # TAB SWITCHING
 # ============================================================
 
-## Called by the editor when the user wants to jump to Node Editor
-## (e.g. from "No designs available" dialog).
 func switch_to_node_editor() -> void:
 	if not tab_container or not node_editor:
 		return

@@ -39,7 +39,8 @@ func _build_ui() -> void:
 	_collapse_btn = Button.new()
 	_collapse_btn.text = "▾"
 	_collapse_btn.tooltip_text = "Collapse / expand prefab bar"
-	_collapse_btn.custom_minimum_size = Vector2(24, 22)
+	_collapse_btn.custom_minimum_size = Vector2(32, 26)
+	_collapse_btn.add_theme_font_size_override("font_size", 28)
 	_collapse_btn.flat = true
 	_collapse_btn.pressed.connect(_on_collapse_pressed)
 	_header.add_child(_collapse_btn)
@@ -76,14 +77,21 @@ func init(ed: BayterekEditor) -> void:
 
 func set_collapsed(value: bool, persist: bool = false) -> void:
 	_collapsed = value
+
+	# Collapsed: sadece collapse butonu görünür.
+	_tab_bar.visible = not _collapsed
 	_scroll.visible = not _collapsed
+
+	# Header'ı da sadece buton kalacak şekilde daralt.
+	# Header hala görünür çünkü collapse butonu onun içinde.
+	if _header:
+		_header.custom_minimum_size.y = 22 if _collapsed else 0
 
 	var target_height: int = COLLAPSED_HEIGHT if _collapsed else EXPANDED_HEIGHT
 	custom_minimum_size.y = target_height
 
 	_collapse_btn.text = "▸" if _collapsed else "▾"
 
-	# VSplit içindeki layout'u zorla güncelle.
 	queue_sort()
 	if get_parent() is SplitContainer:
 		(get_parent() as SplitContainer).queue_sort()

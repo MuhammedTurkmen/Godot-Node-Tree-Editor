@@ -2,8 +2,6 @@
 class_name BayterekNodeButton
 extends BaseButton
 ## On-canvas visual representation of a node.
-## Renders all layers via custom _draw(). Crown and selection frame
-## are kept as child controls.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -29,7 +27,6 @@ var state: Bayterek.AllocationState = Bayterek.AllocationState.NORMAL
 
 var is_allocatable: bool = false
 
-# --- Child controls ---
 var _select_border: Panel
 var _crown_label: Label
 
@@ -37,6 +34,10 @@ var _is_dragging: bool = false
 var _press_pos: Vector2 = Vector2.ZERO
 
 var _active_states: Dictionary = {}
+
+## Tracks whether design layers have been applied to this button's node_data.
+## Set to false when design_id/prefab changes so the next refresh re-applies.
+var _design_applied: bool = false
 
 var id: int:
 	get: return node_data.id if node_data else -1
@@ -70,7 +71,7 @@ var design_id: String:
 	set(v):
 		if node_data:
 			node_data.design_id = v
-			refresh_visuals()
+			rebuild_from_design()
 
 func _ready() -> void:
 	button_mask = MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT
@@ -102,13 +103,13 @@ func _build_children() -> void:
 	_crown_label.name = "Crown"
 	_crown_label.text = "👑"
 	_crown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_crown_label.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_crown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_crown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_crown_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
 	_crown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	_crown_label.add_theme_constant_override("outline_size", 2)
 	_crown_label.add_theme_font_size_override("font_size", 18)
+	_crown_label.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_crown_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_crown_label.offset_left = -20
 	_crown_label.offset_top = -30
@@ -145,6 +146,14 @@ func refresh_visuals() -> void:
 	if not node_data:
 		return
 
+	# Apply design layers + exported overrides only once.
+	if not _design_applied:
+		_design_applied = true
+		if not node_data.design_id.is_empty():
+			var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(node_data.design_id)
+			if design:
+				node_data.apply_exported_overrides(design, prefab)
+
 	_sync_size_with_design()
 	_recompute_active_states()
 
@@ -156,8 +165,13 @@ func refresh_visuals() -> void:
 
 	queue_redraw()
 
+## Rebuilds layers from design and re-applies overrides.
+## Call when design_id, prefab, or exported values/overrides changed.
+func rebuild_from_design() -> void:
+	_design_applied = false
+	refresh_visuals()
+
 ## Ensures this button's size matches design_size * scale.
-## Called on every refresh so design changes propagate to the hit box.
 func _sync_size_with_design() -> void:
 	var target: Vector2 = node_data.design_size * node_data.scale
 	if target.x <= 0.0 or target.y <= 0.0:
@@ -208,10 +222,6 @@ func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transfo
 		_draw_shape_layer(layer, state_key, effective_size, layer_matrix, base_xform)
 	elif layer is BayterekTextureLayer:
 		_draw_texture_layer(layer, state_key, effective_size, layer_matrix, base_xform)
-
-# ============================================================
-# SHAPE DRAWING
-# ============================================================
 
 func _draw_shape_layer(
 	layer: BayterekShapeLayer,
@@ -308,10 +318,6 @@ func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Arr
 			dir = dir.normalized()
 		out[i] = v + dir * offset
 	return out
-
-# ============================================================
-# TEXTURE DRAWING
-# ============================================================
 
 func _draw_texture_layer(
 	layer: BayterekTextureLayer,

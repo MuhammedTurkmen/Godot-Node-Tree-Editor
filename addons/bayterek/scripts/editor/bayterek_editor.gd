@@ -870,8 +870,8 @@ func _on_prefab_exported_values_changed(prefab: BayterekPrefab) -> void:
 	for node in affected:
 		if not is_instance_valid(node):
 			continue
-		if node.has_method("refresh_visuals"):
-			node.refresh_visuals()
+		if node.has_method("rebuild_from_design"):
+			node.rebuild_from_design()
 	set_dirty(true)
 
 # ============================================================

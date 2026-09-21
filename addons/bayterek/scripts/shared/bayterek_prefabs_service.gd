@@ -203,7 +203,6 @@ func cleanup_orphan_prefabs() -> int:
 # EXPORTED VALUES
 # ============================================================
 
-## Prefab'ın exported_values'ına bir değer yazar ve bağlı node'ları refresh eder.
 func set_prefab_exported_value(prefab: BayterekPrefab, field_path: String, value: Variant) -> void:
 	if not prefab:
 		return
@@ -215,30 +214,28 @@ func set_prefab_exported_value(prefab: BayterekPrefab, field_path: String, value
 	for node in prefab.get_nodes():
 		if not is_instance_valid(node):
 			continue
-		node.refresh_visuals()
+		node.rebuild_from_design()
 
 	prefab_changed.emit(prefab)
 
-## Node'un belirli bir field için override'ını set eder.
 func set_node_exported_override(node: BayterekNodeButton, field_path: String, value: Variant) -> void:
 	if not node or not node.node_data:
 		return
 	node.node_data.set_exported_override(field_path, value)
-	node.refresh_visuals()
+	node.rebuild_from_design()
 
-## Node'un override'ını siler (prefab default'una döner).
 func clear_node_exported_override(node: BayterekNodeButton, field_path: String) -> void:
 	if not node or not node.node_data:
 		return
 	node.node_data.clear_exported_override(field_path)
-	node.refresh_visuals()
+	node.rebuild_from_design()
 
 func notify_exported_values_changed(prefab: BayterekPrefab) -> void:
 	if not prefab:
 		return
 	for node in prefab.get_nodes():
-		if is_instance_valid(node) and node.has_method("refresh_visuals"):
-			node.refresh_visuals()
+		if is_instance_valid(node) and node.has_method("rebuild_from_design"):
+			node.rebuild_from_design()
 	prefab_changed.emit(prefab)
 
 # ============================================================
@@ -270,8 +267,8 @@ func reset_node_to_prefab_defaults(node: BayterekNodeButton) -> void:
 	if not prefab.exported_values.is_empty():
 		node.node_data.exported_overrides = prefab.exported_values.duplicate(true)
 
-	if node.has_method("refresh_visuals"):
-		node.refresh_visuals()
+	if node.has_method("rebuild_from_design"):
+		node.rebuild_from_design()
 
 func reset_attribute_to_prefab_default(node: BayterekNodeButton, attr_id: String) -> void:
 	if not node or not node.prefab or not node.node_data:

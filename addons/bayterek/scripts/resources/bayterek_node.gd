@@ -112,6 +112,91 @@ func resolve_exported_value(field_path: String, prefab: BayterekPrefab, design: 
 	return null
 
 # ============================================================
+# EXPORTED OVERRIDES APPLICATION
+# ============================================================
+
+## Applies all exported overrides to this node's layers.
+## Priority: node.exported_overrides > prefab.exported_values > design.
+func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPrefab) -> void:
+	if not design:
+		return
+
+	# Önce design'dan taze layer'ları kopyala
+	copy_layers_from(design.layers)
+	design_size = design.design_size
+	scale = design.scale
+
+	# Toplanacak field path'ler: design.exported_fields + prefab.exported_fields
+	var all_paths: Dictionary = {}
+	for p in design.exported_fields.keys():
+		all_paths[p] = true
+	if prefab_ref:
+		for p in prefab_ref.exported_fields.keys():
+			all_paths[p] = true
+
+	# Her path için değeri resolve et ve layer'a yaz
+	for field_path in all_paths.keys():
+		if field_path == "design_size":
+			var v: Variant = resolve_exported_value(field_path, prefab_ref, design)
+			if v is Vector2:
+				design_size = v
+			continue
+		if field_path == "scale":
+			var v2: Variant = resolve_exported_value(field_path, prefab_ref, design)
+			if v2 is Vector2:
+				scale = v2
+			continue
+
+		var resolved: Variant = resolve_exported_value(field_path, prefab_ref, design)
+		_apply_override_to_layer(field_path, resolved)
+
+func _apply_override_to_layer(field_path: String, value: Variant) -> void:
+	var parsed: Dictionary = parse_field_path_for_layer(field_path)
+	if parsed.is_empty():
+		return
+
+	var layer_id: String = parsed.get("layer_id", "")
+	var segments: Array = parsed.get("segments", [])
+	if layer_id.is_empty() or segments.is_empty():
+		return
+
+	var layer: BayterekLayer = get_layer_by_id(layer_id)
+	if not layer:
+		return
+
+	var current: Variant = layer
+	for i in range(segments.size() - 1):
+		var seg: String = String(segments[i])
+		if current is Object:
+			current = (current as Object).get(seg)
+		elif current is Dictionary:
+			if not current.has(seg):
+				return
+			current = current[seg]
+		else:
+			return
+
+	var last_seg: String = String(segments[segments.size() - 1])
+	if current is Object:
+		(current as Object).set(last_seg, value)
+	elif current is Dictionary:
+		current[last_seg] = value
+
+func parse_field_path_for_layer(path: String) -> Dictionary:
+	var parts: Array = path.split(".")
+	if parts.size() < 3:
+		return {}
+	if parts[0] != "layers":
+		return {}
+
+	var layer_id: String = parts[1]
+	var segments: Array = []
+	for i in range(2, parts.size()):
+		segments.append(parts[i])
+
+	return {"layer_id": layer_id, "segments": segments}
+
+# ============================================================
 # LAYER MANAGEMENT
 # ============================================================
 

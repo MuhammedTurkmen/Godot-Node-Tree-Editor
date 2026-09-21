@@ -49,6 +49,10 @@ var _transform_panel: VBoxContainer
 var _pos_x_input: SpinBox
 var _pos_y_input: SpinBox
 
+var _exported_panel: VBoxContainer
+var _exported_empty: Label
+var _exported_list: VBoxContainer
+
 var _attributes_panel: VBoxContainer
 var _attributes_empty: Label
 var _attributes_list: VBoxContainer
@@ -58,11 +62,6 @@ var _attr_value_inputs: Dictionary = {}
 var _connections_panel: VBoxContainer
 var _connections_empty: Label
 var _connections_list: VBoxContainer
-
-# Exported Fields panel
-var _exported_panel: VBoxContainer
-var _exported_empty: Label
-var _exported_list: VBoxContainer
 
 var _updating_ui: bool = false
 
@@ -599,7 +598,7 @@ func _on_design_changed(index: int) -> void:
 		if design:
 			_current_node.node_data.apply_design(design)
 
-	_current_node.refresh_visuals()
+	_current_node.rebuild_from_design()
 	_refresh_design_size_label()
 	_rebuild_exported_fields_list()
 
@@ -645,27 +644,31 @@ func _rebuild_exported_fields_list() -> void:
 		_exported_panel.visible = false
 		return
 
-	# --- Prefab Mode ---
 	if _current_prefab:
 		_exported_panel.visible = true
 		_exported_empty.visible = false
 		_build_prefab_exported_fields()
 		return
 
-	# --- Node Mode ---
 	if not _current_node or not _current_node.node_data:
 		_exported_empty.visible = true
 		_exported_panel.visible = false
 		return
 
-	if not _current_node.prefab:
-		_exported_empty.visible = true
-		_exported_panel.visible = false
-		return
-
+	var source_fields: Dictionary = {}
 	var prefab: BayterekPrefab = _current_node.prefab
-	if prefab.exported_fields.is_empty():
-		_exported_empty.text = "(No fields exported on this prefab)"
+
+	if prefab:
+		source_fields = prefab.exported_fields
+	else:
+		var design_id: String = _current_node.node_data.design_id
+		if not design_id.is_empty():
+			var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(design_id)
+			if design:
+				source_fields = design.exported_fields
+
+	if source_fields.is_empty():
+		_exported_empty.text = "(No fields exported on this design)"
 		_exported_empty.visible = true
 		_exported_panel.visible = true
 		return
@@ -685,46 +688,33 @@ func _build_prefab_exported_fields() -> void:
 	if not prefab.design_id.is_empty():
 		design = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
 
-	# Sıralı field path'ler
 	var paths: Array = prefab.exported_fields.keys()
 	paths.sort()
 
 	for field_path in paths:
-		_build_exported_field_row(
-			prefab,
-			field_path,
-			design,
-			true,   # is_prefab
-			false   # is_override
-		)
+		_build_exported_field_row(prefab, field_path, design, true, false)
 
 func _build_node_exported_fields(prefab: BayterekPrefab) -> void:
 	var node: BayterekNodeButton = _current_node
 	if not node or not node.node_data:
 		return
 
+	var design_id: String = node.node_data.design_id
 	var design: BayterekNodeDesign = null
-	if not prefab.design_id.is_empty():
-		design = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
+	if not design_id.is_empty():
+		design = Bayterek.get_designs_registry().get_design_by_id(design_id)
 
-	var paths: Array = prefab.exported_fields.keys()
+	var paths: Array = []
+	if prefab and not prefab.exported_fields.is_empty():
+		paths = prefab.exported_fields.keys()
+	elif design and not design.exported_fields.is_empty():
+		paths = design.exported_fields.keys()
 	paths.sort()
 
 	for field_path in paths:
 		var is_override: bool = node.node_data.has_exported_override(field_path)
-		_build_exported_field_row(
-			prefab,
-			field_path,
-			design,
-			false,       # is_prefab
-			is_override  # is_override
-		)
+		_build_exported_field_row(prefab, field_path, design, false, is_override)
 
-## Builds one row for an exported field.
-## `prefab` — the prefab to edit (prefab mode) or the prefab the node references (node mode).
-## `design` — the design for default value resolution.
-## `is_prefab` — true if editing prefab, false if editing node override.
-## `is_override` — only for node mode: whether the node currently overrides this field.
 func _build_exported_field_row(
 	prefab: BayterekPrefab,
 	field_path: String,
@@ -747,55 +737,46 @@ func _build_exported_field_row(
 	name_label.add_theme_font_size_override("font_size", 12)
 	header_row.add_child(name_label)
 
-	# Reset butonu (sadece node mode + override varsa)
 	if not is_prefab and is_override:
 		var reset_btn := Button.new()
 		reset_btn.text = "↺"
-		reset_btn.tooltip_text = "Reset to prefab default"
+		reset_btn.tooltip_text = "Reset to default"
 		reset_btn.custom_minimum_size = Vector2(28, 0)
 		reset_btn.pressed.connect(_on_reset_exported_override_pressed.bind(prefab, field_path))
 		header_row.add_child(reset_btn)
 
-	# Değer editörü
 	var value_row := HBoxContainer.new()
 	value_row.add_theme_constant_override("separation", 4)
 	block.add_child(value_row)
 
-	# Design'dan default değeri al
 	var design_value: Variant = null
 	if design:
 		design_value = design.get_field_value(field_path)
 
-	# Prefab veya node için mevcut değer
 	var current_value: Variant = design_value
 	if is_prefab:
-		if prefab.exported_values.has(field_path):
+		if prefab and prefab.exported_values.has(field_path):
 			current_value = prefab.exported_values[field_path]
-	elif is_override:
-		current_value = _current_node.node_data.exported_overrides.get(field_path, design_value)
+	else:
+		var node = _current_node
+		if node and node.node_data and node.node_data.exported_overrides.has(field_path):
+			current_value = node.node_data.exported_overrides[field_path]
+		elif prefab and prefab.exported_values.has(field_path):
+			current_value = prefab.exported_values[field_path]
 
-	_build_value_editor(
-		value_row,
-		field_path,
-		current_value,
-		is_prefab,
-		is_override,
-		prefab
-	)
+	_build_value_editor(value_row, field_path, current_value, is_prefab, is_override, prefab)
 
 func _humanize_field_path(field_path: String) -> String:
 	var parts: Array = field_path.split(".")
 	if parts.size() <= 1:
 		return field_path
 
-	# Layers.X.field.subfield → "Layer X › field › subfield"
 	var out: Array[String] = []
 	for i in parts.size():
 		var p: String = parts[i]
 		if p == "layers":
 			continue
 		if i == 1:
-			# layer_id → kısalt
 			var short_id: String = p.substr(0, 6) + "…" if p.length() > 6 else p
 			out.append("Layer %s" % short_id)
 			continue
@@ -811,7 +792,6 @@ func _build_value_editor(
 	is_override: bool,
 	prefab: BayterekPrefab
 ) -> void:
-	# Değer tipine göre UI seç
 	match typeof(value):
 		TYPE_BOOL:
 			var check := CheckBox.new()
@@ -912,32 +892,29 @@ func _on_exported_value_changed(
 ) -> void:
 	if _updating_ui:
 		return
-	if not prefab:
-		return
 
 	if is_prefab:
-		# Prefab seviyesinde değer
+		if not prefab:
+			return
 		prefab.exported_values[field_path] = value
 		prefab.exported_values_changed.emit(prefab)
 
-		# Bağlı node'lara yay (service zaten var)
 		if editor and editor.tree_view and editor.tree_view.prefabs_service:
 			editor.tree_view.prefabs_service.notify_exported_values_changed(prefab)
 	else:
-		# Node seviyesinde override
-		if not _current_node:
+		if not _current_node or not _current_node.node_data:
 			return
 		_current_node.node_data.set_exported_override(field_path, value)
-		_current_node.refresh_visuals()
+		_current_node.rebuild_from_design()
 
 	changed.emit()
 	_notify_editor_dirty()
 
-func _on_reset_exported_override_pressed(prefab: BayterekPrefab, field_path: String) -> void:
+func _on_reset_exported_override_pressed(_prefab: BayterekPrefab, field_path: String) -> void:
 	if not _current_node or not _current_node.node_data:
 		return
 	_current_node.node_data.clear_exported_override(field_path)
-	_current_node.refresh_visuals()
+	_current_node.rebuild_from_design()
 	_rebuild_exported_fields_list()
 	changed.emit()
 	_notify_editor_dirty()
