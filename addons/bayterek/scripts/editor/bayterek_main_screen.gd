@@ -14,7 +14,7 @@ var browser: BayterekBrowser
 var node_editor: BayterekNodeEditorScreen
 var save_confirmation: ConfirmationDialog
 
-var _open_editors: Dictionary = {}   # path -> BayterekEditor
+var _open_editors: Dictionary = {}
 
 func _ready() -> void:
 	add_theme_constant_override("margin_left", 0)
@@ -78,7 +78,7 @@ func _build_ui() -> void:
 	tab_container.add_child(browser)
 	tab_container.set_tab_title(0, "Browser")
 
-	# --- Tab 1: Node Editor (fixed) ---
+	# --- Tab 1: Node Editor ---
 	node_editor = BayterekNodeEditorScreen.new()
 	node_editor.name = "NodeEditor"
 	node_editor.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -93,6 +93,19 @@ func _build_ui() -> void:
 	save_confirmation.confirmed.connect(_on_save_confirmed)
 	save_confirmation.custom_action.connect(_on_save_custom_action)
 	add_child(save_confirmation)
+
+# ============================================================
+# TAB SWITCHING
+# ============================================================
+
+## Called by the editor when the user wants to jump to Node Editor
+## (e.g. from "No designs available" dialog).
+func switch_to_node_editor() -> void:
+	if not tab_container or not node_editor:
+		return
+	var idx: int = tab_container.get_tab_idx_from_control(node_editor)
+	if idx >= 0:
+		tab_container.current_tab = idx
 
 # ============================================================
 # TREE EDITOR MANAGEMENT
@@ -142,7 +155,6 @@ func open_tree(path: String) -> void:
 	tab_container.current_tab = idx
 
 func _on_tab_close_pressed(tab_index: int) -> void:
-	# Fixed tabs (Browser = 0, Node Editor = 1) cannot be closed.
 	if tab_index <= 1:
 		return
 

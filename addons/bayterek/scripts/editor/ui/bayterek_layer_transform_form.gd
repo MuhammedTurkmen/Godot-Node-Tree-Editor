@@ -8,6 +8,8 @@ signal changed
 const PIVOT_GRID_SIZE := 3
 
 var _transform: BayterekLayerTransform = null
+var _design: BayterekNodeDesign = null
+var _layer_id: String = ""
 var _updating: bool = false
 
 # --- Position ---
@@ -33,29 +35,32 @@ var _pivot_custom_panel: HBoxContainer
 
 var _btn_group: ButtonGroup = null
 
-## True when _build_ui() has fully completed.
 var _ui_ready: bool = false
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 6)
 	_build_ui()
 	_ui_ready = true
-	# In case set_transform was called before _ready
 	if _transform:
 		_refresh_from_data()
 
 func _build_ui() -> void:
 	# --- Position ---
-	var pos_row := _make_pair_row("Position", "X", "Y", true)
-	_pos_x = pos_row[0]
-	_pos_y = pos_row[1]
+	var pos_row_data := _make_pair_row_container("Position", "X", "Y", true)
+	var pos_row: HBoxContainer = pos_row_data["row"]
+	_pos_x = pos_row_data["a"]
+	_pos_y = pos_row_data["b"]
 	_pos_x.value_changed.connect(_on_pos_changed)
 	_pos_y.value_changed.connect(_on_pos_changed)
 
+	if not _layer_id.is_empty():
+		var fp_pos: String = "layers.%s.transform.position" % _layer_id
+		BayterekExportHelper.make_exportable(pos_row, fp_pos, _design, _on_export_changed)
+
 	# --- Size ---
-	var size_row := _make_pair_row("Size", "W", "H", false)
-	_size_x = size_row[0]
-	_size_y = size_row[1]
+	var size_row_data := _make_pair_row_container("Size", "W", "H", false)
+	_size_x = size_row_data["a"]
+	_size_y = size_row_data["b"]
 	_size_x.value_changed.connect(_on_size_changed)
 	_size_y.value_changed.connect(_on_size_changed)
 
@@ -75,10 +80,14 @@ func _build_ui() -> void:
 	_rotation.value_changed.connect(_on_rotation_changed)
 	rot_row.add_child(_rotation)
 
+	if not _layer_id.is_empty():
+		var fp_rot: String = "layers.%s.transform.rotation" % _layer_id
+		BayterekExportHelper.make_exportable(rot_row, fp_rot, _design, _on_export_changed)
+
 	# --- Skew ---
-	var skew_row := _make_pair_row("Skew", "X", "Y", true)
-	_skew_x = skew_row[0]
-	_skew_y = skew_row[1]
+	var skew_row_data := _make_pair_row_container("Skew", "X", "Y", true)
+	_skew_x = skew_row_data["a"]
+	_skew_y = skew_row_data["b"]
 	_skew_x.min_value = -89.0
 	_skew_x.max_value = 89.0
 	_skew_x.suffix = "°"
@@ -109,7 +118,6 @@ func _build_ui() -> void:
 		pivot_grid.add_child(btn)
 		_pivot_buttons.append(btn)
 
-	# Custom pivot row
 	_pivot_custom_panel = HBoxContainer.new()
 	add_child(_pivot_custom_panel)
 
@@ -147,8 +155,9 @@ func _get_or_make_group() -> ButtonGroup:
 		_btn_group = ButtonGroup.new()
 	return _btn_group
 
-func _make_pair_row(label_text: String, axis_a: String, axis_b: String, allow_negative: bool) -> Array:
+func _make_pair_row_container(label_text: String, axis_a: String, axis_b: String, allow_negative: bool) -> Dictionary:
 	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
 	add_child(row)
 
 	var label := Label.new()
@@ -184,22 +193,31 @@ func _make_pair_row(label_text: String, axis_a: String, axis_b: String, allow_ne
 	spin_b.step = 1.0
 	row.add_child(spin_b)
 
-	return [spin_a, spin_b]
+	return {"row": row, "a": spin_a, "b": spin_b}
 
 # ============================================================
 # PUBLIC
 # ============================================================
 
-func set_transform(t: BayterekLayerTransform) -> void:
+func set_transform(t: BayterekLayerTransform, design: BayterekNodeDesign = null, layer_id: String = "") -> void:
 	_transform = t
+	_design = design
+	_layer_id = layer_id
 	if _ui_ready:
 		_refresh_from_data()
+		_refresh_export_markers()
+
+func _refresh_export_markers() -> void:
+	if not _design or _layer_id.is_empty():
+		return
+	for child in get_children():
+		if child is Control:
+			BayterekExportHelper.refresh_row(child)
 
 func _refresh_from_data() -> void:
 	if not _transform:
 		return
 
-	# Guard: UI not built yet
 	if not _ui_ready:
 		return
 	if not _pos_x or not _pos_y or not _size_x or not _size_y or not _rotation:
@@ -281,4 +299,9 @@ func _on_pivot_custom_pressed() -> void:
 func _on_custom_pivot_changed(_v: float) -> void:
 	if _updating or not _transform: return
 	_transform.pivot = Vector2(_pivot_custom_x.value, _pivot_custom_y.value)
+	changed.emit()
+
+func _on_export_changed(_field_path: String) -> void:
+	if _design:
+		BayterekDesignService.save_design(_design)
 	changed.emit()

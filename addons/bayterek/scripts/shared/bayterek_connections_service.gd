@@ -7,7 +7,7 @@ signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 signal line_removed(from_id: int, to_id: int)
 signal line_changed(from_id: int, to_id: int)
 
-var _lines: Dictionary = {}   # "from_id_to_id" -> BayterekConnection
+var _lines: Dictionary = {}
 
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
@@ -15,10 +15,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 	for node_data in _tree_data.nodes:
 		for to_id in node_data.out_nodes:
 			_create_line_from_data(node_data.id, to_id)
-
-# ============================================================
-# QUERY
-# ============================================================
 
 func get_line(from_id: int, to_id: int) -> BayterekConnection:
 	return _lines.get(_key(from_id, to_id), null)
@@ -44,7 +40,6 @@ func create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButto
 	from_data.out_nodes.append(to_data.id)
 	to_data.in_nodes.append(from_data.id)
 
-	# Create line data
 	var line_data := BayterekLineData.new()
 	from_data.line_data[to_data.id] = line_data
 
@@ -63,7 +58,6 @@ func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
 	line.round_joints = true
 	line.round_caps = true
 
-	# Get line data from source node
 	var from_node: BayterekNodeButton = _tree_view.nodes_service.get_node(from_id)
 	if from_node and from_node.node_data:
 		if from_node.node_data.line_data.has(to_id):
@@ -145,7 +139,6 @@ func update_all_lines() -> void:
 		if is_instance_valid(line):
 			_update_line_points(line)
 
-## Called when line data changes (curve, segments, etc.)
 func refresh_line(from_id: int, to_id: int) -> void:
 	var line: BayterekConnection = get_line(from_id, to_id)
 	if line:
@@ -156,23 +149,18 @@ func refresh_line(from_id: int, to_id: int) -> void:
 # ALLOCATION STATE VISUALS
 # ============================================================
 
-## Called when a node's allocation state changes.
-## Updates texture on all lines touching this node.
 func on_node_allocation_changed(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data:
 		return
-	if node.type == BayterekNode.NodeType.DECORATION:
+	if node.node_data.is_decoration:
 		return
 
-	# Outgoing lines
 	for to_id in node.node_data.out_nodes:
 		_refresh_line_state(node.id, to_id)
 
-	# Incoming lines
 	for from_id in node.node_data.in_nodes:
 		_refresh_line_state(from_id, node.id)
 
-## Picks the right texture based on endpoint allocation states.
 func _refresh_line_state(from_id: int, to_id: int) -> void:
 	var line: BayterekConnection = get_line(from_id, to_id)
 	if not line:
@@ -183,18 +171,15 @@ func _refresh_line_state(from_id: int, to_id: int) -> void:
 	if not from_node or not to_node:
 		return
 
-	# Determine if each endpoint is "active" (allocated or preallocated)
 	var from_active: bool = from_node.allocated or from_node.preallocated
 	var to_active: bool = to_node.allocated or to_node.preallocated
 
-	# Refund mode: treat node as active if it still has remaining levels
 	if _tree_data.multiallocation:
 		if from_node.refund:
 			from_active = from_node.allocation_level > 1
 		if to_node.refund:
 			to_active = to_node.allocation_level > 1
 
-	# Pick texture
 	var texture: Texture2D = null
 	if from_active and to_active:
 		texture = _tree_data.line_texture_active
@@ -205,7 +190,6 @@ func _refresh_line_state(from_id: int, to_id: int) -> void:
 
 	line.texture = texture
 
-	# Visibility rule: when tree is not revealed, hide normal lines
 	if not _tree_data.revealed and not from_active and not to_active:
 		line.visible = false
 	else:
@@ -224,11 +208,9 @@ func _update_line_points(line: BayterekConnection) -> void:
 	if not from_node or not to_node:
 		return
 
-	# Node centers
 	var from_center: Vector2 = from_node.position + (from_node.size * 0.5)
 	var to_center: Vector2 = to_node.position + (to_node.size * 0.5)
 
-	# Node half-extents (for edge intersection when arrow is present)
 	var from_half: Vector2 = from_node.size * 0.5
 	var to_half: Vector2 = to_node.size * 0.5
 
@@ -236,9 +218,6 @@ func _update_line_points(line: BayterekConnection) -> void:
 	if not data:
 		data = BayterekLineData.new()
 
-	# Start point:
-	#   - Arrow at start → line starts OUTSIDE the node so the arrow is visible.
-	#   - No arrow       → line starts at the node CENTER (hidden behind the node).
 	var p0: Vector2
 	if data.start_arrow != BayterekLineData.ArrowStyle.NONE:
 		var start_padding: float = data.arrow_size * 0.5 + 4.0
@@ -246,9 +225,6 @@ func _update_line_points(line: BayterekConnection) -> void:
 	else:
 		p0 = from_center
 
-	# End point:
-	#   - Arrow at end → line ends OUTSIDE the node.
-	#   - No arrow     → line ends at the node CENTER.
 	var p2: Vector2
 	if data.end_arrow != BayterekLineData.ArrowStyle.NONE:
 		var end_padding: float = data.arrow_size * 0.5 + 4.0
@@ -256,7 +232,6 @@ func _update_line_points(line: BayterekConnection) -> void:
 	else:
 		p2 = to_center
 
-	# Shape
 	match data.line_type:
 		BayterekLineData.LineType.STRAIGHT:
 			line.clear_points()
@@ -269,31 +244,21 @@ func _update_line_points(line: BayterekConnection) -> void:
 		BayterekLineData.LineType.STEP:
 			line.points = _step_points(p0, p2, data)
 
-	# Apply line style (dash pattern) to the BayterekLine2D
 	line.dash_style = data.line_style as BayterekLine2D.DashStyle
 	line.dash_length = data.dash_length
 	line.dash_gap = data.dash_gap
 
-	# Apply arrow styles
 	line.start_arrow = data.start_arrow as BayterekLine2D.ArrowStyle
 	line.end_arrow = data.end_arrow as BayterekLine2D.ArrowStyle
 	line.arrow_size = data.arrow_size
 
-## Returns the point where a line from `source_center` towards
-## `target_center` exits a node whose bounding box has the given
-## `half_extents`, offset outward by `padding` pixels.
-##
-## Used so connection lines, arrowheads and dash patterns don't hide
-## behind nodes.
 func _edge_point(source_center: Vector2, target_center: Vector2, half_extents: Vector2, padding: float = 0.0) -> Vector2:
 	var dir: Vector2 = target_center - source_center
 	if dir.length_squared() < 0.0001:
 		return source_center
 
-	# Expand the bounding box by `padding` in every direction.
 	var expanded_half: Vector2 = half_extents + Vector2(padding, padding)
 
-	# Slab method: for each axis, find t where the ray hits the box.
 	var t_x: float = INF
 	var t_y: float = INF
 
@@ -303,12 +268,10 @@ func _edge_point(source_center: Vector2, target_center: Vector2, half_extents: V
 	if absf(dir.y) > 0.0001:
 		t_y = expanded_half.y / absf(dir.y)
 
-	# The exit point is at the smaller t (the axis the ray hits first).
 	var t: float = min(t_x, t_y)
 
 	return source_center + dir * t
 
-## Quadratic Bezier curve
 func _bezier_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var segments: int = max(2, data.segments)
@@ -336,7 +299,6 @@ func _bezier_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedV
 
 	return pts
 
-## Arc — half circle around midpoint
 func _arc_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var segments: int = max(2, data.segments)
@@ -358,23 +320,15 @@ func _arc_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVect
 
 	return pts
 
-## Step / square (orthogonal) line: exits the source node, makes one 90°
-## turn at `step_distance`, then goes straight into the target node.
-##
-## If the nodes are horizontally further apart than they are vertically,
-## the line exits horizontally first. Otherwise it exits vertically first.
 func _step_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 
 	var dx: float = p2.x - p0.x
 	var dy: float = p2.y - p0.y
 
-	# Dead-zone: if nodes overlap on one axis, collapse that axis.
 	var step: float = max(8.0, data.step_distance)
 
-	# Choose orientation: primary axis is the one with the larger delta.
 	if absf(dx) >= absf(dy):
-		# Exit horizontally, then turn vertically, then enter horizontally.
 		var mid_x: float = p0.x + signf(dx) * min(step, absf(dx) * 0.5)
 
 		pts.push_back(p0)
@@ -382,7 +336,6 @@ func _step_points(p0: Vector2, p2: Vector2, data: BayterekLineData) -> PackedVec
 		pts.push_back(Vector2(mid_x, p2.y))
 		pts.push_back(p2)
 	else:
-		# Exit vertically, then turn horizontally, then enter vertically.
 		var mid_y: float = p0.y + signf(dy) * min(step, absf(dy) * 0.5)
 
 		pts.push_back(p0)

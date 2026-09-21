@@ -20,7 +20,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 		_create_node_from_data(node_data)
 
 func _create_node_from_data(node_data: BayterekNode) -> BayterekNodeButton:
-	var node := _build_node(node_data.type)
+	var node := _create_node_button(node_data)
 	if not node:
 		return null
 
@@ -33,15 +33,8 @@ func _create_node_from_data(node_data: BayterekNode) -> BayterekNodeButton:
 	_tree_view.nodes_container.add_child(node)
 	_nodes[node_data.id] = node
 
-	node.pressed.connect(_on_node_pressed.bind(node))
-	node.node_hovered.connect(_on_node_hovered)
-	node.drag_started.connect(_on_node_drag_started)
-	node.dragged.connect(_on_node_dragged)
-	node.drag_ended.connect(_on_node_drag_ended)
-	node.right_clicked.connect(_on_node_right_clicked)
-
+	_connect_node_signals(node)
 	node.refresh_visuals()
-
 	node_created.emit(node)
 	return node
 
@@ -49,7 +42,7 @@ func create_node_from_data_paste(node_data: BayterekNode) -> BayterekNodeButton:
 	if not node_data:
 		return null
 
-	var node := _build_node(node_data.type)
+	var node := _create_node_button(node_data)
 	if not node:
 		return null
 
@@ -62,15 +55,8 @@ func create_node_from_data_paste(node_data: BayterekNode) -> BayterekNodeButton:
 	_tree_view.nodes_container.add_child(node)
 	_nodes[node_data.id] = node
 
-	node.pressed.connect(_on_node_pressed.bind(node))
-	node.node_hovered.connect(_on_node_hovered)
-	node.drag_started.connect(_on_node_drag_started)
-	node.dragged.connect(_on_node_dragged)
-	node.drag_ended.connect(_on_node_drag_ended)
-	node.right_clicked.connect(_on_node_right_clicked)
-
+	_connect_node_signals(node)
 	node.refresh_visuals()
-
 	node_created.emit(node)
 	return node
 
@@ -84,23 +70,27 @@ func get_all_nodes() -> Array:
 # CREATION
 # ============================================================
 
-func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> BayterekNodeButton:
-	var node := _build_node(node_type)
-	if not node:
-		return null
-
+## Yeni bir node oluşturur. `design` verilirse onu uygular;
+## verilmezse tree'nin default design'ı uygulanır.
+func create_node(position: Vector2, design: BayterekNodeDesign = null) -> BayterekNodeButton:
 	var node_data := BayterekNode.new()
 	node_data.id = _tree_data.get_next_id()
-	node_data.name = _default_name(node_type)
-	node_data.type = node_type
 	node_data.position = position
 	node_data.max_allocations = 1
+
+	if design:
+		node_data.name = design.name
+		node_data.apply_design(design)
+	else:
+		node_data.name = "Node"
+		node_data.apply_defaults_from_tree(_tree_data)
 
 	if not _tree_has_root():
 		node_data.is_root = true
 
-	# Apply tree's default design (copies layers + sizing)
-	node_data.apply_defaults_from_tree(_tree_data)
+	var node := _create_node_button(node_data)
+	if not node:
+		return null
 
 	node.node_data = node_data
 	node.tree_data = _tree_data
@@ -110,18 +100,10 @@ func create_node(position: Vector2, node_type: BayterekNode.NodeType) -> Baytere
 
 	_tree_view.nodes_container.add_child(node)
 	_nodes[node_data.id] = node
-
 	_tree_data.nodes.append(node_data)
 
-	node.pressed.connect(_on_node_pressed.bind(node))
-	node.node_hovered.connect(_on_node_hovered)
-	node.drag_started.connect(_on_node_drag_started)
-	node.dragged.connect(_on_node_dragged)
-	node.drag_ended.connect(_on_node_drag_ended)
-	node.right_clicked.connect(_on_node_right_clicked)
-
+	_connect_node_signals(node)
 	node.refresh_visuals()
-
 	node_created.emit(node)
 	return node
 
@@ -129,15 +111,10 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	if not prefab:
 		return null
 
-	var node := _build_node(prefab.type)
-	if not node:
-		return null
-
 	var node_data := BayterekNode.new()
 	node_data.id = _tree_data.get_next_id()
 	node_data.name = prefab.node_name
 	node_data.description = prefab.description
-	node_data.type = prefab.type
 	node_data.position = position
 	node_data.max_allocations = prefab.max_allocations
 	node_data.attributes = prefab.attributes.duplicate(true)
@@ -145,7 +122,7 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	if not _tree_has_root():
 		node_data.is_root = true
 
-	# 1) Apply prefab's design if set
+	# Design'dan layer'ları uygula (prefab artık kendi layer'larını tutmaz)
 	if not prefab.design_id.is_empty():
 		var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
 		if design:
@@ -153,15 +130,20 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 		else:
 			node_data.apply_defaults_from_tree(_tree_data)
 	else:
-		# 2) Fallback: tree default design
 		node_data.apply_defaults_from_tree(_tree_data)
 
-	# 3) Prefab's own layers override (if any)
-	if prefab.get_layer_count() > 0:
-		node_data.copy_layers_from(prefab.layers)
+	# Prefab exported values → node exported_overrides (başlangıç)
+	if not prefab.exported_values.is_empty():
+		node_data.exported_overrides = prefab.exported_values.duplicate(true)
 
 	if not prefab.reference_id.is_empty():
 		node_data.reference_id = prefab.reference_id
+
+	var node := _create_node_button(node_data)
+	if not node:
+		return null
+
+	if not prefab.reference_id.is_empty():
 		node.prefab = prefab
 		prefab.add_node(node)
 
@@ -173,18 +155,10 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 
 	_tree_view.nodes_container.add_child(node)
 	_nodes[node_data.id] = node
-
 	_tree_data.nodes.append(node_data)
 
-	node.pressed.connect(_on_node_pressed.bind(node))
-	node.node_hovered.connect(_on_node_hovered)
-	node.drag_started.connect(_on_node_drag_started)
-	node.dragged.connect(_on_node_dragged)
-	node.drag_ended.connect(_on_node_drag_ended)
-	node.right_clicked.connect(_on_node_right_clicked)
-
+	_connect_node_signals(node)
 	node.refresh_visuals()
-
 	node_created.emit(node)
 	return node
 
@@ -257,40 +231,43 @@ func update_position(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
 # ============================================================
 
 func on_node_allocated(node: BayterekNodeButton) -> void:
-	if not node or node.type == BayterekNode.NodeType.DECORATION:
+	if not node or _is_decoration(node):
 		return
 	_refresh_node_state(node)
 	_refresh_neighbors(node)
 
 func on_node_deallocated(node: BayterekNodeButton) -> void:
-	if not node or node.type == BayterekNode.NodeType.DECORATION:
+	if not node or _is_decoration(node):
 		return
 	_refresh_node_state(node)
 	_refresh_neighbors(node)
 
 func on_node_preallocated(node: BayterekNodeButton) -> void:
-	if not node or node.type == BayterekNode.NodeType.DECORATION:
+	if not node or _is_decoration(node):
 		return
 	_refresh_node_state(node)
 	_refresh_neighbors(node)
 
 func on_node_unpreallocated(node: BayterekNodeButton) -> void:
-	if not node or node.type == BayterekNode.NodeType.DECORATION:
+	if not node or _is_decoration(node):
 		return
 	_refresh_node_state(node)
 	_refresh_neighbors(node)
 
 func on_node_refund_added(node: BayterekNodeButton) -> void:
-	if not node or node.type == BayterekNode.NodeType.DECORATION:
+	if not node or _is_decoration(node):
 		return
 	_refresh_node_state(node)
 	_refresh_neighbors(node)
 
 func on_node_refund_removed(node: BayterekNodeButton) -> void:
-	if not node or node.type == BayterekNode.NodeType.DECORATION:
+	if not node or _is_decoration(node):
 		return
 	_refresh_node_state(node)
 	_refresh_neighbors(node)
+
+func _is_decoration(node: BayterekNodeButton) -> bool:
+	return node != null and node.node_data != null and node.node_data.is_decoration
 
 func _refresh_neighbors(node: BayterekNodeButton) -> void:
 	var neighbors: Array = node.node_data.out_nodes + node.node_data.in_nodes
@@ -302,7 +279,7 @@ func _refresh_neighbors(node: BayterekNodeButton) -> void:
 func _refresh_node_state(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data:
 		return
-	if node.type == BayterekNode.NodeType.DECORATION:
+	if node.node_data.is_decoration:
 		return
 
 	if node.preallocated:
@@ -340,7 +317,7 @@ func refresh_allocatable_flags(active_ids: Array) -> void:
 	for node in _nodes.values():
 		if not is_instance_valid(node) or not node.node_data:
 			continue
-		if node.type == BayterekNode.NodeType.DECORATION:
+		if node.node_data.is_decoration:
 			continue
 		var was: bool = node.is_allocatable
 		var now: bool = _compute_allocatable(node, active_ids)
@@ -410,9 +387,12 @@ func _compute_allocatable(node: BayterekNodeButton, active_ids: Array) -> bool:
 # PRIVATE
 # ============================================================
 
-func _build_node(node_type: BayterekNode.NodeType) -> BayterekNodeButton:
+## Node button oluşturur ve boyutunu design_size * scale olarak ayarlar.
+func _create_node_button(node_data: BayterekNode) -> BayterekNodeButton:
 	var node := BayterekNodeButton.new()
-	var node_size: Vector2 = _get_node_size(node_type)
+	var node_size: Vector2 = node_data.design_size * node_data.scale
+	if node_size.x <= 0.0 or node_size.y <= 0.0:
+		node_size = Vector2(100, 100)
 	node.size = node_size
 	node.custom_minimum_size = node_size
 	return node
@@ -421,21 +401,13 @@ func _position_node(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
 	var local_pos: Vector2 = pos_in_tree + (_tree_data.size * 0.5) - (node.size * 0.5)
 	node.position = local_pos
 
-func _get_node_size(node_type: BayterekNode.NodeType) -> Vector2:
-	match node_type:
-		BayterekNode.NodeType.SMALL:  return Vector2(27, 27)
-		BayterekNode.NodeType.MEDIUM: return Vector2(48, 48)
-		BayterekNode.NodeType.LARGE:  return Vector2(64, 64)
-		BayterekNode.NodeType.DECORATION: return Vector2(32, 32)
-	return Vector2(32, 32)
-
-func _default_name(node_type: BayterekNode.NodeType) -> String:
-	match node_type:
-		BayterekNode.NodeType.SMALL:  return "Small Node"
-		BayterekNode.NodeType.MEDIUM: return "Medium Node"
-		BayterekNode.NodeType.LARGE:  return "Large Node"
-		BayterekNode.NodeType.DECORATION: return "Decoration"
-	return "Node"
+func _connect_node_signals(node: BayterekNodeButton) -> void:
+	node.pressed.connect(_on_node_pressed.bind(node))
+	node.node_hovered.connect(_on_node_hovered)
+	node.drag_started.connect(_on_node_drag_started)
+	node.dragged.connect(_on_node_dragged)
+	node.drag_ended.connect(_on_node_drag_ended)
+	node.right_clicked.connect(_on_node_right_clicked)
 
 # ============================================================
 # SIGNAL HANDLERS
@@ -468,16 +440,12 @@ func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 
 	if not original or not original.node_data:
 		return null
 
-	var node := _build_node(original.type)
-	if not node:
-		return null
-
 	var src: BayterekNode = original.node_data
 	var node_data := BayterekNode.new()
 	node_data.id = _tree_data.get_next_id()
 	node_data.name = src.name
 	node_data.description = src.description
-	node_data.type = src.type
+	node_data.is_decoration = src.is_decoration
 	node_data.position = src.position + offset
 	node_data.max_allocations = src.max_allocations
 	node_data.attributes = src.attributes.duplicate(true)
@@ -486,14 +454,20 @@ func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 
 	node_data.design_id = src.design_id
 	node_data.design_size = src.design_size
 	node_data.scale = src.scale
+	node_data.exported_overrides = src.exported_overrides.duplicate(true)
 
 	node_data.copy_layers_from(src.layers)
 
 	if not src.reference_id.is_empty():
 		node_data.reference_id = src.reference_id
+
+	var node := _create_node_button(node_data)
+	if not node:
+		return null
+
+	if not src.reference_id.is_empty() and original.prefab:
 		node.prefab = original.prefab
-		if original.prefab:
-			original.prefab.add_node(node)
+		original.prefab.add_node(node)
 
 	node.node_data = node_data
 	node.tree_data = _tree_data
@@ -503,15 +477,9 @@ func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 
 
 	_tree_view.nodes_container.add_child(node)
 	_nodes[node_data.id] = node
+	_tree_data.nodes.append(node_data)
 
-	node.pressed.connect(_on_node_pressed.bind(node))
-	node.node_hovered.connect(_on_node_hovered)
-	node.drag_started.connect(_on_node_drag_started)
-	node.dragged.connect(_on_node_dragged)
-	node.drag_ended.connect(_on_node_drag_ended)
-	node.right_clicked.connect(_on_node_right_clicked)
-
+	_connect_node_signals(node)
 	node.refresh_visuals()
-
 	node_created.emit(node)
 	return node

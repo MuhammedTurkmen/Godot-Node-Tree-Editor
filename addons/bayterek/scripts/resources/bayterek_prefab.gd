@@ -1,108 +1,58 @@
 @tool
 class_name BayterekPrefab
 extends Resource
-## Shared node template. Mirrors BayterekNode's layer system.
-
-# ============================================================
-# SIGNALS
-# ============================================================
+## Shared node template. Design'ı referans alır + sadece override edilebilir
+## field'ları tutar.
 
 signal name_changed(prefab: BayterekPrefab)
 signal description_changed(prefab: BayterekPrefab)
 signal attribute_changed(prefab: BayterekPrefab, attribute_id: String, removed: bool)
 signal max_allocations_changed(prefab: BayterekPrefab)
-
-## Emitted whenever the layer stack changes (add / remove / modify / reorder / reset).
-## `change_type` is one of: "add", "remove", "modify", "reorder", "reset".
-signal layers_changed(prefab: BayterekPrefab, change_type: String)
-
-# ============================================================
-# IDENTITY
-# ============================================================
+signal exported_values_changed(prefab: BayterekPrefab)
 
 @export_storage var reference_id: String
 @export_storage var id: String
 @export_storage var node_name: String
 @export_storage var description: String
-@export_storage var type: BayterekNode.NodeType = BayterekNode.NodeType.SMALL
+@export_storage var design_id: String = ""
 @export_storage var attributes: Dictionary = {}
 @export_storage var max_allocations: int = 1
 
-# ============================================================
-# LAYOUT
-# ============================================================
+@export_storage var exported_fields: Dictionary = {}
+@export_storage var exported_values: Dictionary = {}
 
-@export_storage var design_size: Vector2 = Vector2(100, 100)
-@export_storage var scale: Vector2 = Vector2.ONE
-
-# ============================================================
-# LAYERS
-# ============================================================
-
-@export_storage var layers: Array[BayterekLayer] = []
-
-## Runtime-only: nodes bound to this prefab. Not saved.
 var nodes: Array = []
 
 # ============================================================
-# LAYER MANAGEMENT
+# EXPORTED FIELD HELPERS
 # ============================================================
 
-func can_add_layer() -> bool:
-	return layers.size() < BayterekNode.MAX_LAYERS
+func is_field_exported(field_path: String) -> bool:
+	return exported_fields.get(field_path, false)
 
-func get_layer_count() -> int:
-	return layers.size()
+func get_exported_value(field_path: String) -> Variant:
+	return exported_values.get(field_path, null)
 
-func add_layer(layer: BayterekLayer) -> bool:
-	if not layer or not can_add_layer():
-		return false
-	layers.append(layer)
-	layers_changed.emit(self, "add")
-	return true
+func set_exported_value(field_path: String, value: Variant) -> void:
+	if not is_field_exported(field_path):
+		return
+	exported_values[field_path] = value
+	exported_values_changed.emit(self)
 
-func remove_layer(index: int) -> BayterekLayer:
-	if index < 0 or index >= layers.size():
-		return null
-	var removed: BayterekLayer = layers[index]
-	layers.remove_at(index)
-	layers_changed.emit(self, "remove")
-	return removed
+## Returns the effective value for `field_path`:
+## - If an override exists in this prefab, returns that.
+## - Otherwise reads from `design`.
+func get_resolved_value(design: BayterekNodeDesign, field_path: String) -> Variant:
+	if exported_values.has(field_path):
+		return exported_values[field_path]
+	if design:
+		return design.get_field_value(field_path)
+	return null
 
-func move_layer(from_index: int, to_index: int) -> bool:
-	if from_index < 0 or from_index >= layers.size():
-		return false
-	if to_index < 0 or to_index >= layers.size():
-		return false
-	if from_index == to_index:
-		return false
-	var layer: BayterekLayer = layers[from_index]
-	layers.remove_at(from_index)
-	layers.insert(to_index, layer)
-	layers_changed.emit(self, "reorder")
-	return true
-
-func get_layer(index: int) -> BayterekLayer:
-	if index < 0 or index >= layers.size():
-		return null
-	return layers[index]
-
-func clear_layers() -> void:
-	layers.clear()
-	layers_changed.emit(self, "reset")
-
-## Called after a layer's internal fields have been modified externally.
-## Emits the signal so bound nodes refresh.
-func notify_layer_modified() -> void:
-	layers_changed.emit(self, "modify")
-
-## Deep-copies all layers from another source.
-func copy_layers_from(source_layers: Array) -> void:
-	layers.clear()
-	for layer in source_layers:
-		if layer is BayterekLayer:
-			layers.append(layer.duplicate_layer())
-	layers_changed.emit(self, "reset")
+func copy_exported_fields_from(design: BayterekNodeDesign) -> void:
+	if not design:
+		return
+	exported_fields = design.exported_fields.duplicate(true)
 
 # ============================================================
 # NODE BINDING
@@ -127,7 +77,7 @@ func get_nodes() -> Array:
 	return nodes
 
 # ============================================================
-# SETTERS (emit signals)
+# SETTERS
 # ============================================================
 
 func set_node_name(new_name: String) -> void:
@@ -214,6 +164,7 @@ func orphan_all_nodes() -> void:
 		if node.node_data:
 			node.node_data.reference_id = ""
 			node.node_data.clear_all_attribute_overrides()
+			node.node_data.clear_all_exported_overrides()
 	nodes.clear()
 
 func for_each_node(callback: Callable) -> void:

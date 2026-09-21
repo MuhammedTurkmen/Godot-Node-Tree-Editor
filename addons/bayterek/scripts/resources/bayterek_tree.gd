@@ -33,14 +33,11 @@ extends Resource
 
 @export_storage var id_counter: int = 0
 @export_storage var border_scale: float = 1.5
-@export_storage var icon_sizes: Dictionary = {}
-@export_storage var icons: Dictionary = {}
-@export_storage var node_size: Dictionary = {}
+
 @export_storage var nodes: Array[BayterekNode] = []
 @export_storage var decorations: Array[BayterekNode] = []
-@export_storage var prefabs: Dictionary = {}
+@export_storage var prefabs: Array[BayterekPrefab] = []
 @export_storage var attributes: Dictionary = {}
-
 @export_storage var node_groups: Array[BayterekNodeGroup] = []
 
 # Editor layout
@@ -48,8 +45,10 @@ extends Resource
 @export_storage var prefabs_split_offset: int = -180
 @export_storage var inspector_split_offset: int = -320
 
+## Prefab bar görünürlüğü (kalıcı).
+@export_storage var prefabs_bar_visible: bool = true
+
 ## Default design applied to newly created nodes.
-## Empty string → fall back to a built-in default (or nothing).
 @export_storage var default_design_id: String = ""
 
 var tree_state: BayterekTreeState
@@ -57,24 +56,9 @@ var tree_state: BayterekTreeState
 func _init() -> void:
 	nodes = []
 	decorations = []
-	prefabs = {}
+	prefabs = []
 	attributes = {}
 	node_groups = []
-	icon_sizes = {
-		BayterekNode.NodeType.SMALL: Vector2.ZERO,
-		BayterekNode.NodeType.MEDIUM: Vector2.ZERO,
-		BayterekNode.NodeType.LARGE: Vector2.ZERO
-	}
-	icons = {
-		BayterekNode.NodeType.SMALL: null,
-		BayterekNode.NodeType.MEDIUM: null,
-		BayterekNode.NodeType.LARGE: null
-	}
-	node_size = {
-		BayterekNode.NodeType.SMALL: Vector2(27, 27),
-		BayterekNode.NodeType.MEDIUM: Vector2(48, 48),
-		BayterekNode.NodeType.LARGE: Vector2(64, 64)
-	}
 	tree_state = BayterekTreeState.new()
 
 	hierarchy_split_offset = 200
@@ -85,13 +69,32 @@ func get_next_id() -> int:
 	id_counter += 1
 	return id_counter
 
-func get_node_size(node_type: BayterekNode.NodeType) -> Vector2:
-	return node_size.get(node_type, Vector2.ZERO)
-
 func get_godot_texture_filter() -> int:
 	match texture_filter:
 		1: return CanvasItem.TEXTURE_FILTER_NEAREST
 		_: return CanvasItem.TEXTURE_FILTER_LINEAR
+
+# ============================================================
+# PREFAB HELPERS
+# ============================================================
+
+func get_prefab_by_reference_id(reference_id: String) -> BayterekPrefab:
+	if reference_id.is_empty():
+		return null
+	for p in prefabs:
+		if p and p.reference_id == reference_id:
+			return p
+	return null
+
+func add_prefab(prefab: BayterekPrefab) -> void:
+	if not prefab:
+		return
+	if prefabs.has(prefab):
+		return
+	prefabs.append(prefab)
+
+func remove_prefab(prefab: BayterekPrefab) -> void:
+	prefabs.erase(prefab)
 
 # ============================================================
 # GROUP HELPERS

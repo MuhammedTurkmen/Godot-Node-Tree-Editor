@@ -57,9 +57,9 @@ var description: String:
 	get: return node_data.description if node_data else ""
 	set(v): if node_data: node_data.description = v
 
-var type: BayterekNode.NodeType:
-	get: return node_data.type if node_data else BayterekNode.NodeType.SMALL
-	set(v): if node_data: node_data.type = v
+var is_decoration: bool:
+	get: return node_data.is_decoration if node_data else false
+	set(v): if node_data: node_data.is_decoration = v
 
 var position_data: Vector2:
 	get: return node_data.position if node_data else Vector2.ZERO
@@ -102,6 +102,7 @@ func _build_children() -> void:
 	_crown_label.name = "Crown"
 	_crown_label.text = "👑"
 	_crown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_crown_label.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_crown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_crown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_crown_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
@@ -144,6 +145,7 @@ func refresh_visuals() -> void:
 	if not node_data:
 		return
 
+	_sync_size_with_design()
 	_recompute_active_states()
 
 	if _crown_label:
@@ -153,6 +155,18 @@ func refresh_visuals() -> void:
 		_select_border.visible = selected
 
 	queue_redraw()
+
+## Ensures this button's size matches design_size * scale.
+## Called on every refresh so design changes propagate to the hit box.
+func _sync_size_with_design() -> void:
+	var target: Vector2 = node_data.design_size * node_data.scale
+	if target.x <= 0.0 or target.y <= 0.0:
+		target = Vector2(100, 100)
+
+	if size != target:
+		size = target
+	if custom_minimum_size != target:
+		custom_minimum_size = target
 
 func set_state(new_state: Bayterek.AllocationState) -> void:
 	state = new_state
@@ -208,7 +222,6 @@ func _draw_shape_layer(
 ) -> void:
 	var combined: Transform2D = base_xform * layer_matrix
 
-	# --- Shadow (based on full outline) ---
 	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
 		var full_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
 		if not full_verts.is_empty():
@@ -217,7 +230,6 @@ func _draw_shape_layer(
 	var draw_border: bool = layer.should_draw_border(state_key)
 	var draw_fill: bool = layer.should_draw_fill(state_key)
 
-	# --- Fill (bottom layer) ---
 	if draw_fill:
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
@@ -227,7 +239,6 @@ func _draw_shape_layer(
 			if not fill_verts.is_empty():
 				_draw_shape_fill(fill_verts, combined, fill_color)
 
-	# --- Border (ring on top of fill) ---
 	if draw_border:
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
@@ -242,9 +253,6 @@ func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Colo
 		transformed[i] = xform * verts[i]
 	draw_colored_polygon(transformed, color)
 
-## Draws the border as a thick polyline along the centerline. This produces
-## a proper ring — the interior stays empty (or filled by the fill polygon
-## drawn underneath), which is what you want when fill is disabled.
 func _draw_shape_border_ring(
 	verts: PackedVector2Array,
 	xform: Transform2D,
@@ -262,7 +270,6 @@ func _draw_shape_border_ring(
 
 	draw_polyline(pts, color, width, true)
 
-## Draws the shadow with optional multi-pass blur.
 func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
 	var offset: Vector2 = layer.shadow_size
 	var blur: float = layer.shadow_blur
@@ -291,7 +298,6 @@ func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xf
 		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + pass_offset)
 		_draw_shape_fill(expanded, shadow_xform, color_per_pass)
 
-## Offsets each vertex outward from center by `offset`. Used for shadow blur.
 func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	out.resize(verts.size())

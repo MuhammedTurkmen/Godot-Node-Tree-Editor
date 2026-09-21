@@ -2,17 +2,18 @@
 class_name BayterekLayerStateTextures
 extends VBoxContainer
 ## 8-row state texture editor.
-## Each row: [CheckBox] [Label] [TextureInput]
 
 signal changed
 
 var _configs: Dictionary = {}
 var _updating: bool = false
 
-var _rows: Dictionary = {}  # state -> {check, input}
+var _rows: Dictionary = {}
 var _owner_layer: BayterekLayer = null
 
 var _ui_ready: bool = false
+
+var _design: BayterekNodeDesign = null
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 2)
@@ -44,7 +45,7 @@ func _build_ui() -> void:
 		input.cleared.connect(_on_texture_cleared.bind(state))
 		row.add_child(input)
 
-		_rows[state] = {"check": check, "input": input}
+		_rows[state] = {"check": check, "input": input, "row": row}
 
 # ============================================================
 # PUBLIC
@@ -55,10 +56,32 @@ func bind(layer: BayterekLayer) -> void:
 	if _ui_ready:
 		_refresh_from_data()
 
+## Attaches export functionality to each state row.
+func bind_export(design: BayterekNodeDesign, layer_id: String, on_changed: Callable = Callable()) -> void:
+	_design = design
+
+	if not design or layer_id.is_empty():
+		return
+
+	for state in BayterekLayer.STATES:
+		if not _rows.has(state):
+			continue
+		var row: HBoxContainer = _rows[state].get("row", null)
+		if not row:
+			continue
+
+		var fp_enabled: String = "layers.%s.icon_configs.%s.enabled" % [layer_id, state]
+		var fp_texture: String = "layers.%s.icon_configs.%s.texture" % [layer_id, state]
+
+		BayterekExportHelper.make_exportable(row, fp_enabled, design, on_changed)
+
+		var tex_input: BayterekInspectorTextureInput = _rows[state].get("input", null)
+		if tex_input:
+			BayterekExportHelper.make_exportable(tex_input, fp_texture, design, on_changed)
+
 func _refresh_from_data() -> void:
 	if not _owner_layer:
 		return
-
 	if not _ui_ready:
 		return
 	if _rows.size() < BayterekLayer.STATES.size():
@@ -70,7 +93,6 @@ func _refresh_from_data() -> void:
 	if _owner_layer is BayterekTextureLayer:
 		var raw = _owner_layer.icon_configs
 		if raw is Dictionary:
-			# Normalize / repair
 			for state in raw.keys():
 				var entry = raw[state]
 				if entry is Dictionary:

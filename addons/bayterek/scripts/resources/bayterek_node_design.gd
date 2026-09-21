@@ -2,12 +2,11 @@
 class_name BayterekNodeDesign
 extends Resource
 ## Global node design template.
-## Lives in res://bayterek_data/designs/ as its own .tres file.
-## Holds the visual layer stack and design-time sizing.
 
 signal layers_changed(design: BayterekNodeDesign, change_type: String)
 signal name_changed(design: BayterekNodeDesign)
 signal description_changed(design: BayterekNodeDesign)
+signal exported_fields_changed(design: BayterekNodeDesign)
 
 @export_storage var id: String = ""
 @export_storage var name: String = "New Design"
@@ -18,6 +17,216 @@ signal description_changed(design: BayterekNodeDesign)
 @export_storage var scale: Vector2 = Vector2.ONE
 
 @export_storage var layers: Array[BayterekLayer] = []
+
+@export_storage var exported_fields: Dictionary = {}
+
+# ============================================================
+# EXPORTED FIELDS
+# ============================================================
+
+func is_field_exported(field_path: String) -> bool:
+	return exported_fields.get(field_path, false)
+
+func set_field_exported(field_path: String, exported: bool) -> void:
+	if exported:
+		exported_fields[field_path] = true
+	else:
+		exported_fields.erase(field_path)
+	exported_fields_changed.emit(self)
+
+func clear_all_exported_fields() -> void:
+	exported_fields.clear()
+	exported_fields_changed.emit(self)
+
+# ============================================================
+# FIELD PATH API
+# ============================================================
+
+## Parses a field path into structured components.
+## Returns a Dictionary with keys:
+##   - "root": "design_size" | "scale" | "layer"
+##   - "layer_id": String (only if root == "layer")
+##   - "segments": Array[String] — remaining segments after layer_id
+func parse_field_path(path: String) -> Dictionary:
+	if path.is_empty():
+		return {}
+
+	var parts: Array = path.split(".")
+	if parts.is_empty():
+		return {}
+
+	var root: String = parts[0]
+
+	if root == "design_size" or root == "scale":
+		return {"root": root, "segments": []}
+
+	if root == "layers":
+		if parts.size() < 2:
+			return {}
+		var layer_id: String = parts[1]
+		var segments: Array = []
+		for i in range(2, parts.size()):
+			segments.append(parts[i])
+		return {"root": "layer", "layer_id": layer_id, "segments": segments}
+
+	return {}
+
+## Returns the value at `field_path` in this design.
+func get_field_value(field_path: String) -> Variant:
+	var parsed: Dictionary = parse_field_path(field_path)
+	if parsed.is_empty():
+		return null
+
+	var root: String = parsed.get("root", "")
+
+	match root:
+		"design_size":
+			return design_size
+		"scale":
+			return scale
+		"layer":
+			var layer_id: String = parsed.get("layer_id", "")
+			var layer: BayterekLayer = get_layer_by_id(layer_id)
+			if not layer:
+				return null
+			var segments: Array = parsed.get("segments", [])
+			return _get_property_in_object(layer, segments)
+
+	return null
+
+## Sets the value at `field_path`. Emits `layers_changed` for layer fields.
+func set_field_value(field_path: String, value: Variant) -> void:
+	var parsed: Dictionary = parse_field_path(field_path)
+	if parsed.is_empty():
+		return
+
+	var root: String = parsed.get("root", "")
+
+	match root:
+		"design_size":
+			design_size = value
+		"scale":
+			scale = value
+		"layer":
+			var layer_id: String = parsed.get("layer_id", "")
+			var layer: BayterekLayer = get_layer_by_id(layer_id)
+			if not layer:
+				return
+			var segments: Array = parsed.get("segments", [])
+			_set_property_in_object(layer, segments, value)
+			notify_layer_modified()
+
+## Validates whether a given path is a real field on this design.
+func is_field_exportable(field_path: String) -> bool:
+	var parsed: Dictionary = parse_field_path(field_path)
+	if parsed.is_empty():
+		return false
+
+	var root: String = parsed.get("root", "")
+
+	if root == "design_size" or root == "scale":
+		return true
+
+	if root == "layer":
+		var layer_id: String = parsed.get("layer_id", "")
+		var layer: BayterekLayer = get_layer_by_id(layer_id)
+		if not layer:
+			return false
+		var segments: Array = parsed.get("segments", [])
+		return _is_property_reachable(layer, segments)
+
+	return false
+
+# ============================================================
+# PROPERTY WALKING
+# ============================================================
+
+func _get_property_in_object(obj: Object, segments: Array) -> Variant:
+	if not obj or segments.is_empty():
+		return obj
+
+	var current: Variant = obj
+	for seg in segments:
+		if current == null:
+			return null
+		var key: String = String(seg)
+		if current is Object:
+			var obj_current: Object = current
+			var found: bool = false
+			for prop in obj_current.get_property_list():
+				if prop.get("name", "") == key:
+					current = obj_current.get(key)
+					found = true
+					break
+			if not found:
+				return null
+		elif current is Dictionary:
+			if not current.has(key):
+				return null
+			current = current[key]
+		else:
+			return null
+	return current
+
+func _set_property_in_object(obj: Object, segments: Array, value: Variant) -> void:
+	if not obj or segments.is_empty():
+		return
+
+	var current: Variant = obj
+	for i in range(segments.size() - 1):
+		var seg: String = String(segments[i])
+		if current is Object:
+			var obj_current: Object = current
+			var found: bool = false
+			for prop in obj_current.get_property_list():
+				if prop.get("name", "") == seg:
+					current = obj_current.get(seg)
+					found = true
+					break
+			if not found:
+				return
+		elif current is Dictionary:
+			if not current.has(seg):
+				return
+			current = current[seg]
+		else:
+			return
+
+	var last_seg: String = String(segments[segments.size() - 1])
+	if current is Object:
+		var obj_current: Object = current
+		obj_current.set(last_seg, value)
+	elif current is Dictionary:
+		current[last_seg] = value
+
+func _is_property_reachable(obj: Object, segments: Array) -> bool:
+	if not obj:
+		return false
+	if segments.is_empty():
+		return true
+
+	var current: Variant = obj
+	for seg in segments:
+		if current == null:
+			return false
+		var key: String = String(seg)
+		if current is Object:
+			var obj_current: Object = current
+			var found: bool = false
+			for prop in obj_current.get_property_list():
+				if prop.get("name", "") == key:
+					current = obj_current.get(key)
+					found = true
+					break
+			if not found:
+				return false
+		elif current is Dictionary:
+			if not current.has(key):
+				return false
+			current = current[key]
+		else:
+			return false
+	return true
 
 # ============================================================
 # LAYER MANAGEMENT
@@ -62,15 +271,21 @@ func get_layer(index: int) -> BayterekLayer:
 		return null
 	return layers[index]
 
+func get_layer_by_id(layer_id: String) -> BayterekLayer:
+	if layer_id.is_empty():
+		return null
+	for layer in layers:
+		if layer and layer.layer_id == layer_id:
+			return layer
+	return null
+
 func clear_layers() -> void:
 	layers.clear()
 	layers_changed.emit(self, "reset")
 
-## Notifies listeners that a layer inside the stack was modified.
 func notify_layer_modified() -> void:
 	layers_changed.emit(self, "modify")
 
-## Deep-copies all layers from another source.
 func copy_layers_from(source_layers: Array) -> void:
 	layers.clear()
 	for layer in source_layers:
@@ -98,16 +313,16 @@ func set_description(new_desc: String) -> void:
 # DUPLICATE
 # ============================================================
 
-## Returns a deep copy of this design (new instance, new identity).
 func duplicate_design() -> BayterekNodeDesign:
 	var copy := BayterekNodeDesign.new()
-	copy.id = ""  # caller assigns
+	copy.id = ""
 	copy.name = name + " Copy"
 	copy.description = description
 	copy.category = category
 	copy.design_size = design_size
 	copy.scale = scale
 	copy.copy_layers_from(layers)
+	copy.exported_fields = exported_fields.duplicate(true)
 	return copy
 
 func _to_string() -> String:

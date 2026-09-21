@@ -196,7 +196,7 @@ func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
 	if not _tooltip:
 		return
 
-	if node and node.type == BayterekNode.NodeType.DECORATION:
+	if node and node.node_data and node.node_data.is_decoration:
 		return
 
 	if is_hovered:

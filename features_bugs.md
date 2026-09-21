@@ -6,20 +6,21 @@
 
 ## MEDIUM
 [] bağlantı çizgileri düzenlenecek 
+[] node editorde node'u kayıt edip etmediğimi anlayamıyorum
 
 ## HARD
 [] yetenek ağacındaki çerçeve tipleri
 	[] başlıklı dikdörtgen
 	[] başlık altı çizili 
 [] düğüm düzenleyici ekleyelim
-	[] 
 
 # Bugs 
 
 ## EASY
 
 ## MEDIUM
-[] gruplanmamış düğümleri toplu silince hierarchy doğru güncellenmedi
+[] gruplanmamış düğümleri toplu silince hiyerarşide doğru güncellenmedi
+- ungrouped kısmı silinmiyor hiyerarşiden
 
 ## HARD
 [] araç bilgisi

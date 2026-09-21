@@ -2,10 +2,6 @@
 class_name BayterekDesignService
 extends RefCounted
 ## Design CRUD + disk operations.
-## All design files live in res://data/bayterek/designs/.
-##
-## File naming: snake_case of the design name + ".tres"
-## ID: same as file basename (unique)
 
 signal design_created(design: BayterekNodeDesign)
 signal design_removed(design: BayterekNodeDesign)
@@ -18,31 +14,81 @@ const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 # QUERY
 # ============================================================
 
-## Returns all designs from the registry.
 static func get_all_designs() -> Array:
 	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
 	if not reg:
 		return []
 	return reg.designs.duplicate()
 
-## Returns a design by its id, or null.
 static func get_design(design_id: String) -> BayterekNodeDesign:
 	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
 	if not reg:
 		return null
 	return reg.get_design_by_id(design_id)
 
-## True if a design with this id exists.
 static func has_design(design_id: String) -> bool:
 	return get_design(design_id) != null
+
+## Returns a Dictionary mapping category_name -> Array[BayterekNodeDesign].
+## Empty category is grouped under "Uncategorized".
+## Categories are sorted alphabetically, "Uncategorized" always LAST.
+static func get_designs_grouped_by_category() -> Dictionary:
+	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
+	if not reg:
+		return {}
+
+	var groups: Dictionary = {}
+	for design in reg.designs:
+		if not design:
+			continue
+		var cat: String = design.category.strip_edges()
+		if cat.is_empty():
+			cat = "Uncategorized"
+		if not groups.has(cat):
+			groups[cat] = []
+		groups[cat].append(design)
+
+	# Build sorted Dictionary (Godot Dictionary preserves insertion order)
+	var named: Array = []
+	var uncategorized: Array = []
+	for key in groups.keys():
+		if key == "Uncategorized":
+			uncategorized.append(key)
+		else:
+			named.append(key)
+
+	named.sort()
+
+	var result: Dictionary = {}
+	for key in named:
+		result[key] = groups[key]
+	for key in uncategorized:
+		result[key] = groups[key]
+
+	return result
+
+## Returns all unique categories (including "Uncategorized" if any design has empty category).
+static func get_all_categories() -> Array:
+	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
+	if not reg:
+		return []
+
+	var cats: Dictionary = {}
+	for design in reg.designs:
+		if not design:
+			continue
+		var cat: String = design.category.strip_edges()
+		if not cat.is_empty():
+			cats[cat] = true
+
+	var result: Array = cats.keys()
+	result.sort()
+	return result
 
 # ============================================================
 # CREATE
 # ============================================================
 
-## Creates a new design and saves it to disk.
-## Returns the created design, or null on failure.
-## If `base_name` conflicts, appends a counter.
 static func create_design(base_name: String = "New Design", category: String = "") -> BayterekNodeDesign:
 	_ensure_designs_dir()
 
@@ -57,30 +103,15 @@ static func create_design(base_name: String = "New Design", category: String = "
 	design.design_size = Vector2(100, 100)
 	design.scale = Vector2.ONE
 
-	# --- Default background layer ---
-	# Start from a fresh shape layer so it inherits ALL default field values
-	# from BayterekShapeLayer._init() (fill_configs, border_configs,
-	# corner_radius, shadow settings, etc). Then override just what we
-	# want for the default design.
 	var shape := BayterekShapeLayer.new()
 	shape.layer_name = "Background"
 	shape.shape_type = BayterekShapeLayer.ShapeType.SQUARE
 	shape.transform.size = design.design_size
-
-	# Corner radius: a pleasing default that scales with the design size.
-	# The layer will clamp it against its own geometry at render time.
 	shape.corner_radius = design.design_size.x * 0.15
-
-	# Enable fill + border with the "normal" state only.
-	# Other states keep their default (disabled) values from the layer's
-	# default configs, so the user can enable them later without losing
-	# the pre-populated palette.
 	shape.fill_enabled = true
 	shape.border_enabled = true
 	shape.border_width = 2.0
 
-	# Override just the "normal" fill/border colors — merge into the
-	# existing defaults so hover/locked/etc. configs are preserved.
 	shape.fill_configs["normal"] = {
 		"enabled": true,
 		"color": Color(0.4, 0.7, 1.0, 1.0),
@@ -112,7 +143,6 @@ static func create_design(base_name: String = "New Design", category: String = "
 
 	return saved
 
-## Duplicates an existing design.
 static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 	if not source:
 		return null
@@ -151,7 +181,6 @@ static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 # UPDATE
 # ============================================================
 
-## Saves the design to its current resource_path.
 static func save_design(design: BayterekNodeDesign) -> Error:
 	if not design:
 		return FAILED
@@ -161,7 +190,6 @@ static func save_design(design: BayterekNodeDesign) -> Error:
 
 	return ResourceSaver.save(design, design.resource_path)
 
-## Renames a design (updates name + moves file if needed).
 static func rename_design(design: BayterekNodeDesign, new_name: String) -> bool:
 	if not design:
 		return false
@@ -177,24 +205,20 @@ static func rename_design(design: BayterekNodeDesign, new_name: String) -> bool:
 	var old_path: String = design.resource_path
 	var new_path: String = "%s/%s.tres" % [Bayterek.get_designs_dir(), new_snake]
 
-	# Same id? Only update the display name.
 	if new_snake == design.id:
 		design.set_design_name(trimmed)
 		save_design(design)
 		Bayterek.save_designs_registry()
 		return true
 
-	# Collision check
 	if FileAccess.file_exists(new_path):
 		push_warning("Bayterek: Design file already exists: %s" % new_path)
 		return false
 
-	# Ensure unique id
 	if Bayterek.get_designs_registry().has_design_id(new_snake):
 		push_warning("Bayterek: Design id already in use: %s" % new_snake)
 		return false
 
-	# Rename file on disk
 	if not old_path.is_empty() and FileAccess.file_exists(old_path):
 		var rename_err: Error = DirAccess.rename_absolute(old_path, new_path)
 		if rename_err != OK:
@@ -215,7 +239,6 @@ static func rename_design(design: BayterekNodeDesign, new_name: String) -> bool:
 # DELETE
 # ============================================================
 
-## Deletes a design and its file. Returns true on success.
 static func delete_design(design: BayterekNodeDesign) -> bool:
 	if not design:
 		return false
@@ -224,11 +247,9 @@ static func delete_design(design: BayterekNodeDesign) -> bool:
 	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
 	reg.remove_design(design)
 
-	# Remove file
 	if not path.is_empty() and FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
 
-	# Remove .uid sidecar if present
 	var uid_path: String = path + ".uid"
 	if FileAccess.file_exists(uid_path):
 		DirAccess.remove_absolute(uid_path)
@@ -242,7 +263,6 @@ static func delete_design(design: BayterekNodeDesign) -> bool:
 # RELOAD
 # ============================================================
 
-## Reloads the designs registry from disk.
 static func reload() -> void:
 	Bayterek.reload_designs_registry()
 
@@ -255,8 +275,6 @@ static func _ensure_designs_dir() -> void:
 	if not DirAccess.dir_exists_absolute(dir_path):
 		DirAccess.make_dir_recursive_absolute(dir_path)
 
-## Generates a unique display name based on `base_name`.
-## If "Name" exists, tries "Name 2", "Name 3", ...
 static func _make_unique_name(base_name: String) -> String:
 	var trimmed: String = base_name.strip_edges()
 	if trimmed.is_empty():
@@ -266,7 +284,6 @@ static func _make_unique_name(base_name: String) -> String:
 	if not reg:
 		return trimmed
 
-	# Build a set of existing names
 	var existing_names: Dictionary = {}
 	for d in reg.designs:
 		if d:

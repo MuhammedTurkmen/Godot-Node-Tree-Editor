@@ -3,13 +3,6 @@ class_name BayterekNode
 extends Resource
 ## Data model for a single node.
 
-enum NodeType {
-	SMALL,
-	MEDIUM,
-	LARGE,
-	DECORATION,
-}
-
 enum PrerequisiteMode {
 	ANY,
 	COUNT,
@@ -24,15 +17,13 @@ const MAX_LAYERS := 6
 # ============================================================
 
 @export_storage var is_root: bool = false
+@export_storage var is_decoration: bool = false
 @export_storage var reference_id: String = ""
 @export_storage var id: int = 0
 @export_storage var external_id: String = ""
 @export_storage var name: String = ""
 @export_storage var description: String = ""
 
-@export_storage var type: NodeType = NodeType.SMALL
-
-## Design reference — which BayterekNodeDesign this node uses.
 @export_storage var design_id: String = ""
 
 # ============================================================
@@ -69,7 +60,7 @@ const MAX_LAYERS := 6
 @export_storage var group_id: String = ""
 
 # ============================================================
-# LAYERS (max 6)
+# LAYERS
 # ============================================================
 
 @export_storage var layers: Array[BayterekLayer] = []
@@ -79,6 +70,7 @@ const MAX_LAYERS := 6
 # ============================================================
 
 @export_storage var overridden_attributes: Dictionary = {}
+@export_storage var exported_overrides: Dictionary = {}
 
 func has_attribute_override(attr_id: String) -> bool:
 	return overridden_attributes.has(attr_id)
@@ -91,6 +83,33 @@ func clear_attribute_override(attr_id: String) -> void:
 
 func clear_all_attribute_overrides() -> void:
 	overridden_attributes.clear()
+
+# ============================================================
+# EXPORTED OVERRIDES
+# ============================================================
+
+func has_exported_override(field_path: String) -> bool:
+	return exported_overrides.has(field_path)
+
+func set_exported_override(field_path: String, value: Variant) -> void:
+	exported_overrides[field_path] = value
+
+func clear_exported_override(field_path: String) -> void:
+	exported_overrides.erase(field_path)
+
+func clear_all_exported_overrides() -> void:
+	exported_overrides.clear()
+
+## Returns the effective exported value for a field.
+## Priority: node override > prefab exported_values > design's own value.
+func resolve_exported_value(field_path: String, prefab: BayterekPrefab, design: BayterekNodeDesign) -> Variant:
+	if exported_overrides.has(field_path):
+		return exported_overrides[field_path]
+	if prefab and prefab.exported_values.has(field_path):
+		return prefab.exported_values[field_path]
+	if design:
+		return design.get_field_value(field_path)
+	return null
 
 # ============================================================
 # LAYER MANAGEMENT
@@ -134,6 +153,14 @@ func get_layer(index: int) -> BayterekLayer:
 		return null
 	return layers[index]
 
+func get_layer_by_id(layer_id: String) -> BayterekLayer:
+	if layer_id.is_empty():
+		return null
+	for layer in layers:
+		if layer and layer.layer_id == layer_id:
+			return layer
+	return null
+
 func clear_layers() -> void:
 	layers.clear()
 
@@ -147,7 +174,6 @@ func copy_layers_from(source_layers: Array) -> void:
 # DESIGN APPLICATION
 # ============================================================
 
-## Applies a specific design's layers + sizing to this node.
 func apply_design(design: BayterekNodeDesign) -> void:
 	if not design:
 		return
@@ -156,8 +182,6 @@ func apply_design(design: BayterekNodeDesign) -> void:
 	scale = design.scale
 	copy_layers_from(design.layers)
 
-## Applies the tree's default design (if any).
-## Called by BayterekNodesService when creating new nodes.
 func apply_defaults_from_tree(tree: BayterekTree) -> void:
 	if not tree:
 		return
@@ -174,9 +198,6 @@ func apply_defaults_from_tree(tree: BayterekTree) -> void:
 # ACTIVE STATE RESOLUTION
 # ============================================================
 
-## Returns the currently active node-level states as a Dictionary
-## {"state_name": bool}. Computed once per visual refresh, then passed
-## to each layer.
 func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
 	var result: Dictionary = {}
 

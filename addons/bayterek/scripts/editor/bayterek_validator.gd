@@ -2,8 +2,6 @@
 class_name BayterekValidator
 extends Control
 ## Validates tree configuration and shows warnings/errors.
-## Warnings: non-critical issues (missing textures, bad settings).
-## Errors: critical issues (no root node, invalid sizes).
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 const FadeOut = preload("res://addons/bayterek/scripts/editor/ui/fade_out.gd")
@@ -12,7 +10,6 @@ signal validation_finished(warning_count: int, error_count: int)
 
 @export var editor: BayterekEditor
 
-# Delay between validation calls (ms) — prevents spam
 const VALIDATION_DELAY := 500
 
 enum WarningType {
@@ -28,12 +25,6 @@ enum WarningType {
 
 enum ErrorType {
 	NO_ROOT_NODE,
-	SMALL_ICON_SIZE_INVALID,
-	MEDIUM_ICON_SIZE_INVALID,
-	LARGE_ICON_SIZE_INVALID,
-	SMALL_NODE_SIZE_INVALID,
-	MEDIUM_NODE_SIZE_INVALID,
-	LARGE_NODE_SIZE_INVALID,
 }
 
 const WARNING_MESSAGES := {
@@ -49,29 +40,17 @@ const WARNING_MESSAGES := {
 
 const ERROR_MESSAGES := {
 	ErrorType.NO_ROOT_NODE: "No root node is set. Select at least one node as root.",
-	ErrorType.SMALL_ICON_SIZE_INVALID: "Small icon size is invalid. Recommended at least 1 pixel.",
-	ErrorType.MEDIUM_ICON_SIZE_INVALID: "Medium icon size is invalid. Recommended at least 1 pixel.",
-	ErrorType.LARGE_ICON_SIZE_INVALID: "Large icon size is invalid. Recommended at least 1 pixel.",
-	ErrorType.SMALL_NODE_SIZE_INVALID: "Small node size is invalid. Recommended at least 1 pixel.",
-	ErrorType.MEDIUM_NODE_SIZE_INVALID: "Medium node size is invalid. Recommended at least 1 pixel.",
-	ErrorType.LARGE_NODE_SIZE_INVALID: "Large node size is invalid. Recommended at least 1 pixel.",
 }
 
-# UI
 var _warning_btn: Button
 var _error_btn: Button
 var _prints_container: VBoxContainer
 
-# State
 var _warnings: Array[int] = []
 var _errors: Array[int] = []
 
 var _validation_start: float = 0.0
 var _validation_scheduled: bool = false
-
-# ============================================================
-# INIT
-# ============================================================
 
 func init() -> void:
 	_build_ui()
@@ -81,7 +60,6 @@ func _build_ui() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	# Warning/error buttons — bottom-right corner
 	var buttons_row := HBoxContainer.new()
 	buttons_row.name = "ButtonsRow"
 	buttons_row.anchor_left = 1.0
@@ -117,7 +95,6 @@ func _build_ui() -> void:
 	_error_btn.pressed.connect(_on_error_btn_pressed)
 	buttons_row.add_child(_error_btn)
 
-	# Prints container — where messages appear
 	_prints_container = VBoxContainer.new()
 	_prints_container.name = "PrintsContainer"
 	_prints_container.anchor_left = 1.0
@@ -140,13 +117,10 @@ func _build_ui() -> void:
 # PUBLIC API
 # ============================================================
 
-## Schedules a validation pass after a short delay.
-## Multiple calls within the delay window are merged into one.
 func validate() -> void:
 	_validation_start = Time.get_ticks_msec()
 	_validation_scheduled = true
 
-## Forces immediate validation (no delay).
 func validate_now() -> void:
 	_run_validation()
 
@@ -204,7 +178,6 @@ func _check_warnings(tree: BayterekTree) -> Array[int]:
 func _check_errors(tree: BayterekTree) -> Array[int]:
 	var result: Array[int] = []
 
-	# Only check for root nodes if allocation is enabled
 	if tree.allocation:
 		var root_found: bool = false
 		for node_data in tree.nodes:
@@ -213,28 +186,6 @@ func _check_errors(tree: BayterekTree) -> Array[int]:
 				break
 		if not root_found:
 			result.append(ErrorType.NO_ROOT_NODE)
-
-	# Icon sizes
-	var small_icon: Vector2 = tree.icon_sizes.get(BayterekNode.NodeType.SMALL, Vector2.ZERO)
-	var medium_icon: Vector2 = tree.icon_sizes.get(BayterekNode.NodeType.MEDIUM, Vector2.ZERO)
-	var large_icon: Vector2 = tree.icon_sizes.get(BayterekNode.NodeType.LARGE, Vector2.ZERO)
-	if small_icon.length_squared() < 2:
-		result.append(ErrorType.SMALL_ICON_SIZE_INVALID)
-	if medium_icon.length_squared() < 2:
-		result.append(ErrorType.MEDIUM_ICON_SIZE_INVALID)
-	if large_icon.length_squared() < 2:
-		result.append(ErrorType.LARGE_ICON_SIZE_INVALID)
-
-	# Node sizes
-	var small_size: Vector2 = tree.node_size.get(BayterekNode.NodeType.SMALL, Vector2.ZERO)
-	var medium_size: Vector2 = tree.node_size.get(BayterekNode.NodeType.MEDIUM, Vector2.ZERO)
-	var large_size: Vector2 = tree.node_size.get(BayterekNode.NodeType.LARGE, Vector2.ZERO)
-	if small_size.length_squared() < 2:
-		result.append(ErrorType.SMALL_NODE_SIZE_INVALID)
-	if medium_size.length_squared() < 2:
-		result.append(ErrorType.MEDIUM_NODE_SIZE_INVALID)
-	if large_size.length_squared() < 2:
-		result.append(ErrorType.LARGE_NODE_SIZE_INVALID)
 
 	return result
 
@@ -253,7 +204,6 @@ func _update_ui() -> void:
 
 	visible = has_warnings or has_errors
 
-	# Color-code the buttons
 	if has_warnings:
 		_warning_btn.add_theme_color_override("font_color", Color(1, 0.85, 0.4))
 	if has_errors:
@@ -265,20 +215,16 @@ func _update_ui() -> void:
 
 func _on_warning_btn_pressed() -> void:
 	_clear_prints()
-
 	for warning in _warnings:
 		var message: String = WARNING_MESSAGES.get(warning, "Unknown warning")
 		_create_message_panel(message, Color(1, 0.85, 0.4))
-
 	_prints_container.visible = true
 
 func _on_error_btn_pressed() -> void:
 	_clear_prints()
-
 	for error in _errors:
 		var message: String = ERROR_MESSAGES.get(error, "Unknown error")
 		_create_message_panel(message, Color(1, 0.4, 0.4))
-
 	_prints_container.visible = true
 
 # ============================================================

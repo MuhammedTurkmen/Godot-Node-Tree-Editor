@@ -2,10 +2,10 @@
 class_name BayterekDesignListPanel
 extends VBoxContainer
 ## Left sidebar of the Node Editor — collapsible design list + CRUD.
-## When collapsed, only the toggle button remains visible.
 
 signal design_selected(design: BayterekNodeDesign)
 signal collapsed_changed(collapsed: bool)
+signal design_category_changed
 
 const COLLAPSED_WIDTH := 24
 const EXPANDED_WIDTH := 220
@@ -31,7 +31,6 @@ func _ready() -> void:
 	_build_ui()
 
 func _build_ui() -> void:
-	# --- Header row ---
 	_header_row = HBoxContainer.new()
 	_header_row.add_theme_constant_override("separation", 4)
 	add_child(_header_row)
@@ -49,7 +48,6 @@ func _build_ui() -> void:
 	_toggle_btn.pressed.connect(_on_toggle_pressed)
 	_header_row.add_child(_toggle_btn)
 
-	# --- Collapsible content ---
 	_content_root = VBoxContainer.new()
 	_content_root.size_flags_horizontal = SIZE_EXPAND_FILL
 	_content_root.size_flags_vertical = SIZE_EXPAND_FILL
@@ -116,7 +114,6 @@ func _apply_collapsed() -> void:
 	if _toggle_btn:
 		_toggle_btn.text = "▶" if _collapsed else "◀"
 
-	# When collapsed, shrink the whole panel to a thin strip.
 	if _collapsed:
 		custom_minimum_size.x = COLLAPSED_WIDTH
 	else:
@@ -308,6 +305,10 @@ func _show_context_menu(pos: Vector2) -> void:
 	menu.position = Vector2i(_tree.get_screen_position() + pos)
 	menu.popup()
 
+# ============================================================
+# RENAME DIALOG (kategori dropdown + "+ New Category")
+# ============================================================
+
 func _rename_selected() -> void:
 	var design: BayterekNodeDesign = get_selected_design()
 	if not design:
@@ -320,44 +321,167 @@ func _rename_selected() -> void:
 	dialog.unresizable = true
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
+	vbox.add_theme_constant_override("separation", 8)
+	vbox.custom_minimum_size = Vector2(400, 0)
 	dialog.add_child(vbox)
 
+	# --- Name ---
 	var name_row := HBoxContainer.new()
 	vbox.add_child(name_row)
 	var name_lbl := Label.new()
 	name_lbl.text = "Name:"
-	name_lbl.custom_minimum_size = Vector2(60, 0)
+	name_lbl.custom_minimum_size = Vector2(80, 0)
 	name_row.add_child(name_lbl)
 	var name_input := LineEdit.new()
 	name_input.text = design.name
 	name_input.size_flags_horizontal = SIZE_EXPAND_FILL
 	name_row.add_child(name_input)
 
+	# --- Category (dropdown + "+ New Category") ---
 	var cat_row := HBoxContainer.new()
 	vbox.add_child(cat_row)
 	var cat_lbl := Label.new()
 	cat_lbl.text = "Category:"
-	cat_lbl.custom_minimum_size = Vector2(60, 0)
+	cat_lbl.custom_minimum_size = Vector2(80, 0)
 	cat_row.add_child(cat_lbl)
-	var cat_input := LineEdit.new()
-	cat_input.text = design.category
-	cat_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	cat_row.add_child(cat_input)
+
+	var cat_dropdown := OptionButton.new()
+	cat_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	cat_row.add_child(cat_dropdown)
+
+	var new_cat_btn := Button.new()
+	new_cat_btn.text = "+"
+	new_cat_btn.tooltip_text = "Create new category"
+	new_cat_btn.custom_minimum_size = Vector2(28, 0)
+	cat_row.add_child(new_cat_btn)
+
+	_rebuild_category_dropdown(cat_dropdown, design.category)
+
+	new_cat_btn.pressed.connect(func():
+		_open_new_category_dialog(cat_dropdown, dialog)
+	)
 
 	dialog.confirmed.connect(func():
 		var new_name: String = name_input.text.strip_edges()
-		var new_cat: String = cat_input.text.strip_edges()
-		if not new_name.is_empty() and new_name != design.name:
+		if new_name.is_empty():
+			dialog.queue_free()
+			return
+
+		var selected_category: String = ""
+		var meta = cat_dropdown.get_item_metadata(cat_dropdown.selected)
+		if typeof(meta) == TYPE_STRING:
+			selected_category = meta
+
+		if new_name != design.name:
 			BayterekDesignService.rename_design(design, new_name)
-		design.category = new_cat
-		BayterekDesignService.save_design(design)
+
+		var old_category: String = design.category
+		if selected_category != old_category:
+			design.category = selected_category
+			BayterekDesignService.save_design(design)
+			design_category_changed.emit()
+
 		refresh()
 		dialog.queue_free()
 	)
 	dialog.canceled.connect(func(): dialog.queue_free())
 
 	add_child(dialog)
-	dialog.popup_centered(Vector2i(380, 180))
+	dialog.popup_centered(Vector2i(440, 200))
 	name_input.call_deferred("grab_focus")
 	name_input.call_deferred("select_all")
+
+func _rebuild_category_dropdown(dropdown: OptionButton, current_category: String) -> void:
+	dropdown.clear()
+
+	dropdown.add_item("(None)", 0)
+	dropdown.set_item_metadata(0, "")
+
+	var cats: Array = BayterekDesignService.get_all_categories()
+
+	var idx: int = 1
+	var found_idx: int = 0
+	for cat in cats:
+		var cat_str: String = String(cat)
+		dropdown.add_item(cat_str, idx)
+		dropdown.set_item_metadata(idx, cat_str)
+		if cat_str == current_category:
+			found_idx = idx
+		idx += 1
+
+	dropdown.select(found_idx)
+
+## Opens a small dialog to enter a new category name.
+## `parent_dialog` — the currently open Rename ConfirmationDialog.
+## We hide it while the category dialog is open so both aren't exclusive.
+func _open_new_category_dialog(dropdown: OptionButton, parent_dialog: ConfirmationDialog) -> void:
+	var dlg := AcceptDialog.new()
+	dlg.title = "New Category"
+	dlg.ok_button_text = "Create"
+	dlg.unresizable = true
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	vbox.custom_minimum_size = Vector2(320, 0)
+	dlg.add_child(vbox)
+
+	var lbl := Label.new()
+	lbl.text = "Category name:"
+	vbox.add_child(lbl)
+
+	var input := LineEdit.new()
+	input.placeholder_text = "e.g. Combat, Passive, Utility"
+	vbox.add_child(input)
+
+	var error_lbl := Label.new()
+	error_lbl.add_theme_color_override("font_color", Color(1, 0.4, 0.4))
+	error_lbl.visible = false
+	error_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(error_lbl)
+
+	dlg.confirmed.connect(func():
+		var new_cat: String = input.text.strip_edges()
+
+		if new_cat.is_empty():
+			error_lbl.text = "Category name cannot be empty."
+			error_lbl.visible = true
+			# Re-open to force refresh of size (AcceptDialog auto-closes on confirm)
+			dlg.popup_centered(Vector2i(360, 180))
+			return
+
+		var existing: Array = BayterekDesignService.get_all_categories()
+		for cat in existing:
+			if String(cat) == new_cat:
+				error_lbl.text = "Category \"%s\" already exists." % new_cat
+				error_lbl.visible = true
+				dlg.popup_centered(Vector2i(360, 180))
+				return
+
+		var next_idx: int = dropdown.item_count
+		dropdown.add_item(new_cat, next_idx)
+		dropdown.set_item_metadata(next_idx, new_cat)
+		dropdown.select(next_idx)
+
+		dlg.queue_free()
+	)
+
+	# Parent'ı gizle (exclusive çakışması olmasın)
+	if parent_dialog:
+		parent_dialog.hide()
+
+	dlg.canceled.connect(func():
+		# Parent'ı geri getir
+		if parent_dialog and is_instance_valid(parent_dialog):
+			parent_dialog.popup_centered(Vector2i(440, 200))
+		dlg.queue_free()
+	)
+
+	dlg.close_requested.connect(func():
+		if parent_dialog and is_instance_valid(parent_dialog):
+			parent_dialog.popup_centered(Vector2i(440, 200))
+		dlg.queue_free()
+	)
+
+	add_child(dlg)
+	dlg.popup_centered(Vector2i(360, 180))
+	input.call_deferred("grab_focus")

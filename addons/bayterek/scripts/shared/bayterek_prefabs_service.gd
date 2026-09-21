@@ -1,10 +1,11 @@
 @tool
 class_name BayterekPrefabsService
 extends BayterekBaseService
-## Prefab creation / sync / deletion.
+## Prefab creation / sync / deletion. Design-merkezli.
 
 signal prefab_created(prefab: BayterekPrefab)
 signal prefab_removed(prefab: BayterekPrefab)
+signal prefab_changed(prefab: BayterekPrefab)
 
 var _ref_id_to_prefab: Dictionary = {}
 
@@ -12,13 +13,13 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
 	_ref_id_to_prefab.clear()
 
-	for node_type in _tree_data.prefabs.keys():
-		var list: Array = _tree_data.prefabs[node_type]
-		for prefab in list:
-			if prefab.reference_id.is_empty():
-				continue
-			_ref_id_to_prefab[prefab.reference_id] = prefab
-			prefab_created.emit(prefab)
+	for prefab in _tree_data.prefabs:
+		if not prefab:
+			continue
+		if prefab.reference_id.is_empty():
+			continue
+		_ref_id_to_prefab[prefab.reference_id] = prefab
+		prefab_created.emit(prefab)
 
 	if _tree_view and _tree_view.nodes_service:
 		for node in _tree_view.nodes_service.get_all_nodes():
@@ -36,49 +37,82 @@ func get_prefab_by_reference_id(reference_id: String) -> BayterekPrefab:
 	return _ref_id_to_prefab.get(reference_id, null)
 
 func get_all_prefabs() -> Array:
-	var result: Array = []
-	for node_type in _tree_data.prefabs.keys():
-		for p in _tree_data.prefabs[node_type]:
-			result.append(p)
-	return result
+	return _tree_data.prefabs.duplicate() if _tree_data else []
 
 # ============================================================
 # CREATE PREFAB
 # ============================================================
 
-func create_prefab(node: BayterekNodeButton, is_copy: bool = false) -> BayterekPrefab:
+func create_prefab(node: BayterekNodeButton, prefab_name: String) -> BayterekPrefab:
 	if not node or not node.node_data:
 		return null
+	if prefab_name.strip_edges().is_empty():
+		return null
+
+	var trimmed: String = prefab_name.strip_edges()
 
 	var prefab := BayterekPrefab.new()
-	prefab.type = node.node_data.type
-	prefab.node_name = node.node_data.name
+	prefab.reference_id = BayterekUUIDGenerator.v4()
+	prefab.id = Bayterek.to_snake_case(trimmed)
+	prefab.node_name = trimmed
 	prefab.description = node.node_data.description
 	prefab.attributes = node.node_data.attributes.duplicate(true)
 	prefab.max_allocations = node.node_data.max_allocations
 	prefab.design_id = node.node_data.design_id
-	prefab.design_size = node.node_data.design_size
-	prefab.scale = node.node_data.scale
 
-	prefab.copy_layers_from(node.node_data.layers)
+	var design: BayterekNodeDesign = null
+	if not prefab.design_id.is_empty():
+		design = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
+	if design:
+		prefab.copy_exported_fields_from(design)
 
-	if not is_copy:
-		prefab.reference_id = BayterekUUIDGenerator.v4()
-		node.node_data.reference_id = prefab.reference_id
-		node.prefab = prefab
-		_ref_id_to_prefab[prefab.reference_id] = prefab
-	else:
-		prefab.reference_id = ""
+	node.node_data.reference_id = prefab.reference_id
+	node.prefab = prefab
+	_ref_id_to_prefab[prefab.reference_id] = prefab
 
-	var t: int = prefab.type
-	if not _tree_data.prefabs.has(t):
-		_tree_data.prefabs[t] = []
-	_tree_data.prefabs[t].append(prefab)
-
+	_tree_data.prefabs.append(prefab)
 	prefab.add_node(node)
-	prefab_created.emit(prefab)
 
+	prefab_created.emit(prefab)
 	return prefab
+
+# ============================================================
+# RENAME / DUPLICATE
+# ============================================================
+
+func rename_prefab(prefab: BayterekPrefab, new_name: String) -> bool:
+	if not prefab:
+		return false
+	var trimmed: String = new_name.strip_edges()
+	if trimmed.is_empty():
+		return false
+	if trimmed == prefab.node_name:
+		return true
+
+	prefab.set_node_name(trimmed)
+	prefab_changed.emit(prefab)
+	return true
+
+func duplicate_prefab(source: BayterekPrefab) -> BayterekPrefab:
+	if not source:
+		return null
+
+	var copy := BayterekPrefab.new()
+	copy.reference_id = BayterekUUIDGenerator.v4()
+	copy.node_name = source.node_name + " Copy"
+	copy.id = Bayterek.to_snake_case(copy.node_name)
+	copy.description = source.description
+	copy.design_id = source.design_id
+	copy.attributes = source.attributes.duplicate(true)
+	copy.max_allocations = source.max_allocations
+	copy.exported_fields = source.exported_fields.duplicate(true)
+	copy.exported_values = source.exported_values.duplicate(true)
+
+	_tree_data.prefabs.append(copy)
+	_ref_id_to_prefab[copy.reference_id] = copy
+
+	prefab_created.emit(copy)
+	return copy
 
 # ============================================================
 # MAKE UNIQUE
@@ -93,6 +127,7 @@ func make_unique(node: BayterekNodeButton) -> void:
 	node.prefab = null
 	node.node_data.reference_id = ""
 	node.node_data.clear_all_attribute_overrides()
+	node.node_data.clear_all_exported_overrides()
 
 # ============================================================
 # DELETE PREFAB
@@ -119,6 +154,7 @@ func delete_prefab(prefab: BayterekPrefab, mode: DeleteMode = DeleteMode.ORPHAN_
 				if node.node_data:
 					node.node_data.reference_id = ""
 					node.node_data.clear_all_attribute_overrides()
+					node.node_data.clear_all_exported_overrides()
 
 		DeleteMode.DELETE_NODES:
 			if _tree_view and _tree_view.nodes_service:
@@ -138,17 +174,14 @@ func delete_prefab(prefab: BayterekPrefab, mode: DeleteMode = DeleteMode.ORPHAN_
 				if node.node_data:
 					node.node_data.reference_id = ""
 					node.node_data.clear_all_attribute_overrides()
+					node.node_data.clear_all_exported_overrides()
 
-	var t: int = prefab.type
-	if _tree_data.prefabs.has(t):
-		var list: Array = _tree_data.prefabs[t]
-		list.erase(prefab)
+	_tree_data.prefabs.erase(prefab)
 
 	if not prefab.reference_id.is_empty():
 		_ref_id_to_prefab.erase(prefab.reference_id)
 
 	prefab.nodes.clear()
-
 	prefab_removed.emit(prefab)
 
 func find_orphan_prefabs() -> Array:
@@ -167,6 +200,48 @@ func cleanup_orphan_prefabs() -> int:
 	return orphans.size()
 
 # ============================================================
+# EXPORTED VALUES
+# ============================================================
+
+## Prefab'ın exported_values'ına bir değer yazar ve bağlı node'ları refresh eder.
+func set_prefab_exported_value(prefab: BayterekPrefab, field_path: String, value: Variant) -> void:
+	if not prefab:
+		return
+	if not prefab.is_field_exported(field_path):
+		return
+	prefab.exported_values[field_path] = value
+	prefab.exported_values_changed.emit(prefab)
+
+	for node in prefab.get_nodes():
+		if not is_instance_valid(node):
+			continue
+		node.refresh_visuals()
+
+	prefab_changed.emit(prefab)
+
+## Node'un belirli bir field için override'ını set eder.
+func set_node_exported_override(node: BayterekNodeButton, field_path: String, value: Variant) -> void:
+	if not node or not node.node_data:
+		return
+	node.node_data.set_exported_override(field_path, value)
+	node.refresh_visuals()
+
+## Node'un override'ını siler (prefab default'una döner).
+func clear_node_exported_override(node: BayterekNodeButton, field_path: String) -> void:
+	if not node or not node.node_data:
+		return
+	node.node_data.clear_exported_override(field_path)
+	node.refresh_visuals()
+
+func notify_exported_values_changed(prefab: BayterekPrefab) -> void:
+	if not prefab:
+		return
+	for node in prefab.get_nodes():
+		if is_instance_valid(node) and node.has_method("refresh_visuals"):
+			node.refresh_visuals()
+	prefab_changed.emit(prefab)
+
+# ============================================================
 # RESET TO PREFAB
 # ============================================================
 
@@ -181,11 +256,19 @@ func reset_node_to_prefab_defaults(node: BayterekNodeButton) -> void:
 	node.node_data.attributes = prefab.attributes.duplicate(true)
 	node.node_data.max_allocations = prefab.max_allocations
 	node.node_data.design_id = prefab.design_id
-	node.node_data.design_size = prefab.design_size
-	node.node_data.scale = prefab.scale
 	node.node_data.clear_all_attribute_overrides()
+	node.node_data.clear_all_exported_overrides()
 
-	node.node_data.copy_layers_from(prefab.layers)
+	var design: BayterekNodeDesign = null
+	if not prefab.design_id.is_empty():
+		design = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
+	if design:
+		node.node_data.design_size = design.design_size
+		node.node_data.scale = design.scale
+		node.node_data.copy_layers_from(design.layers)
+
+	if not prefab.exported_values.is_empty():
+		node.node_data.exported_overrides = prefab.exported_values.duplicate(true)
 
 	if node.has_method("refresh_visuals"):
 		node.refresh_visuals()

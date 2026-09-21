@@ -7,8 +7,6 @@ signal changed
 signal size_changed
 signal border_scale_changed
 signal background_changed
-signal icon_size_changed
-signal node_size_changed
 signal line_texture_changed
 signal revealed_changed
 signal allocation_changed
@@ -20,7 +18,7 @@ signal refund_confirm_changed
 signal show_group_frames_changed
 signal frame_title_align_changed
 signal texture_filter_changed
-signal default_design_changed   # NEW
+signal default_design_changed
 
 var editor: BayterekEditor
 
@@ -36,20 +34,6 @@ var _texture_filter_dropdown: OptionButton
 
 var _bg_color_picker: ColorPickerButton
 var _bg_texture_input: BayterekInspectorTextureInput
-
-var _small_icon_x: SpinBox
-var _small_icon_y: SpinBox
-var _medium_icon_x: SpinBox
-var _medium_icon_y: SpinBox
-var _large_icon_x: SpinBox
-var _large_icon_y: SpinBox
-
-var _small_size_x: SpinBox
-var _small_size_y: SpinBox
-var _medium_size_x: SpinBox
-var _medium_size_y: SpinBox
-var _large_size_x: SpinBox
-var _large_size_y: SpinBox
 
 var _line_normal_input: BayterekInspectorTextureInput
 var _line_intermediate_input: BayterekInspectorTextureInput
@@ -70,7 +54,6 @@ var _tooltip_header_align_dropdown: OptionButton
 var _tooltip_body_align_dropdown: OptionButton
 var _tooltip_footer_align_dropdown: OptionButton
 
-# NEW: default design selector
 var _default_design_dropdown: OptionButton
 
 func _ready() -> void:
@@ -145,56 +128,12 @@ func _build_ui() -> void:
 	_bg_texture_input.title = "Background Texture"
 	_content.add_child(_bg_texture_input)
 
-	# --- Default Design (NEW) ---
+	# --- Default Design ---
 	_add_separator(_content)
 	_add_section_label(_content, "Default Node Design")
 
 	_default_design_dropdown = _make_design_dropdown_row(_content)
 	_default_design_dropdown.item_selected.connect(_on_default_design_changed)
-
-	# --- Icon Sizes ---
-	_add_separator(_content)
-	_add_section_label(_content, "Icon Sizes")
-
-	_small_icon_x = _make_int_pair_row(_content, "Small", "X")
-	_small_icon_x.value_changed.connect(_on_small_icon_changed)
-	_small_icon_y = _make_int_pair_row_end("Y")
-	_small_icon_y.value_changed.connect(_on_small_icon_changed)
-
-	_medium_icon_x = _make_int_pair_row(_content, "Medium", "X")
-	_medium_icon_x.value_changed.connect(_on_medium_icon_changed)
-	_medium_icon_y = _make_int_pair_row_end("Y")
-	_medium_icon_y.value_changed.connect(_on_medium_icon_changed)
-
-	_large_icon_x = _make_int_pair_row(_content, "Large", "X")
-	_large_icon_x.value_changed.connect(_on_large_icon_changed)
-	_large_icon_y = _make_int_pair_row_end("Y")
-	_large_icon_y.value_changed.connect(_on_large_icon_changed)
-
-	# --- Node Sizes ---
-	_add_separator(_content)
-	_add_section_label(_content, "Node Sizes")
-
-	_small_size_x = _make_int_pair_row(_content, "Small", "X")
-	_small_size_x.value = 27
-	_small_size_x.value_changed.connect(_on_small_size_changed)
-	_small_size_y = _make_int_pair_row_end("Y")
-	_small_size_y.value = 27
-	_small_size_y.value_changed.connect(_on_small_size_changed)
-
-	_medium_size_x = _make_int_pair_row(_content, "Medium", "X")
-	_medium_size_x.value = 48
-	_medium_size_x.value_changed.connect(_on_medium_size_changed)
-	_medium_size_y = _make_int_pair_row_end("Y")
-	_medium_size_y.value = 48
-	_medium_size_y.value_changed.connect(_on_medium_size_changed)
-
-	_large_size_x = _make_int_pair_row(_content, "Large", "X")
-	_large_size_x.value = 64
-	_large_size_x.value_changed.connect(_on_large_size_changed)
-	_large_size_y = _make_int_pair_row_end("Y")
-	_large_size_y.value = 64
-	_large_size_y.value_changed.connect(_on_large_size_changed)
 
 	# --- Line Textures ---
 	_add_separator(_content)
@@ -355,26 +294,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 
 	_set_input_texture(_bg_texture_input, tree_data.bg_texture)
 
-	var small_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.SMALL, Vector2(25, 25))
-	var medium_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.MEDIUM, Vector2(45, 45))
-	var large_icon: Vector2 = tree_data.icon_sizes.get(BayterekNode.NodeType.LARGE, Vector2(60, 60))
-	_small_icon_x.set_value_no_signal(small_icon.x)
-	_small_icon_y.set_value_no_signal(small_icon.y)
-	_medium_icon_x.set_value_no_signal(medium_icon.x)
-	_medium_icon_y.set_value_no_signal(medium_icon.y)
-	_large_icon_x.set_value_no_signal(large_icon.x)
-	_large_icon_y.set_value_no_signal(large_icon.y)
-
-	var small_size: Vector2 = tree_data.node_size.get(BayterekNode.NodeType.SMALL, Vector2(27, 27))
-	var medium_size: Vector2 = tree_data.node_size.get(BayterekNode.NodeType.MEDIUM, Vector2(48, 48))
-	var large_size: Vector2 = tree_data.node_size.get(BayterekNode.NodeType.LARGE, Vector2(64, 64))
-	_small_size_x.set_value_no_signal(small_size.x)
-	_small_size_y.set_value_no_signal(small_size.y)
-	_medium_size_x.set_value_no_signal(medium_size.x)
-	_medium_size_y.set_value_no_signal(medium_size.y)
-	_large_size_x.set_value_no_signal(large_size.x)
-	_large_size_y.set_value_no_signal(large_size.y)
-
 	_set_input_texture(_line_normal_input, tree_data.line_texture_normal)
 	_set_input_texture(_line_intermediate_input, tree_data.line_texture_intermediate)
 	_set_input_texture(_line_active_input, tree_data.line_texture_active)
@@ -393,7 +312,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_tooltip_body_align_dropdown.select(tree_data.tooltip_body_align)
 	_tooltip_footer_align_dropdown.select(tree_data.tooltip_footer_align)
 
-	# Default design
 	_rebuild_default_design_dropdown(tree_data.default_design_id)
 
 	_updating_ui = false
@@ -517,54 +435,6 @@ func _on_bg_texture_cleared() -> void:
 	editor.tree.bg_texture = null
 	_set_input_texture(_bg_texture_input, null)
 	background_changed.emit()
-	changed.emit()
-	_notify_dirty()
-
-func _on_small_icon_changed(_value: float) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	editor.tree.icon_sizes[BayterekNode.NodeType.SMALL] = Vector2(_small_icon_x.value, _small_icon_y.value)
-	icon_size_changed.emit()
-	changed.emit()
-	_notify_dirty()
-
-func _on_medium_icon_changed(_value: float) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	editor.tree.icon_sizes[BayterekNode.NodeType.MEDIUM] = Vector2(_medium_icon_x.value, _medium_icon_y.value)
-	icon_size_changed.emit()
-	changed.emit()
-	_notify_dirty()
-
-func _on_large_icon_changed(_value: float) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	editor.tree.icon_sizes[BayterekNode.NodeType.LARGE] = Vector2(_large_icon_x.value, _large_icon_y.value)
-	icon_size_changed.emit()
-	changed.emit()
-	_notify_dirty()
-
-func _on_small_size_changed(_value: float) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	editor.tree.node_size[BayterekNode.NodeType.SMALL] = Vector2(_small_size_x.value, _small_size_y.value)
-	node_size_changed.emit()
-	changed.emit()
-	_notify_dirty()
-
-func _on_medium_size_changed(_value: float) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	editor.tree.node_size[BayterekNode.NodeType.MEDIUM] = Vector2(_medium_size_x.value, _medium_size_y.value)
-	node_size_changed.emit()
-	changed.emit()
-	_notify_dirty()
-
-func _on_large_size_changed(_value: float) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	editor.tree.node_size[BayterekNode.NodeType.LARGE] = Vector2(_large_size_x.value, _large_size_y.value)
-	node_size_changed.emit()
 	changed.emit()
 	_notify_dirty()
 
@@ -737,18 +607,7 @@ func _notify_dirty() -> void:
 func _set_input_texture(input: BayterekInspectorTextureInput, tex: Texture2D) -> void:
 	if not input:
 		return
-	if input._texture_rect:
-		input._texture_rect.texture = tex
-	if tex:
-		if input._empty_label:
-			input._empty_label.visible = false
-		if input._clear_button:
-			input._clear_button.visible = true
-	else:
-		if input._empty_label:
-			input._empty_label.visible = true
-		if input._clear_button:
-			input._clear_button.visible = false
+	input.set_texture(tex)
 
 func _make_int_row(parent: Control, label_text: String, tooltip: String = "") -> SpinBox:
 	var row := HBoxContainer.new()
@@ -863,57 +722,3 @@ func _add_section_label(parent: Control, text: String) -> void:
 	label.text = text
 	label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
 	parent.add_child(label)
-
-func _make_int_pair_row(parent: Control, label_text: String, axis: String) -> SpinBox:
-	var row := HBoxContainer.new()
-	parent.add_child(row)
-
-	var label := Label.new()
-	label.text = label_text
-	label.custom_minimum_size = Vector2(70, 0)
-	label.mouse_filter = Control.MOUSE_FILTER_PASS
-	row.add_child(label)
-
-	var x_label := Label.new()
-	x_label.text = "X"
-	x_label.custom_minimum_size = Vector2(20, 0)
-	x_label.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
-	row.add_child(x_label)
-
-	var spin := SpinBox.new()
-	spin.size_flags_horizontal = SIZE_EXPAND_FILL
-	spin.rounded = true
-	spin.allow_greater = true
-	spin.allow_lesser = false
-	spin.min_value = 0
-	spin.max_value = 999999
-	row.add_child(spin)
-
-	return spin
-
-func _make_int_pair_row_end(axis: String) -> SpinBox:
-	var parent := _content
-	var row := HBoxContainer.new()
-	parent.add_child(row)
-
-	var spacer := Label.new()
-	spacer.text = ""
-	spacer.custom_minimum_size = Vector2(70, 0)
-	row.add_child(spacer)
-
-	var y_label := Label.new()
-	y_label.text = "Y"
-	y_label.custom_minimum_size = Vector2(20, 0)
-	y_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.4))
-	row.add_child(y_label)
-
-	var spin := SpinBox.new()
-	spin.size_flags_horizontal = SIZE_EXPAND_FILL
-	spin.rounded = true
-	spin.allow_greater = true
-	spin.allow_lesser = false
-	spin.min_value = 0
-	spin.max_value = 999999
-	row.add_child(spin)
-
-	return spin

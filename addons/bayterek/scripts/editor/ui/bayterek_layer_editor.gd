@@ -2,8 +2,6 @@
 class_name BayterekLayerEditor
 extends VBoxContainer
 ## Middle-column layer editor.
-## Top: layer list + toolbar.
-## Bottom: detail form for the selected layer, grouped into foldable sections.
 
 signal changed
 
@@ -452,12 +450,12 @@ func _rebuild_detail_form() -> void:
 	transform_fold.add_child(transform_inner)
 
 	var transform_form := BayterekLayerTransformForm.new()
-	transform_form.set_transform(layer.transform)
+	transform_inner.add_child(transform_form)
+	transform_form.set_transform(layer.transform, design, layer.layer_id)
 	transform_form.changed.connect(func():
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	transform_inner.add_child(transform_form)
 
 	if layer is BayterekShapeLayer:
 		_build_shape_detail(layer)
@@ -475,6 +473,7 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 
 	# --- Shape type ---
 	var type_row := HBoxContainer.new()
+	type_row.add_theme_constant_override("separation", 4)
 	shape_inner.add_child(type_row)
 
 	var type_label := Label.new()
@@ -493,14 +492,17 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	type_dropdown.item_selected.connect(func(i: int):
 		layer.shape_type = i as BayterekShapeLayer.ShapeType
 		design.notify_layer_modified()
-		# Refresh the form so the corner-R limit updates for the new shape.
 		call_deferred("_rebuild_detail_form")
 		changed.emit()
 	)
 	type_row.add_child(type_dropdown)
 
-	# --- Corner radius (auto-clamped) ---
+	var field_st: String = "layers.%s.shape_type" % layer.layer_id
+	BayterekExportHelper.make_exportable(type_row, field_st, design, _on_export_changed)
+
+	# --- Corner radius ---
 	var cr_row := HBoxContainer.new()
+	cr_row.add_theme_constant_override("separation", 4)
 	shape_inner.add_child(cr_row)
 
 	var cr_label := Label.new()
@@ -518,14 +520,15 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 		layer.corner_radius = v
 		design.notify_layer_modified()
 		changed.emit()
-		# Sync the SpinBox to the effective (clamped) value.
 		_sync_corner_radius_ui(layer, cr_input, cr_label)
 	)
 	cr_row.add_child(cr_input)
 
-	# Initial tooltip + sync (also clamps the visible value on open).
 	_update_corner_radius_tooltip(layer, cr_label, cr_input)
 	_sync_corner_radius_ui(layer, cr_input, cr_label)
+
+	var field_cr: String = "layers.%s.corner_radius" % layer.layer_id
+	BayterekExportHelper.make_exportable(cr_row, field_cr, design, _on_export_changed)
 
 	# --- Fill fold ---
 	var fill_fold := _make_fold("Fill")
@@ -535,23 +538,32 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	fill_inner.add_theme_constant_override("separation", 4)
 	fill_fold.add_child(fill_inner)
 
+	var fill_check_row := HBoxContainer.new()
+	fill_check_row.add_theme_constant_override("separation", 4)
+	fill_inner.add_child(fill_check_row)
+
 	var fill_check := CheckBox.new()
 	fill_check.text = "Enabled"
+	fill_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	fill_check.button_pressed = layer.fill_enabled
 	fill_check.toggled.connect(func(p: bool):
 		layer.fill_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	fill_inner.add_child(fill_check)
+	fill_check_row.add_child(fill_check)
+
+	var field_fe: String = "layers.%s.fill_enabled" % layer.layer_id
+	BayterekExportHelper.make_exportable(fill_check_row, field_fe, design, _on_export_changed)
 
 	var fill_colors := BayterekLayerStateColors.new()
+	fill_inner.add_child(fill_colors)
 	fill_colors.bind(layer, "fill_configs")
+	fill_colors.bind_export(design, layer.layer_id, "fill_configs", _on_export_changed)
 	fill_colors.changed.connect(func():
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	fill_inner.add_child(fill_colors)
 
 	# --- Border fold ---
 	var border_fold := _make_fold("Border")
@@ -561,17 +573,26 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	border_inner.add_theme_constant_override("separation", 4)
 	border_fold.add_child(border_inner)
 
+	var border_check_row := HBoxContainer.new()
+	border_check_row.add_theme_constant_override("separation", 4)
+	border_inner.add_child(border_check_row)
+
 	var border_check := CheckBox.new()
 	border_check.text = "Enabled"
+	border_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	border_check.button_pressed = layer.border_enabled
 	border_check.toggled.connect(func(p: bool):
 		layer.border_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	border_inner.add_child(border_check)
+	border_check_row.add_child(border_check)
+
+	var field_be: String = "layers.%s.border_enabled" % layer.layer_id
+	BayterekExportHelper.make_exportable(border_check_row, field_be, design, _on_export_changed)
 
 	var bw_row := HBoxContainer.new()
+	bw_row.add_theme_constant_override("separation", 4)
 	border_inner.add_child(bw_row)
 	var bw_label := Label.new()
 	bw_label.text = "Width"
@@ -590,13 +611,17 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	bw_row.add_child(bw_input)
 
+	var field_bw: String = "layers.%s.border_width" % layer.layer_id
+	BayterekExportHelper.make_exportable(bw_row, field_bw, design, _on_export_changed)
+
 	var border_colors := BayterekLayerStateColors.new()
+	border_inner.add_child(border_colors)
 	border_colors.bind(layer, "border_configs")
+	border_colors.bind_export(design, layer.layer_id, "border_configs", _on_export_changed)
 	border_colors.changed.connect(func():
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	border_inner.add_child(border_colors)
 
 	# --- Shadow fold ---
 	var shadow_fold := _make_fold("Shadow")
@@ -606,17 +631,26 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	shadow_inner.add_theme_constant_override("separation", 4)
 	shadow_fold.add_child(shadow_inner)
 
+	var shadow_check_row := HBoxContainer.new()
+	shadow_check_row.add_theme_constant_override("separation", 4)
+	shadow_inner.add_child(shadow_check_row)
+
 	var shadow_check := CheckBox.new()
 	shadow_check.text = "Enabled"
+	shadow_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	shadow_check.button_pressed = layer.shadow_enabled
 	shadow_check.toggled.connect(func(p: bool):
 		layer.shadow_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	shadow_inner.add_child(shadow_check)
+	shadow_check_row.add_child(shadow_check)
+
+	var field_se: String = "layers.%s.shadow_enabled" % layer.layer_id
+	BayterekExportHelper.make_exportable(shadow_check_row, field_se, design, _on_export_changed)
 
 	var shadow_color_row := HBoxContainer.new()
+	shadow_color_row.add_theme_constant_override("separation", 4)
 	shadow_inner.add_child(shadow_color_row)
 	var sc_label := Label.new()
 	sc_label.text = "Color"
@@ -632,7 +666,11 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	shadow_color_row.add_child(sc_picker)
 
+	var field_sc: String = "layers.%s.shadow_color" % layer.layer_id
+	BayterekExportHelper.make_exportable(shadow_color_row, field_sc, design, _on_export_changed)
+
 	var shadow_offset_row := HBoxContainer.new()
+	shadow_offset_row.add_theme_constant_override("separation", 4)
 	shadow_inner.add_child(shadow_offset_row)
 	var so_label := Label.new()
 	so_label.text = "Offset"
@@ -665,7 +703,11 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	shadow_offset_row.add_child(so_y)
 
+	var field_ss: String = "layers.%s.shadow_size" % layer.layer_id
+	BayterekExportHelper.make_exportable(shadow_offset_row, field_ss, design, _on_export_changed)
+
 	var shadow_blur_row := HBoxContainer.new()
+	shadow_blur_row.add_theme_constant_override("separation", 4)
 	shadow_inner.add_child(shadow_blur_row)
 	var sb_label := Label.new()
 	sb_label.text = "Blur"
@@ -686,8 +728,9 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	shadow_blur_row.add_child(sb_input)
 
-## Updates the corner radius label + input tooltip to show the current
-## geometric clamp limit and the effective (post-clamp) value.
+	var field_sb: String = "layers.%s.shadow_blur" % layer.layer_id
+	BayterekExportHelper.make_exportable(shadow_blur_row, field_sb, design, _on_export_changed)
+
 func _update_corner_radius_tooltip(
 	layer: BayterekShapeLayer,
 	label: Label,
@@ -708,13 +751,6 @@ func _update_corner_radius_tooltip(
 	if input:
 		input.tooltip_text = text
 
-## Syncs the SpinBox to the effective (clamped) corner radius without
-## re-triggering the value_changed signal. Also refreshes the tooltip.
-##
-## The underlying `layer.corner_radius` is NOT modified — only the
-## displayed value is clamped. So the user can type a large number,
-## see the effective value, and later reduce or increase the shape size
-## without losing their intent.
 func _sync_corner_radius_ui(
 	layer: BayterekShapeLayer,
 	input: SpinBox,
@@ -726,7 +762,6 @@ func _sync_corner_radius_ui(
 	var effective_size: Vector2 = design.design_size if design else Vector2(100, 100)
 	var effective: float = layer.get_clamped_corner_radius(effective_size)
 
-	# Block signals so we don't loop back into value_changed.
 	if not is_equal_approx(input.value, effective):
 		input.set_value_no_signal(effective)
 
@@ -740,23 +775,32 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	icon_inner.add_theme_constant_override("separation", 4)
 	icon_fold.add_child(icon_inner)
 
+	var icon_check_row := HBoxContainer.new()
+	icon_check_row.add_theme_constant_override("separation", 4)
+	icon_inner.add_child(icon_check_row)
+
 	var icon_check := CheckBox.new()
 	icon_check.text = "Enabled"
+	icon_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	icon_check.button_pressed = layer.icon_enabled
 	icon_check.toggled.connect(func(p: bool):
 		layer.icon_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	icon_inner.add_child(icon_check)
+	icon_check_row.add_child(icon_check)
+
+	var field_ie: String = "layers.%s.icon_enabled" % layer.layer_id
+	BayterekExportHelper.make_exportable(icon_check_row, field_ie, design, _on_export_changed)
 
 	var icon_editor := BayterekLayerStateTextures.new()
+	icon_inner.add_child(icon_editor)
 	icon_editor.bind(layer)
+	icon_editor.bind_export(design, layer.layer_id, _on_export_changed)
 	icon_editor.changed.connect(func():
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	icon_inner.add_child(icon_editor)
 
 	var tint_fold := _make_fold("Tint")
 	_detail_root.add_child(tint_fold)
@@ -765,23 +809,32 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	tint_inner.add_theme_constant_override("separation", 4)
 	tint_fold.add_child(tint_inner)
 
+	var tint_check_row := HBoxContainer.new()
+	tint_check_row.add_theme_constant_override("separation", 4)
+	tint_inner.add_child(tint_check_row)
+
 	var tint_check := CheckBox.new()
 	tint_check.text = "Enabled"
+	tint_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	tint_check.button_pressed = layer.tint_enabled
 	tint_check.toggled.connect(func(p: bool):
 		layer.tint_enabled = p
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	tint_inner.add_child(tint_check)
+	tint_check_row.add_child(tint_check)
+
+	var field_te: String = "layers.%s.tint_enabled" % layer.layer_id
+	BayterekExportHelper.make_exportable(tint_check_row, field_te, design, _on_export_changed)
 
 	var tint_editor := BayterekLayerStateColors.new()
+	tint_inner.add_child(tint_editor)
 	tint_editor.bind(layer, "tint_configs")
+	tint_editor.bind_export(design, layer.layer_id, "tint_configs", _on_export_changed)
 	tint_editor.changed.connect(func():
 		design.notify_layer_modified()
 		changed.emit()
 	)
-	tint_inner.add_child(tint_editor)
 
 # ============================================================
 # HELPERS
@@ -792,3 +845,13 @@ func _make_fold(title: String) -> FoldableContainer:
 	fold.title = title
 	fold.folded = false
 	return fold
+
+# ============================================================
+# EXPORT CALLBACK
+# ============================================================
+
+func _on_export_changed(_field_path: String) -> void:
+	if not design:
+		return
+	BayterekDesignService.save_design(design)
+	changed.emit()

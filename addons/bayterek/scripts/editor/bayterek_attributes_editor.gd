@@ -27,7 +27,6 @@ var _value_count_input: SpinBox
 var _current_attr_id: String = ""
 var _updating_ui: bool = false
 
-# id -> TreeItem
 var _id_to_item: Dictionary = {}
 
 func _ready() -> void:
@@ -151,7 +150,6 @@ func _refresh() -> void:
 			_add_attr_item(attr)
 		return
 
-	# Fuzzy match against id and name
 	var fuzzy := BayterekFuzzySearch.new()
 	fuzzy.allow_subsequences = false
 
@@ -294,8 +292,6 @@ func _on_name_changed(new_text: String) -> void:
 		return
 	attr.name = new_text
 
-	# Update only the affected item instead of rebuilding the whole tree.
-	# Rebuilding would reset the LineEdit caret position to 0.
 	if _id_to_item.has(_current_attr_id):
 		var item: TreeItem = _id_to_item[_current_attr_id]
 		if item:
@@ -331,7 +327,6 @@ func _on_value_count_changed(value: float) -> void:
 	var new_count: int = int(value)
 	attr.value_count = new_count
 
-	# Resize all nodes' arrays for this attribute
 	if old_count != new_count:
 		_resize_nodes_arrays(_current_attr_id, new_count)
 
@@ -350,22 +345,19 @@ func _resize_nodes_arrays(attr_id: String, new_count: int) -> void:
 		var values = node_data.attributes[attr_id]
 		_resize_value_array(values, new_count)
 
-	# Resize each prefab
-	for node_type in editor.tree.prefabs.keys():
-		if node_type == BayterekNode.NodeType.DECORATION:
+	# Resize each prefab (artık Array)
+	for prefab in editor.tree.prefabs:
+		if not prefab:
 			continue
-		var prefabs_list: Array = editor.tree.prefabs[node_type]
-		for prefab in prefabs_list:
-			if not prefab.attributes.has(attr_id):
-				continue
-			var values = prefab.attributes[attr_id]
-			_resize_value_array(values, new_count)
+		if not prefab.attributes.has(attr_id):
+			continue
+		var values = prefab.attributes[attr_id]
+		_resize_value_array(values, new_count)
 
 func _resize_value_array(values: Variant, new_count: int) -> void:
 	if not values is Array:
 		return
 
-	# Multi-allocation: array of arrays (one per level)
 	if values.size() > 0 and values[0] is Array:
 		for level in values.size():
 			var level_values: Array = values[level]
@@ -374,7 +366,6 @@ func _resize_value_array(values: Variant, new_count: int) -> void:
 			while level_values.size() > new_count:
 				level_values.pop_back()
 	else:
-		# Single level
 		while values.size() < new_count:
 			values.append(0)
 		while values.size() > new_count:
