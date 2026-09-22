@@ -40,6 +40,8 @@ var _sidebar_list: ItemList
 
 var _main_panel: VBoxContainer
 var _toolbar: HBoxContainer
+var _locale_dropdown: OptionButton
+var _locale_label: Label
 var _save_btn: Button
 var _add_key_btn: Button
 var _delete_key_btn: Button
@@ -48,7 +50,6 @@ var _import_btn: Button
 var _export_btn: Button
 var _search_input: LineEdit
 var _missing_label: Label
-var _locale_label: Label
 var _rows_scroll: ScrollContainer
 var _rows_container: VBoxContainer
 var _empty_label: Label
@@ -185,11 +186,20 @@ func _build_main_panel() -> void:
 	_toolbar.add_theme_constant_override("separation", 6)
 	_main_panel.add_child(_toolbar)
 
+	# --- Locale selector dropdown ---
+	_locale_dropdown = OptionButton.new()
+	_locale_dropdown.name = "LocaleDropdown"
+	_locale_dropdown.tooltip_text = "Switch active locale"
+	_locale_dropdown.custom_minimum_size.x = 180
+	_locale_dropdown.item_selected.connect(_on_locale_dropdown_selected)
+	_toolbar.add_child(_locale_dropdown)
+
+	# --- Locale label (shows "★ original" marker) ---
 	_locale_label = Label.new()
 	_locale_label.name = "LocaleLabel"
-	_locale_label.text = "—"
+	_locale_label.text = ""
 	_locale_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
-	_locale_label.custom_minimum_size.x = 160
+	_locale_label.custom_minimum_size.x = 70
 	_toolbar.add_child(_locale_label)
 
 	_toolbar.add_child(VSeparator.new())
@@ -424,6 +434,122 @@ func _update_header_visibility() -> void:
 		_h_trans.text = "Translation"
 
 # ============================================================
+# LOCALE DROPDOWN
+# ============================================================
+
+## Rebuilds the locale dropdown from the registry.
+func _refresh_locale_dropdown() -> void:
+	if not _locale_dropdown:
+		return
+
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	_locale_dropdown.clear()
+
+	var all_locales: PackedStringArray = registry.get_all_locales()
+	var orig: String = registry.original_locale
+
+	# Build items: original first, then others alphabetically.
+	var sorted_locales: Array[String] = []
+	var others: Array[String] = []
+
+	for loc in all_locales:
+		if loc == orig:
+			sorted_locales.append(loc)
+		else:
+			others.append(loc)
+	others.sort()
+	sorted_locales.append_array(others)
+
+	var selected_idx: int = -1
+	var idx: int = 0
+
+	for loc in sorted_locales:
+		var label: String = loc
+		if loc == orig:
+			label = "%s  (Original)" % loc
+		_locale_dropdown.add_item(label, idx)
+		_locale_dropdown.set_item_metadata(idx, loc)
+
+		if loc == current_locale:
+			selected_idx = idx
+
+		idx += 1
+
+	# Placeholder if current_locale isn't in the list.
+	if selected_idx == -1 and not current_locale.is_empty():
+		_locale_dropdown.add_separator()
+		_locale_dropdown.add_item("(unknown: %s)" % current_locale, idx)
+		_locale_dropdown.set_item_metadata(idx, current_locale)
+		selected_idx = idx
+
+	if selected_idx >= 0:
+		_locale_dropdown.select(selected_idx)
+
+## Called when the user picks a different locale from the dropdown.
+func _on_locale_dropdown_selected(index: int) -> void:
+	var meta = _locale_dropdown.get_item_metadata(index)
+	if meta == null:
+		return
+	var loc: String = String(meta)
+
+	if loc.is_empty() or loc == current_locale:
+		return
+
+	if dirty:
+		_confirm_switch_locale(loc)
+	else:
+		open_locale(loc)
+
+## Shows a confirmation dialog if there are unsaved changes.
+func _confirm_switch_locale(target_locale: String) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.name = "SwitchLocaleConfirmDialog"
+	dialog.title = "Unsaved Changes"
+	dialog.ok_button_text = "Discard & Switch"
+	dialog.cancel_button_text = "Cancel"
+	dialog.dialog_text = ""
+	dialog.min_size = Vector2i.ZERO
+	dialog.unresizable = true
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "ContentVBox"
+	vbox.custom_minimum_size = Vector2(400, 60)
+	vbox.add_theme_constant_override("separation", 10)
+	dialog.add_child(vbox)
+
+	var info := Label.new()
+	info.text = "Current locale \"%s\" has unsaved changes.\nSwitch to \"%s\" anyway?" % [
+		current_locale, target_locale
+	]
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size = Vector2(400, 0)
+	vbox.add_child(info)
+
+	dialog.confirmed.connect(func():
+		open_locale(target_locale)
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func():
+		_update_ui_state()
+		dialog.queue_free()
+	)
+	dialog.close_requested.connect(func():
+		_update_ui_state()
+		dialog.queue_free()
+	)
+
+	add_child(dialog)
+	dialog.reset_size()
+	dialog.size = Vector2i(440, 180)
+	dialog.popup_centered()
+
+# ============================================================
 # REFERENCE + CYCLE DETECTION
 # ============================================================
 
@@ -571,9 +697,14 @@ func _provide_all_keys() -> PackedStringArray:
 # ============================================================
 
 func _update_ui_state() -> void:
-	_locale_label.text = "Locale: %s" % current_locale
+	# Refresh dropdown items.
+	_refresh_locale_dropdown()
+
+	# Locale label shows only the "★ original" marker (dropdown shows the name).
 	if is_original_locale:
-		_locale_label.text += "  ★ original"
+		_locale_label.text = "★ original"
+	else:
+		_locale_label.text = ""
 
 	_add_key_btn.disabled = not is_original_locale
 	_delete_key_btn.disabled = not is_original_locale
@@ -1140,7 +1271,6 @@ func _on_sync_missing_pressed() -> void:
 	if current_locale.is_empty() or original_locale.is_empty():
 		return
 
-	# Compute missing keys (present in original, absent here).
 	var missing: Array[String] = []
 	for key in originals.keys():
 		if not translations.has(key):
@@ -1354,7 +1484,6 @@ func _update_stats_panel() -> void:
 		_stats_label.text = "—"
 		return
 
-	# Original locale → show simple stats.
 	if is_original_locale:
 		var total_keys: int = translations.size()
 		_stats_label.text = "Original locale · %d keys · all source of truth" % total_keys
@@ -1409,7 +1538,6 @@ func _update_stats_panel() -> void:
 
 	_stats_label.text = "  ".join(parts)
 
-	# Color by completion percentage.
 	if pct >= 100.0:
 		_stats_label.add_theme_color_override("font_color", Color(0.5, 0.9, 0.5))
 	elif pct >= 75.0:
