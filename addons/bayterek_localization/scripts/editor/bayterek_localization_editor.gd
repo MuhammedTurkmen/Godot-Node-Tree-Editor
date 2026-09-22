@@ -693,10 +693,10 @@ func _apply_value_from_undo(key: String, value: String) -> void:
 	print("[EDITOR] _apply_value_from_undo('", key, "', '", value, "')")
 	if not _rows_by_key.has(key):
 		return
-	var row: BayterekLocalizationKeyRow = _rows_by_key[key]
-	if not is_instance_valid(row):
-		return
-	row.set_translation(value, false)
+	# NOT: row.set_translation() ÇAĞIRMA! Field zaten kullanıcı tarafından
+	# güncellendi (kullanıcı yazdı/sildi). Bu callback commit_action()
+	# anında HEMEN çalışır, field'a dokunursa caret 0'a atlar.
+	# Sadece translations dictionary'sini güncelle.
 	translations[key] = value
 	_field_edit_old_value[key] = value
 	_set_dirty(true)
@@ -1108,7 +1108,7 @@ func _on_export_pressed() -> void:
 		_csv_dialog.import_completed.connect(_on_csv_import_completed)
 		add_child(_csv_dialog)
 
-	_csv_dialog.open_export(registry, "user://localization_export.csv")
+	_csv_dialog.open_export(registry, "")
 
 func _on_import_pressed() -> void:
 	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
@@ -1124,7 +1124,7 @@ func _on_import_pressed() -> void:
 		_csv_dialog.import_completed.connect(_on_csv_import_completed)
 		add_child(_csv_dialog)
 
-	_csv_dialog.open_import(registry, "user://localization_export.csv")
+	_csv_dialog.open_import(registry, "")
 
 func _on_csv_export_completed(path: String) -> void:
 	print("[Editor] CSV exported: ", path)

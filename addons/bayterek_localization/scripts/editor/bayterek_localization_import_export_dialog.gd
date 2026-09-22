@@ -4,8 +4,7 @@ extends ConfirmationDialog
 ## Import / Export CSV dialog for the Localization editor.
 ##
 ## Çözüm: Preview içeriğini popup'tan SONRA yaz. İlk frame'de RichTextLabel
-## boş kalır, content_min doğru hesaplanır (240 + diğer içerik ≈ 415),
-## popup 760×560 olarak açılır. Sonra preview doldurulur.
+## boş kalır, content_min doğru hesaplanır, popup 760×560 olarak açılır.
 
 signal export_completed(path: String)
 signal import_completed(imported_count: int)
@@ -20,6 +19,10 @@ const DIALOG_W := 760
 const DIALOG_H := 560
 const PREVIEW_HEIGHT := 240
 
+## Default export/import klasörü — user:// altında otomatik oluşturulur.
+const DEFAULT_USER_DIR := "user://localization"
+const DEFAULT_EXPORT_FILENAME := "localization_export.csv"
+
 var _mode: int = Mode.EXPORT
 var _path_input: LineEdit
 var _info_label: Label
@@ -29,6 +32,8 @@ var _include_original_check: CheckBox
 
 var _registry: LocalizationRegistry = null
 var _content_vbox: VBoxContainer = null
+
+var _file_dialog: FileDialog = null
 
 # ============================================================
 # LIFECYCLE
@@ -65,12 +70,25 @@ func _build_ui() -> void:
 
 	_path_input = LineEdit.new()
 	_path_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_path_input.placeholder_text = "user://localization.csv"
+	_path_input.placeholder_text = "user://localization/localization_export.csv"
 	_path_input.text_changed.connect(_on_path_changed)
 	path_row.add_child(_path_input)
 
+	var browse_btn := Button.new()
+	browse_btn.text = "Browse..."
+	browse_btn.tooltip_text = "Masaüstü veya başka bir klasör seç"
+	browse_btn.pressed.connect(_on_browse_pressed)
+	path_row.add_child(browse_btn)
+
+	var reset_btn := Button.new()
+	reset_btn.text = "Reset"
+	reset_btn.tooltip_text = "Default yola dön (user://localization/)"
+	reset_btn.pressed.connect(_on_reset_path_pressed)
+	path_row.add_child(reset_btn)
+
 	var copy_btn := Button.new()
-	copy_btn.text = "Copy Path"
+	copy_btn.text = "Copy"
+	copy_btn.tooltip_text = "Copy path to clipboard"
 	copy_btn.pressed.connect(_on_copy_path_pressed)
 	path_row.add_child(copy_btn)
 
@@ -126,11 +144,10 @@ func open_export(registry: LocalizationRegistry, default_path: String = "") -> v
 	_registry = registry
 	title = "Export CSV"
 	ok_button_text = "Export"
-	_path_input.text = default_path if not default_path.is_empty() else "user://localization_export.csv"
+	_path_input.text = default_path if not default_path.is_empty() else _get_default_path()
 	_info_label.text = "Export all locales to a single CSV file.\nEach locale becomes a column. Original locale first."
 	_include_original_check.visible = true
 	_include_empty_check.visible = true
-	# Preview'ı ŞİMDİ doldurma. Popup'tan sonra doldur.
 	_preview_label.text = ""
 	_popup_then_refresh.call_deferred()
 
@@ -139,27 +156,82 @@ func open_import(registry: LocalizationRegistry, default_path: String = "") -> v
 	_registry = registry
 	title = "Import CSV"
 	ok_button_text = "Import"
-	_path_input.text = default_path if not default_path.is_empty() else "user://localization_export.csv"
+	_path_input.text = default_path if not default_path.is_empty() else _get_default_path()
 	_info_label.text = "Import translations from a CSV file.\nNew keys are added to the original locale. Existing keys are updated. Missing keys are preserved."
 	_include_original_check.visible = false
 	_include_empty_check.visible = false
 	_preview_label.text = ""
 	_popup_then_refresh.call_deferred()
 
+## Default path — user://localization/localization_export.csv
+## Klasör otomatik oluşturulur.
+func _get_default_path() -> String:
+	_ensure_default_dir()
+	return "%s/%s" % [DEFAULT_USER_DIR, DEFAULT_EXPORT_FILENAME]
+
+## user://localization/ klasörü yoksa oluştur.
+func _ensure_default_dir() -> void:
+	var global_path: String = ProjectSettings.globalize_path(DEFAULT_USER_DIR)
+	if not DirAccess.dir_exists_absolute(global_path):
+		var err: Error = DirAccess.make_dir_recursive_absolute(global_path)
+		if err != OK:
+			push_warning("Localization: could not create default dir: %s (err=%d)" % [global_path, err])
+
 ## Popup'ı doğru boyutta aç, SONRA preview'ı doldur.
-## Önce dialog'u ağaçta görünür yap (layout hazır olsun), bir frame bekle,
-## sonra kesin popup'ı yap, sonra preview'ı doldur.
 func _popup_then_refresh() -> void:
-	# 1) Layout'u hazırla — show() + bir frame bekle.
 	if not visible:
 		show()
 		await get_tree().process_frame
 
-	# 2) Şimdi popup'ı doğru boyutta yap.
 	popup_centered(Vector2i(DIALOG_W, DIALOG_H))
 
-	# 3) Bir frame daha bekle (popup tamamlansın), sonra preview'ı doldur.
 	await get_tree().process_frame
+	_refresh_preview()
+
+# ============================================================
+# PATH BUTTONS
+# ============================================================
+
+func _on_browse_pressed() -> void:
+	if not _file_dialog:
+		_file_dialog = FileDialog.new()
+		_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+		_file_dialog.use_native_dialog = true
+		_file_dialog.file_selected.connect(_on_file_dialog_selected)
+		add_child(_file_dialog)
+
+	# Mod'a göre file dialog ayarları.
+	if _mode == Mode.EXPORT:
+		_file_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+		_file_dialog.title = "Export CSV — Save As"
+		_file_dialog.current_file = _path_input.text.get_file()
+		if _file_dialog.current_file.is_empty():
+			_file_dialog.current_file = DEFAULT_EXPORT_FILENAME
+	else:
+		_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+		_file_dialog.title = "Import CSV — Open File"
+
+	# Filtre.
+	_file_dialog.filters = PackedStringArray(["*.csv ; CSV Files"])
+
+	# Başlangıç klasörü — mevcut path'in klasörü.
+	var current_dir: String = _path_input.text.get_base_dir()
+	if not current_dir.is_empty():
+		var global_dir: String = current_dir
+		if current_dir.begins_with("user://") or current_dir.begins_with("res://"):
+			global_dir = ProjectSettings.globalize_path(current_dir)
+		if DirAccess.dir_exists_absolute(global_dir):
+			_file_dialog.current_dir = global_dir
+
+	_file_dialog.popup_centered_ratio(0.6)
+
+func _on_file_dialog_selected(path: String) -> void:
+	_path_input.text = path
+	if _mode == Mode.IMPORT:
+		_refresh_preview()
+
+func _on_reset_path_pressed() -> void:
+	_path_input.text = _get_default_path()
 	_refresh_preview()
 
 # ============================================================
@@ -328,6 +400,11 @@ func _do_export(path: String) -> void:
 			rows.append(row)
 
 	var csv: String = CSV.serialize(locale_codes, rows)
+
+	# Klasörü oluştur (kullanıcı manuel path girdiyse bile).
+	var dir: String = path.get_base_dir()
+	if not dir.is_empty() and not DirAccess.dir_exists_absolute(dir):
+		DirAccess.make_dir_recursive_absolute(dir)
 
 	var f: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if not f:

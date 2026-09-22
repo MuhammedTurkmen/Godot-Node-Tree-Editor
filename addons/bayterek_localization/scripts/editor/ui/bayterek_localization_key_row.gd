@@ -2,7 +2,6 @@
 class_name BayterekLocalizationKeyRow
 extends PanelContainer
 ## A single row in the Editor's key table.
-## DEBUG BUILD — TextEdit + LineEdit karışık. Bol print.
 
 signal value_changed(key: String, new_value: String)
 signal row_selected(key: String)
@@ -102,6 +101,7 @@ func _build() -> void:
 	_translation_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_translation_field.size_flags_stretch_ratio = 1.0
 	_translation_field.custom_minimum_size.x = MIN_TRANSLATION_COL
+	# TextEdit.text_changed argüman GEÇMİYOR — handler argümansız.
 	_translation_field.text_changed.connect(_on_field_changed)
 	_translation_field.text_submitted.connect(_on_field_submitted)
 	_translation_field.field_focus_entered.connect(_on_field_focus_entered)
@@ -133,7 +133,6 @@ func get_translation() -> String:
 	return _translation_field.get_text()
 
 func set_translation(value: String, emit_signal: bool = false) -> void:
-	print("[ROW:", key, "] set_translation('", value, "')")
 	translation_value = value
 	if _translation_field:
 		_translation_field.set_text(value)
@@ -232,21 +231,21 @@ func _has_placeholder_mismatch() -> bool:
 # SIGNAL HANDLERS
 # ============================================================
 
-func _on_field_changed(new_text: String) -> void:
-	print("[ROW:", key, "] _on_field_changed('", new_text, "')")
+## TextEdit.text_changed argüman GEÇMİYOR — text'i kendimiz okuyoruz.
+func _on_field_changed() -> void:
+	var new_text: String = get_translation()
 	translation_value = new_text
 	value_changed.emit(key, new_text)
 
+## TextEdit native text_submitted'i YOK — bizim custom sinyalimiz.
 func _on_field_submitted(_new_text: String) -> void:
 	navigate_requested.emit(key, 1)
 
 func _on_field_focus_entered() -> void:
-	print("[ROW:", key, "] _on_field_focus_entered")
 	row_selected.emit(key)
 	value_edit_started.emit(key, get_translation())
 
 func _on_field_focus_exited() -> void:
-	print("[ROW:", key, "] _on_field_focus_exited")
 	_update_row_style()
 	value_edit_committed.emit(key, get_translation())
 
