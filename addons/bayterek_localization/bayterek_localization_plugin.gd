@@ -13,6 +13,10 @@ const Localization = preload("res://addons/bayterek_localization/scripts/shared/
 var _main_screen: BayterekLocalizationMainScreen
 var _distraction: bool = false
 
+# ============================================================
+# LIFECYCLE
+# ============================================================
+
 func _enter_tree() -> void:
 	_register_autoloads()
 	_register_settings()
@@ -52,11 +56,31 @@ func _make_visible(visible: bool) -> void:
 # AUTOLOADS
 # ============================================================
 
+## Registers the plugin's autoload singletons.
+## Uses `add_autoload_singleton()` which also writes to ProjectSettings.
 func _register_autoloads() -> void:
-	if not ProjectSettings.has_setting("autoload/GameLocalization"):
-		add_autoload_singleton("GameLocalization", "res://addons/bayterek_localization/scripts/runtime/game_localization.gd")
-	if not ProjectSettings.has_setting("autoload/BayterekLocalizationLoader"):
-		add_autoload_singleton("BayterekLocalizationLoader", "res://addons/bayterek_localization/scripts/shared/bayterek_localization_loader.gd")
+	var game_localization_path: String = "res://addons/bayterek_localization/scripts/runtime/game_localization.gd"
+	var loader_path: String = "res://addons/bayterek_localization/scripts/shared/bayterek_localization_loader.gd"
+
+	# Autoload names and paths.
+	var required: Dictionary = {
+		"GameLocalization": game_localization_path,
+		"BayterekLocalizationLoader": loader_path,
+	}
+
+	for name in required.keys():
+		var path: String = required[name]
+
+		# Check if it's already registered with the SAME path — skip if so.
+		var setting_key: String = "autoload/" + name
+		var current_value = ProjectSettings.get_setting(setting_key, null)
+
+		if current_value != null and String(current_value) == path:
+			continue  # Already registered correctly.
+
+		# Register (or re-register) the autoload.
+		add_autoload_singleton(name, path)
+		print("[BayterekLocalization] Autoload registered: %s → %s" % [name, path])
 
 func _remove_autoloads() -> void:
 	remove_autoload_singleton("GameLocalization")

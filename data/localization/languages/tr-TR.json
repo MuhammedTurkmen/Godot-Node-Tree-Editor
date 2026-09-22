@@ -4,6 +4,7 @@
 	"chain_2": "Sonra: {@menu_play}",
 	"cycle_a": "Ben A, {@cycle_b} işaret ediyorum",
 	"cycle_b": "Ben B, {@cycle_a} işaret ediyorum",
+	"empty_in_tr": "",
 	"greeting_with_name": "Merhaba {player_name}!",
 	"greetings": "Merhaba",
 	"hud_health": "Can: {current} / {max}",

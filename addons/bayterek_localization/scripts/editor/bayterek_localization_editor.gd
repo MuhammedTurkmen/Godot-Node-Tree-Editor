@@ -10,6 +10,7 @@ const KeyRow = preload("res://addons/bayterek_localization/scripts/editor/ui/bay
 const PreviewPanel = preload("res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_preview_panel.gd")
 const ImportExportDialog = preload("res://addons/bayterek_localization/scripts/editor/bayterek_localization_import_export_dialog.gd")
 const UndoHelper = preload("res://addons/bayterek_localization/scripts/editor/bayterek_localization_undo_helper.gd")
+const Fuzzy = preload("res://addons/bayterek_localization/scripts/editor/bayterek_localization_fuzzy.gd")
 
 const SIDEBAR_EXPANDED := 240
 const SIDEBAR_COLLAPSED := 28
@@ -42,6 +43,7 @@ var _toolbar: HBoxContainer
 var _save_btn: Button
 var _add_key_btn: Button
 var _delete_key_btn: Button
+var _sync_missing_btn: Button
 var _import_btn: Button
 var _export_btn: Button
 var _search_input: LineEdit
@@ -53,6 +55,9 @@ var _empty_label: Label
 var _h_key: Label
 var _h_orig: Label
 var _h_trans: Label
+
+var _stats_panel: HBoxContainer
+var _stats_label: Label
 
 var _preview_root: VBoxContainer
 var _preview_panel: BayterekLocalizationPreviewPanel
@@ -207,6 +212,13 @@ func _build_main_panel() -> void:
 	_delete_key_btn.pressed.connect(_on_delete_key_pressed)
 	_toolbar.add_child(_delete_key_btn)
 
+	_sync_missing_btn = Button.new()
+	_sync_missing_btn.name = "SyncMissingButton"
+	_sync_missing_btn.text = "Sync Missing"
+	_sync_missing_btn.tooltip_text = "Copy all keys from the original locale that are missing here (empty values)"
+	_sync_missing_btn.pressed.connect(_on_sync_missing_pressed)
+	_toolbar.add_child(_sync_missing_btn)
+
 	_toolbar.add_child(VSeparator.new())
 
 	_import_btn = Button.new()
@@ -239,6 +251,19 @@ func _build_main_panel() -> void:
 	_missing_label.text = "0 missing"
 	_missing_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.4))
 	_toolbar.add_child(_missing_label)
+
+	# --- Statistics row ---
+	_stats_panel = HBoxContainer.new()
+	_stats_panel.name = "StatsPanel"
+	_stats_panel.add_theme_constant_override("separation", 6)
+	_main_panel.add_child(_stats_panel)
+
+	_stats_label = Label.new()
+	_stats_label.name = "StatsLabel"
+	_stats_label.text = "—"
+	_stats_label.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	_stats_label.add_theme_font_size_override("font_size", 11)
+	_stats_panel.add_child(_stats_label)
 
 	var header := HBoxContainer.new()
 	header.name = "ColumnHeader"
@@ -381,6 +406,7 @@ func open_locale(locale: String) -> void:
 	_update_ui_state()
 	_update_header_visibility()
 	_update_missing_count()
+	_update_stats_panel()
 	_show_rows()
 
 	print("[BayterekLocalizationEditor] opened locale: %s (original=%s, is_original=%s, %d keys)" % [
@@ -504,6 +530,9 @@ func _update_validation_flags() -> void:
 			cycle_path = _get_cycle_path(key)
 		row.set_validation_flags(broken, cyclic, cycle_path)
 
+	# Refresh stats after validation updates.
+	_update_stats_panel()
+
 func _add_row(key: String, orig_val: String, trans_val: String) -> void:
 	var row := KeyRow.new()
 	row.name = "Row_%s" % key
@@ -548,6 +577,7 @@ func _update_ui_state() -> void:
 
 	_add_key_btn.disabled = not is_original_locale
 	_delete_key_btn.disabled = not is_original_locale
+	_sync_missing_btn.disabled = is_original_locale
 	_save_btn.disabled = not dirty
 
 func _show_empty() -> void:
@@ -557,6 +587,8 @@ func _show_empty() -> void:
 		_rows_scroll.visible = false
 	if _sidebar_list:
 		_sidebar_list.clear()
+	if _stats_label:
+		_stats_label.text = "—"
 
 func _show_rows() -> void:
 	if _empty_label:
@@ -642,12 +674,13 @@ func _on_search_changed(_new_text: String) -> void:
 func _apply_filter() -> void:
 	var q: String = ""
 	if _search_input:
-		q = _search_input.text.strip_edges().to_lower()
+		q = _search_input.text.strip_edges()
 
 	var sq: String = ""
 	if _sidebar_search:
-		sq = _sidebar_search.text.strip_edges().to_lower()
+		sq = _sidebar_search.text.strip_edges()
 
+	# --- Main table filter (fuzzy over key + original + translation) ---
 	for key in _rows_by_key.keys():
 		var row: BayterekLocalizationKeyRow = _rows_by_key[key]
 		if not is_instance_valid(row):
@@ -655,17 +688,18 @@ func _apply_filter() -> void:
 
 		var matches: bool = q.is_empty()
 		if not matches:
-			matches = key.to_lower().find(q) != -1
+			matches = Fuzzy.matches(q, key)
 		if not matches:
-			matches = row.original_value.to_lower().find(q) != -1
+			matches = Fuzzy.matches(q, row.original_value)
 		if not matches:
-			matches = row.get_translation().to_lower().find(q) != -1
+			matches = Fuzzy.matches(q, row.get_translation())
 
 		row.visible = matches
 
+	# --- Sidebar filter (fuzzy over key names only) ---
 	for i in _sidebar_list.item_count:
 		var key_text: String = _sidebar_list.get_item_text(i)
-		var matches_sidebar: bool = sq.is_empty() or key_text.to_lower().find(sq) != -1
+		var matches_sidebar: bool = sq.is_empty() or Fuzzy.matches(sq, key_text)
 		_sidebar_list.set_item_disabled(i, not matches_sidebar)
 
 # ============================================================
@@ -695,6 +729,7 @@ func _on_row_value_changed(key: String, new_value: String) -> void:
 
 func _on_row_value_edit_committed(key: String, _new_value: String) -> void:
 	_update_validation_flags()
+	_update_stats_panel()
 	if key == _selected_key:
 		_update_preview_for(key)
 
@@ -887,7 +922,7 @@ func _row_key_exists_anywhere(registry: LocalizationRegistry, candidate: String)
 	return false
 
 # ============================================================
-# ADD / DELETE KEY
+# ADD / DELETE / SYNC MISSING
 # ============================================================
 
 func _on_add_key_pressed() -> void:
@@ -1096,6 +1131,108 @@ func _apply_restore_key(target_key: String, values: Dictionary) -> void:
 	EditorInterface.get_resource_filesystem().scan()
 
 # ============================================================
+# SYNC MISSING KEYS
+# ============================================================
+
+func _on_sync_missing_pressed() -> void:
+	if is_original_locale:
+		return
+	if current_locale.is_empty() or original_locale.is_empty():
+		return
+
+	# Compute missing keys (present in original, absent here).
+	var missing: Array[String] = []
+	for key in originals.keys():
+		if not translations.has(key):
+			missing.append(key)
+
+	if missing.is_empty():
+		_show_info_toast("No missing keys — this locale is up to date.")
+		return
+
+	var dialog := ConfirmationDialog.new()
+	dialog.name = "SyncMissingDialog"
+	dialog.title = "Sync Missing Keys"
+	dialog.ok_button_text = "Sync"
+	dialog.cancel_button_text = "Cancel"
+	dialog.dialog_text = ""
+	dialog.min_size = Vector2i.ZERO
+	dialog.unresizable = true
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "ContentVBox"
+	vbox.custom_minimum_size = Vector2(440, 60)
+	vbox.add_theme_constant_override("separation", 10)
+	dialog.add_child(vbox)
+
+	var info := Label.new()
+	info.text = "Add %d missing key(s) from \"%s\" into \"%s\"?\nThey will be added with empty values." % [
+		missing.size(), original_locale, current_locale
+	]
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size = Vector2(440, 0)
+	vbox.add_child(info)
+
+	var list_label := Label.new()
+	var preview_count: int = mini(8, missing.size())
+	var preview_list: Array = missing.slice(0, preview_count)
+	list_label.text = "Keys to add: " + ", ".join(preview_list)
+	if missing.size() > preview_count:
+		list_label.text += "… (+%d more)" % (missing.size() - preview_count)
+	list_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list_label.add_theme_font_size_override("font_size", 11)
+	list_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	list_label.custom_minimum_size = Vector2(440, 0)
+	vbox.add_child(list_label)
+
+	dialog.confirmed.connect(func():
+		_apply_sync_missing(missing)
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func(): dialog.queue_free())
+	dialog.close_requested.connect(func(): dialog.queue_free())
+
+	add_child(dialog)
+	dialog.reset_size()
+	dialog.size = Vector2i(480, 220)
+	dialog.popup_centered()
+
+## Applies the missing-key sync — adds each key with an empty value.
+func _apply_sync_missing(missing: Array[String]) -> void:
+	for key in missing:
+		if translations.has(key):
+			continue
+		translations[key] = ""
+		_add_row(key, originals.get(key, ""), "")
+
+	_refresh_sidebar()
+	_set_dirty(true)
+	_update_missing_count()
+	_update_validation_flags()
+	_update_stats_panel()
+
+	print("[BayterekLocalizationEditor] synced %d missing key(s) from %s to %s" % [
+		missing.size(), original_locale, current_locale
+	])
+
+## Shows a temporary info toast near the top of the editor.
+func _show_info_toast(message: String) -> void:
+	var toast := Label.new()
+	toast.text = message
+	toast.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+	toast.add_theme_font_size_override("font_size", 11)
+	toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	toast.add_theme_constant_override("outline_size", 2)
+	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(toast)
+	toast.position = Vector2(20, 8)
+
+	var tween := create_tween()
+	tween.tween_interval(2.0)
+	tween.tween_property(toast, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(toast.queue_free)
+
+# ============================================================
 # IMPORT / EXPORT
 # ============================================================
 
@@ -1134,8 +1271,6 @@ func _on_import_pressed() -> void:
 	_csv_dialog.open_import(registry, default_path)
 
 ## Default CSV path: user://localization/<locale>_<timestamp>.csv
-##   locale    → currently open locale in the editor (falls back to "all")
-##   timestamp → 2026-09-23_14-30
 func _make_export_default_path() -> String:
 	var locale_part: String = current_locale
 	if locale_part.is_empty():
@@ -1187,7 +1322,7 @@ func _on_save_pressed() -> void:
 	print("[BayterekLocalizationEditor] saved %s (%d keys)" % [current_locale, data.size()])
 
 # ============================================================
-# DIRTY / MISSING
+# DIRTY / MISSING / STATS
 # ============================================================
 
 func _set_dirty(value: bool) -> void:
@@ -1210,6 +1345,79 @@ func _update_missing_count() -> void:
 			missing += 1
 
 	_missing_label.text = "%d missing" % missing
+
+## Refreshes the statistics row (counts + completion percentage).
+func _update_stats_panel() -> void:
+	if not _stats_label:
+		return
+	if current_locale.is_empty():
+		_stats_label.text = "—"
+		return
+
+	# Original locale → show simple stats.
+	if is_original_locale:
+		var total_keys: int = translations.size()
+		_stats_label.text = "Original locale · %d keys · all source of truth" % total_keys
+		return
+
+	var total: int = 0
+	var translated: int = 0
+	var empty_count: int = 0
+	var same_count: int = 0
+	var broken_count: int = 0
+	var cycle_count: int = 0
+
+	for key in _rows_by_key.keys():
+		var row: BayterekLocalizationKeyRow = _rows_by_key[key]
+		if not is_instance_valid(row):
+			continue
+
+		total += 1
+		var cur: String = row.get_translation().strip_edges()
+		var orig: String = row.original_value
+
+		if cur.is_empty():
+			empty_count += 1
+		elif cur == orig:
+			same_count += 1
+		else:
+			translated += 1
+
+		if _has_broken_reference(key):
+			broken_count += 1
+		if _has_cycle(key):
+			cycle_count += 1
+
+	var pct: float = 0.0
+	if total > 0:
+		pct = (float(translated) / float(total)) * 100.0
+
+	var parts: Array[String] = []
+	parts.append("Translated: %d / %d" % [translated, total])
+	parts.append("(%.0f%%)" % pct)
+	parts.append("·")
+	parts.append("Missing: %d" % (empty_count + same_count))
+
+	if empty_count > 0:
+		parts.append("· Empty: %d" % empty_count)
+	if same_count > 0:
+		parts.append("· Same: %d" % same_count)
+	if broken_count > 0:
+		parts.append("· Broken refs: %d" % broken_count)
+	if cycle_count > 0:
+		parts.append("· Cycles: %d" % cycle_count)
+
+	_stats_label.text = "  ".join(parts)
+
+	# Color by completion percentage.
+	if pct >= 100.0:
+		_stats_label.add_theme_color_override("font_color", Color(0.5, 0.9, 0.5))
+	elif pct >= 75.0:
+		_stats_label.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0))
+	elif pct >= 50.0:
+		_stats_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+	else:
+		_stats_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.4))
 
 # ============================================================
 # KEYBOARD
