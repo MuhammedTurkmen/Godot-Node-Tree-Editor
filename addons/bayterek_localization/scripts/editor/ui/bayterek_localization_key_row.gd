@@ -11,11 +11,14 @@ signal key_rename_requested(old_key: String, new_key: String)
 const KEY_COLUMN_WIDTH := 200
 const MIN_ORIGINAL_COL := 160
 const MIN_TRANSLATION_COL := 200
+
 const STATE_NORMAL := Color(0, 0, 0, 0)
 const STATE_SELECTED := Color(0.3, 0.5, 0.8, 0.25)
-const STATE_MISSING := Color(1.0, 0.85, 0.4, 0.10)
-const STATE_EMPTY := Color(1.0, 0.4, 0.4, 0.12)
-const STATE_PLACEHOLDER_MISMATCH := Color(1.0, 0.55, 0.2, 0.15)
+const STATE_MISSING := Color(1.0, 0.85, 0.4, 0.10)          # yellow — same as original
+const STATE_EMPTY := Color(1.0, 0.4, 0.4, 0.12)              # red — empty
+const STATE_PLACEHOLDER_MISMATCH := Color(1.0, 0.55, 0.2, 0.15)  # orange
+const STATE_BROKEN_REF := Color(1.0, 0.25, 0.3, 0.18)        # bright red — missing {@key}
+const STATE_CYCLE := Color(0.75, 0.4, 1.0, 0.20)             # purple — cycle
 
 const FormatHelper = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization_format_string.gd")
 
@@ -23,6 +26,11 @@ var key: String = ""
 var original_value: String = ""
 var translation_value: String = ""
 var is_original_locale: bool = false
+
+## Validation flags set by the Editor.
+var _broken_ref: bool = false
+var _cyclic: bool = false
+var _cycle_path: Array[String] = []
 
 var _key_input: LineEdit
 var _original_label: Label
@@ -58,7 +66,6 @@ func _build() -> void:
 	hbox.size_flags_horizontal = SIZE_EXPAND_FILL
 	add_child(hbox)
 
-	# Key column
 	_key_input = LineEdit.new()
 	_key_input.name = "KeyInput"
 	_key_input.custom_minimum_size.x = KEY_COLUMN_WIDTH
@@ -77,7 +84,6 @@ func _build() -> void:
 	_key_input.focus_exited.connect(_on_key_focus_exited)
 	hbox.add_child(_key_input)
 
-	# Original column
 	_original_label = Label.new()
 	_original_label.name = "OriginalLabel"
 	_original_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -89,7 +95,6 @@ func _build() -> void:
 	_original_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hbox.add_child(_original_label)
 
-	# Translation field
 	_translation_field = BayterekLocalizationTranslationField.new()
 	_translation_field.name = "TranslationField"
 	_translation_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -112,6 +117,13 @@ func setup(p_key: String, p_original: String, p_translation: String, p_is_origin
 
 	_build()
 	_apply_values()
+
+## Called by the Editor to set validation state.
+func set_validation_flags(broken_ref: bool, cyclic: bool, cycle_path: Array[String] = []) -> void:
+	_broken_ref = broken_ref
+	_cyclic = cyclic
+	_cycle_path = cycle_path
+	_update_row_style()
 
 func get_translation() -> String:
 	if not _translation_field:
@@ -163,11 +175,16 @@ func _apply_values() -> void:
 
 	_update_row_style()
 
+# ============================================================
+# STYLE / VALIDATION
+# ============================================================
+
 func _update_row_style() -> void:
 	if not _row_style:
 		return
 
 	var bg: Color = STATE_NORMAL
+	var tooltip: String = ""
 
 	if _selected:
 		bg = STATE_SELECTED
@@ -176,14 +193,25 @@ func _update_row_style() -> void:
 		var trimmed: String = cur.strip_edges()
 
 		if not is_original_locale:
-			if trimmed.is_empty():
+			if _cyclic:
+				bg = STATE_CYCLE
+				if _cycle_path.size() > 0:
+					tooltip = "Reference cycle: " + " → ".join(_cycle_path)
+			elif _broken_ref:
+				bg = STATE_BROKEN_REF
+				tooltip = "Missing {@key} reference"
+			elif trimmed.is_empty():
 				bg = STATE_EMPTY
+				tooltip = "Empty translation"
 			elif _has_placeholder_mismatch():
 				bg = STATE_PLACEHOLDER_MISMATCH
+				tooltip = "Placeholder mismatch with original"
 			elif cur == original_value:
 				bg = STATE_MISSING
+				tooltip = "Same as original"
 
 	_row_style.bg_color = bg
+	tooltip_text = tooltip
 	queue_redraw()
 
 func _has_placeholder_mismatch() -> bool:

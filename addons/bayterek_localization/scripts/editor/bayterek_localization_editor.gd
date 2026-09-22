@@ -5,15 +5,15 @@ extends MarginContainer
 
 const Localization = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd")
 const Service = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization_service.gd")
+const Format = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization_format_string.gd")
 const KeyRow = preload("res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_key_row.gd")
 const PreviewPanel = preload("res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_preview_panel.gd")
+const ImportExportDialog = preload("res://addons/bayterek_localization/scripts/editor/bayterek_localization_import_export_dialog.gd")
 
 const SIDEBAR_EXPANDED := 240
 const SIDEBAR_COLLAPSED := 28
 const PREVIEW_EXPANDED := 280
 const PREVIEW_COLLAPSED := 28
-
-const DEBUG := true
 
 var current_locale: String = ""
 var original_locale: String = ""
@@ -26,8 +26,6 @@ var dirty: bool = false
 var _rows_by_key: Dictionary = {}
 
 var _h_split: HSplitContainer
-## HBoxContainer, not HSplitContainer — we only need open/close, and
-## custom_minimum_size works reliably inside an HBoxContainer.
 var _inner_split: HBoxContainer
 
 var _sidebar_root: VBoxContainer
@@ -43,6 +41,8 @@ var _toolbar: HBoxContainer
 var _save_btn: Button
 var _add_key_btn: Button
 var _delete_key_btn: Button
+var _import_btn: Button
+var _export_btn: Button
 var _search_input: LineEdit
 var _missing_label: Label
 var _locale_label: Label
@@ -58,10 +58,15 @@ var _preview_panel: BayterekLocalizationPreviewPanel
 var _preview_toggle_btn: Button
 var _preview_title: Label
 
+var _csv_dialog: BayterekLocalizationImportExportDialog
+
 var _sidebar_collapsed: bool = false
 var _preview_collapsed: bool = false
 var _suppress_sidebar_signal: bool = false
 var _selected_key: String = ""
+
+## Cache: key -> Array[String] of {@key} references it points to.
+var _key_refs_cache: Dictionary = {}
 
 # ============================================================
 # LIFECYCLE
@@ -149,8 +154,6 @@ func _build_sidebar() -> void:
 	_sidebar_content.add_child(_sidebar_list)
 
 func _build_inner_split() -> void:
-	# HBoxContainer instead of HSplitContainer — we only need open/close,
-	# not user-draggable split. custom_minimum_size works reliably here.
 	_inner_split = HBoxContainer.new()
 	_inner_split.name = "InnerSplit"
 	_inner_split.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -178,7 +181,7 @@ func _build_main_panel() -> void:
 	_locale_label.name = "LocaleLabel"
 	_locale_label.text = "—"
 	_locale_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
-	_locale_label.custom_minimum_size.x = 180
+	_locale_label.custom_minimum_size.x = 160
 	_toolbar.add_child(_locale_label)
 
 	_toolbar.add_child(VSeparator.new())
@@ -203,12 +206,28 @@ func _build_main_panel() -> void:
 
 	_toolbar.add_child(VSeparator.new())
 
+	_import_btn = Button.new()
+	_import_btn.name = "ImportButton"
+	_import_btn.text = "Import CSV"
+	_import_btn.tooltip_text = "Import translations from a CSV file"
+	_import_btn.pressed.connect(_on_import_pressed)
+	_toolbar.add_child(_import_btn)
+
+	_export_btn = Button.new()
+	_export_btn.name = "ExportButton"
+	_export_btn.text = "Export CSV"
+	_export_btn.tooltip_text = "Export all locales to a CSV file"
+	_export_btn.pressed.connect(_on_export_pressed)
+	_toolbar.add_child(_export_btn)
+
+	_toolbar.add_child(VSeparator.new())
+
 	_search_input = LineEdit.new()
 	_search_input.name = "SearchInput"
 	_search_input.placeholder_text = "Search key or value"
 	_search_input.clear_button_enabled = true
 	_search_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	_search_input.custom_minimum_size.x = 160
+	_search_input.custom_minimum_size.x = 140
 	_search_input.text_changed.connect(_on_search_changed)
 	_toolbar.add_child(_search_input)
 
@@ -303,7 +322,6 @@ func _build_preview_panel() -> void:
 	_preview_panel.set_lookup(_preview_lookup)
 	_preview_root.add_child(_preview_panel)
 
-	# Preview starts collapsed.
 	_preview_toggle_btn.text = "◀"
 	_preview_title.visible = false
 	_preview_collapsed = true
@@ -374,12 +392,81 @@ func _update_header_visibility() -> void:
 		_h_trans.text = "Translation"
 
 # ============================================================
+# REFERENCE + CYCLE DETECTION
+# ============================================================
+
+func _rebuild_refs_cache() -> void:
+	_key_refs_cache.clear()
+	for key in translations.keys():
+		var val: String = String(translations[key])
+		var refs: PackedStringArray = Format.extract_key_references(val)
+		_key_refs_cache[key] = refs
+
+func _has_broken_reference(key: String) -> bool:
+	if not _key_refs_cache.has(key):
+		return false
+	var refs: PackedStringArray = _key_refs_cache[key]
+	for ref in refs:
+		if not _lookup_anywhere(ref):
+			return true
+	return false
+
+func _has_cycle(key: String) -> bool:
+	if not _key_refs_cache.has(key):
+		return false
+	var visiting: Dictionary = {}
+	return _dfs_has_cycle(key, visiting)
+
+func _dfs_has_cycle(start: String, visiting: Dictionary) -> bool:
+	if visiting.has(start):
+		return true
+	if not _key_refs_cache.has(start):
+		return false
+	visiting[start] = true
+	var refs: PackedStringArray = _key_refs_cache[start]
+	for ref in refs:
+		if _dfs_has_cycle(ref, visiting):
+			return true
+	visiting.erase(start)
+	return false
+
+func _get_cycle_path(key: String) -> Array[String]:
+	var path: Array[String] = []
+	var stack: Array[String] = []
+	if _dfs_find_cycle(key, stack, path):
+		return path
+	return []
+
+func _dfs_find_cycle(node: String, stack: Array[String], out_path: Array[String]) -> bool:
+	if stack.has(node):
+		var start_idx: int = stack.find(node)
+		for i in range(start_idx, stack.size()):
+			out_path.append(stack[i])
+		out_path.append(node)
+		return true
+
+	if not _key_refs_cache.has(node):
+		return false
+
+	stack.append(node)
+	var refs: PackedStringArray = _key_refs_cache[node]
+	for ref in refs:
+		if _dfs_find_cycle(ref, stack, out_path):
+			return true
+	stack.pop_back()
+	return false
+
+func _lookup_anywhere(key: String) -> bool:
+	return translations.has(key) or originals.has(key)
+
+# ============================================================
 # ROW REBUILD
 # ============================================================
 
 func _rebuild_rows() -> void:
 	_clear_rows()
 	_rows_by_key.clear()
+	_rebuild_refs_cache()
 
 	var all_keys: Dictionary = {}
 	for k in originals.keys():
@@ -396,6 +483,20 @@ func _rebuild_rows() -> void:
 		_add_row(key, orig_val, trans_val)
 
 	_refresh_sidebar()
+	_update_validation_flags()
+
+func _update_validation_flags() -> void:
+	_rebuild_refs_cache()
+	for key in _rows_by_key.keys():
+		var row: BayterekLocalizationKeyRow = _rows_by_key[key]
+		if not is_instance_valid(row):
+			continue
+		var broken: bool = _has_broken_reference(key)
+		var cyclic: bool = _has_cycle(key)
+		var cycle_path: Array[String] = []
+		if cyclic:
+			cycle_path = _get_cycle_path(key)
+		row.set_validation_flags(broken, cyclic, cycle_path)
 
 func _add_row(key: String, orig_val: String, trans_val: String) -> void:
 	var row := KeyRow.new()
@@ -476,13 +577,6 @@ func _on_sidebar_toggle() -> void:
 func _on_preview_toggle() -> void:
 	_preview_collapsed = not _preview_collapsed
 
-	if DEBUG:
-		print("=== PREVIEW TOGGLE START ===")
-		print("  collapsed=", _preview_collapsed)
-		print("  selected_key='%s'" % _selected_key)
-		print("  BEFORE: preview_root.min.x=", _preview_root.custom_minimum_size.x,
-			" preview_panel.size.x=", _preview_panel.size.x)
-
 	if _preview_collapsed:
 		_preview_toggle_btn.text = "◀"
 		_preview_title.visible = false
@@ -497,23 +591,14 @@ func _on_preview_toggle() -> void:
 		_preview_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 
 	_inner_split.queue_sort()
-
-	if DEBUG:
-		print("  AFTER: preview_root.min.x=", _preview_root.custom_minimum_size.x)
-
 	_push_preview_after_layout.call_deferred()
 
 func _push_preview_after_layout() -> void:
 	if _selected_key.is_empty():
-		if DEBUG:
-			print("[Editor] push_preview: no selected_key, skipping.")
 		return
-	# Wait one frame so the container re-lays out before we push content.
 	await get_tree().process_frame
 	if not is_instance_valid(self) or _selected_key.is_empty():
 		return
-	if DEBUG:
-		print("[Editor] push_preview: forcing refresh for '%s'" % _selected_key)
 	_update_preview_for(_selected_key)
 
 func _on_sidebar_item_selected(index: int) -> void:
@@ -569,6 +654,7 @@ func _on_row_value_changed(key: String, new_value: String) -> void:
 	translations[key] = new_value
 	_set_dirty(true)
 	_update_missing_count()
+	_update_validation_flags()
 
 	if key == _selected_key:
 		_update_preview_for(key)
@@ -576,8 +662,6 @@ func _on_row_value_changed(key: String, new_value: String) -> void:
 func _on_row_selected(key: String) -> void:
 	if key.is_empty():
 		return
-	if DEBUG:
-		print("[Editor] row selected: '%s'" % key)
 	_selected_key = key
 
 	for i in _sidebar_list.item_count:
@@ -600,15 +684,41 @@ func _update_preview_for(key: String) -> void:
 		_preview_panel.clear()
 		return
 
-	if DEBUG:
-		print("[Editor] updating preview for '%s'" % key)
+	var broken: bool = _has_broken_reference(key)
+	var cyclic: bool = _has_cycle(key)
+	var cycle_path: Array[String] = []
+	if cyclic:
+		cycle_path = _get_cycle_path(key)
+
+	var lookup_for_preview: Callable = _preview_lookup
+	if cyclic:
+		lookup_for_preview = _make_cycle_safe_lookup(key)
 
 	_preview_panel.show_row(
 		key,
 		row.original_value,
 		row.get_translation(),
-		current_locale
+		current_locale,
+		broken,
+		cyclic,
+		cycle_path,
+		lookup_for_preview
 	)
+
+func _make_cycle_safe_lookup(root_key: String) -> Callable:
+	var cycle_members: Dictionary = {}
+	var path: Array[String] = _get_cycle_path(root_key)
+	for k in path:
+		cycle_members[k] = true
+
+	return func(k: String) -> String:
+		if cycle_members.has(k) and k != root_key:
+			return "{@%s}" % k
+		if translations.has(k):
+			return String(translations[k])
+		if originals.has(k):
+			return String(originals[k])
+		return ""
 
 func _scroll_to_row(key: String) -> void:
 	if not _rows_by_key.has(key):
@@ -762,6 +872,7 @@ func _on_add_key_pressed() -> void:
 		_refresh_sidebar()
 		_set_dirty(true)
 		_update_missing_count()
+		_update_validation_flags()
 		dialog.queue_free()
 	)
 	dialog.canceled.connect(func(): dialog.queue_free())
@@ -847,7 +958,53 @@ func _delete_key_across_locales(target_key: String) -> void:
 	_refresh_sidebar()
 	_set_dirty(true)
 	_update_missing_count()
+	_update_validation_flags()
 	EditorInterface.get_resource_filesystem().scan()
+
+# ============================================================
+# IMPORT / EXPORT
+# ============================================================
+
+func _on_export_pressed() -> void:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	if not _csv_dialog:
+		_csv_dialog = ImportExportDialog.new()
+		_csv_dialog.export_completed.connect(_on_csv_export_completed)
+		_csv_dialog.import_completed.connect(_on_csv_import_completed)
+		# ÖNEMLİ: add_child burada — _csv_dialog ağaca ekleniyor.
+		add_child(_csv_dialog)
+
+	_csv_dialog.open_export(registry, "user://localization_export.csv")
+
+func _on_import_pressed() -> void:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	if not _csv_dialog:
+		_csv_dialog = ImportExportDialog.new()
+		_csv_dialog.export_completed.connect(_on_csv_export_completed)
+		_csv_dialog.import_completed.connect(_on_csv_import_completed)
+		add_child(_csv_dialog)
+
+	_csv_dialog.open_import(registry, "user://localization_export.csv")
+
+func _on_csv_export_completed(path: String) -> void:
+	print("[Editor] CSV exported: ", path)
+
+func _on_csv_import_completed(imported_count: int) -> void:
+	print("[Editor] CSV imported: %d keys" % imported_count)
+	if not current_locale.is_empty():
+		open_locale(current_locale)
 
 # ============================================================
 # SAVE

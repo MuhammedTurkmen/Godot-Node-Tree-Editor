@@ -2,9 +2,6 @@
 class_name BayterekLocalizationPreviewPanel
 extends MarginContainer
 ## Right-hand preview panel for the Editor tab.
-##
-## Note: the "Preview" title is rendered by the Editor (next to the toggle
-## button), so this panel does NOT render its own title.
 
 const Localization = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd")
 const Service = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization_service.gd")
@@ -19,39 +16,29 @@ var _args_container: VBoxContainer
 var _issues_container: VBoxContainer
 var _empty_label: Label
 
-## Arg inputs by name — key: arg name, value: LineEdit
 var _arg_inputs: Dictionary = {}
 
-## Current row data
 var _row_key: String = ""
 var _original_value: String = ""
 var _current_value: String = ""
-
-## Lookup callback set by the Editor
 var _lookup: Callable = Callable()
-
-## Current locale (for display)
+var _active_lookup: Callable = Callable()
 var _current_locale: String = ""
+
+var _external_broken: bool = false
+var _external_cyclic: bool = false
+var _external_cycle_path: Array[String] = []
 
 const SAMPLE_PREFIX := "‹"
 const SAMPLE_SUFFIX := "›"
 
-## Guards against re-entrant refreshes.
 var _refreshing: bool = false
-
-const DEBUG := true
-
-# ============================================================
-# LIFECYCLE
-# ============================================================
 
 func _ready() -> void:
 	add_theme_constant_override("margin_left", 8)
 	add_theme_constant_override("margin_right", 8)
 	add_theme_constant_override("margin_top", 8)
 	add_theme_constant_override("margin_bottom", 8)
-	# Do NOT set custom_minimum_size.x — the parent (_preview_root in the
-	# Editor) manages our width so it can collapse to 28px.
 	size_flags_horizontal = SIZE_EXPAND_FILL
 	size_flags_vertical = SIZE_EXPAND_FILL
 	clip_contents = true
@@ -66,9 +53,6 @@ func _build() -> void:
 	_root.size_flags_vertical = SIZE_EXPAND_FILL
 	add_child(_root)
 
-	# NO title here — the Editor renders the title next to the toggle button.
-
-	# Key
 	var key_row := HBoxContainer.new()
 	key_row.add_theme_constant_override("separation", 6)
 	_root.add_child(key_row)
@@ -140,29 +124,38 @@ func _make_rtl() -> RichTextLabel:
 
 func set_lookup(callback: Callable) -> void:
 	_lookup = callback
+	_active_lookup = callback
 
 func show_row(
 	key: String,
 	original: String,
 	current: String,
-	current_locale: String
+	current_locale: String,
+	broken_ref: bool = false,
+	cyclic: bool = false,
+	cycle_path: Array[String] = [],
+	lookup_override: Callable = Callable()
 ) -> void:
-	if DEBUG:
-		print("[PreviewPanel] show_row key='%s' visible=%s" % [key, visible])
 	_row_key = key
 	_original_value = original
 	_current_value = current
 	_current_locale = current_locale
+	_external_broken = broken_ref
+	_external_cyclic = cyclic
+	_external_cycle_path = cycle_path
+	_active_lookup = lookup_override if lookup_override.is_valid() else _lookup
 
 	_show_content()
 	_refresh()
 
 func clear() -> void:
-	if DEBUG:
-		print("[PreviewPanel] clear()")
 	_row_key = ""
 	_original_value = ""
 	_current_value = ""
+	_external_broken = false
+	_external_cyclic = false
+	_external_cycle_path = []
+	_active_lookup = _lookup
 	_clear_arg_inputs()
 	_show_empty()
 
@@ -275,7 +268,7 @@ func _rebuild_args_inputs() -> void:
 
 func _rebuild_resolved() -> void:
 	var args := _collect_args()
-	var out: String = Format.resolve_visible(_current_value, args, _lookup)
+	var out: String = Format.resolve_visible(_current_value, args, _active_lookup)
 	_resolved_label.text = _to_bbcode(out)
 
 func _collect_args() -> Dictionary:
@@ -307,30 +300,41 @@ func _rebuild_issues() -> void:
 	for child in _issues_container.get_children():
 		child.queue_free()
 
-	var issues: Array[String] = []
+	var issues: Array = []
 
+	# 1) Cycle (highest priority).
+	if _external_cyclic:
+		var text: String = "Cycle detected"
+		if _external_cycle_path.size() > 0:
+			text += ": " + " → ".join(_external_cycle_path)
+		issues.append({"text": text, "color": Color(0.85, 0.6, 1.0)})
+
+	# 2) Broken references.
+	if _external_broken and not _external_cyclic:
+		var refs: PackedStringArray = Format.extract_key_references(_current_value)
+		for ref in refs:
+			var res = _active_lookup.call(ref) if _active_lookup.is_valid() else ""
+			if res == null or String(res).is_empty():
+				issues.append({
+					"text": "Reference not found: {@%s}" % ref,
+					"color": Color(1.0, 0.4, 0.4),
+				})
+
+	# 3) Placeholder mismatch (only compares {arg} placeholders).
 	if not _original_value.is_empty() and not _current_value.is_empty():
 		var cmp: Dictionary = Format.compare_placeholders(_original_value, _current_value)
 		var missing: PackedStringArray = cmp.get("missing", [])
 		var extra: PackedStringArray = cmp.get("extra", [])
 		for m in missing:
-			issues.append("Missing placeholder: {%s}" % m)
+			issues.append({
+				"text": "Missing placeholder: {%s}" % m,
+				"color": Color(1.0, 0.75, 0.4),
+			})
 		for e in extra:
-			issues.append("Extra placeholder: {%s}" % e)
-
-	var refs: PackedStringArray = Format.extract_key_references(_current_value)
-	for ref in refs:
-		var res = _lookup.call(ref) if _lookup.is_valid() else ""
-		if res == null or String(res).is_empty():
-			issues.append("Reference not found: {@%s}" % ref)
-
-	for name in _arg_inputs.keys():
-		var edit = _arg_inputs[name]
-		if not is_instance_valid(edit) or not (edit is LineEdit):
-			continue
-		var le: LineEdit = edit
-		if le.text.strip_edges().is_empty():
-			issues.append("No sample for arg: {%s}" % name)
+			issues.append({
+				"text": "Extra placeholder: {%s}" % e,
+				"color": Color(1.0, 0.75, 0.4),
+			})
 
 	if issues.is_empty():
 		var ok := Label.new()
@@ -342,9 +346,9 @@ func _rebuild_issues() -> void:
 
 	for issue in issues:
 		var lbl := Label.new()
-		lbl.text = "⚠ " + issue
+		lbl.text = "⚠ " + issue["text"]
 		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		lbl.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+		lbl.add_theme_color_override("font_color", issue["color"])
 		lbl.add_theme_font_size_override("font_size", 11)
 		_issues_container.add_child(lbl)
 

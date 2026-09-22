@@ -191,15 +191,9 @@ static func format_visible(text: String, args: Dictionary) -> String:
 # RESOLVE — args + nested {@key}
 # ============================================================
 
-## Resolves both {arg} and {@key}.
-##   {arg}  → args first, then lookup
-##   {@key} → lookup only
-##
-## `lookup` is a Callable(key: String) -> String.
 static func resolve(text: String, args: Dictionary, lookup: Callable) -> String:
 	return _resolve_inner(text, args, lookup, 0, false)
 
-## Same as resolve() but missing values become "[name]" markers.
 static func resolve_visible(text: String, args: Dictionary, lookup: Callable) -> String:
 	return _resolve_inner(text, args, lookup, 0, true)
 
@@ -243,7 +237,6 @@ static func _resolve_inner(
 			var raw: String = text.substr(i + 1, close_idx - i - 1).strip_edges()
 
 			if raw.begins_with(KEY_MARKER):
-				# Explicit key reference — no args check.
 				var key_name: String = raw.substr(KEY_MARKER.length()).strip_edges()
 				var nested: String = ""
 				if not key_name.is_empty() and lookup.is_valid():
@@ -255,7 +248,6 @@ static func _resolve_inner(
 				else:
 					out += _resolve_inner(nested, args, lookup, depth + 1, visible_missing)
 			else:
-				# Plain placeholder: try args first, then lookup.
 				if args.has(raw):
 					var v = args[raw]
 					out += str(v) if v != null else ""
@@ -294,15 +286,23 @@ static func _resolve_inner(
 static func has_placeholders(text: String) -> bool:
 	return not extract_placeholders(text).is_empty()
 
+## Compares two strings' ARGUMENT placeholder sets.
+## Key references ({@key}) are NOT compared here — they are validated
+## separately by the Editor (broken reference / cycle detection).
+##
+## Returns { "missing": [...], "extra": [...] }
 static func compare_placeholders(original: String, translation: String) -> Dictionary:
-	var orig_set: PackedStringArray = extract_placeholders(original)
-	var trans_set: PackedStringArray = extract_placeholders(translation)
+	var orig_set: PackedStringArray = extract_args(original)
+	var trans_set: PackedStringArray = extract_args(translation)
+
 	var missing: PackedStringArray = []
 	var extra: PackedStringArray = []
+
 	for p in orig_set:
 		if not trans_set.has(p):
 			missing.append(p)
 	for p in trans_set:
 		if not orig_set.has(p):
 			extra.append(p)
+
 	return {"missing": missing, "extra": extra}
