@@ -2,11 +2,14 @@
 class_name BayterekLocalizationKeyRow
 extends PanelContainer
 ## A single row in the Editor's key table.
+## DEBUG BUILD — TextEdit + LineEdit karışık. Bol print.
 
 signal value_changed(key: String, new_value: String)
 signal row_selected(key: String)
 signal navigate_requested(key: String, direction: int)
 signal key_rename_requested(old_key: String, new_key: String)
+signal value_edit_started(key: String, current_value: String)
+signal value_edit_committed(key: String, new_value: String)
 
 const KEY_COLUMN_WIDTH := 200
 const MIN_ORIGINAL_COL := 160
@@ -14,11 +17,11 @@ const MIN_TRANSLATION_COL := 200
 
 const STATE_NORMAL := Color(0, 0, 0, 0)
 const STATE_SELECTED := Color(0.3, 0.5, 0.8, 0.25)
-const STATE_MISSING := Color(1.0, 0.85, 0.4, 0.10)          # yellow — same as original
-const STATE_EMPTY := Color(1.0, 0.4, 0.4, 0.12)              # red — empty
-const STATE_PLACEHOLDER_MISMATCH := Color(1.0, 0.55, 0.2, 0.15)  # orange
-const STATE_BROKEN_REF := Color(1.0, 0.25, 0.3, 0.18)        # bright red — missing {@key}
-const STATE_CYCLE := Color(0.75, 0.4, 1.0, 0.20)             # purple — cycle
+const STATE_MISSING := Color(1.0, 0.85, 0.4, 0.10)
+const STATE_EMPTY := Color(1.0, 0.4, 0.4, 0.12)
+const STATE_PLACEHOLDER_MISMATCH := Color(1.0, 0.55, 0.2, 0.15)
+const STATE_BROKEN_REF := Color(1.0, 0.25, 0.3, 0.18)
+const STATE_CYCLE := Color(0.75, 0.4, 1.0, 0.20)
 
 const FormatHelper = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization_format_string.gd")
 
@@ -27,7 +30,6 @@ var original_value: String = ""
 var translation_value: String = ""
 var is_original_locale: bool = false
 
-## Validation flags set by the Editor.
 var _broken_ref: bool = false
 var _cyclic: bool = false
 var _cycle_path: Array[String] = []
@@ -101,8 +103,9 @@ func _build() -> void:
 	_translation_field.size_flags_stretch_ratio = 1.0
 	_translation_field.custom_minimum_size.x = MIN_TRANSLATION_COL
 	_translation_field.text_changed.connect(_on_field_changed)
-	_translation_field.field_focus_entered.connect(_on_field_focus_entered)
 	_translation_field.text_submitted.connect(_on_field_submitted)
+	_translation_field.field_focus_entered.connect(_on_field_focus_entered)
+	_translation_field.field_focus_exited.connect(_on_field_focus_exited)
 	hbox.add_child(_translation_field)
 
 # ============================================================
@@ -118,7 +121,6 @@ func setup(p_key: String, p_original: String, p_translation: String, p_is_origin
 	_build()
 	_apply_values()
 
-## Called by the Editor to set validation state.
 func set_validation_flags(broken_ref: bool, cyclic: bool, cycle_path: Array[String] = []) -> void:
 	_broken_ref = broken_ref
 	_cyclic = cyclic
@@ -131,6 +133,7 @@ func get_translation() -> String:
 	return _translation_field.get_text()
 
 func set_translation(value: String, emit_signal: bool = false) -> void:
+	print("[ROW:", key, "] set_translation('", value, "')")
 	translation_value = value
 	if _translation_field:
 		_translation_field.set_text(value)
@@ -229,17 +232,23 @@ func _has_placeholder_mismatch() -> bool:
 # SIGNAL HANDLERS
 # ============================================================
 
-func _on_field_changed() -> void:
-	var new_text: String = _translation_field.get_text()
+func _on_field_changed(new_text: String) -> void:
+	print("[ROW:", key, "] _on_field_changed('", new_text, "')")
 	translation_value = new_text
-	_update_row_style()
 	value_changed.emit(key, new_text)
 
-func _on_field_focus_entered() -> void:
-	row_selected.emit(key)
-
-func _on_field_submitted(_text: String) -> void:
+func _on_field_submitted(_new_text: String) -> void:
 	navigate_requested.emit(key, 1)
+
+func _on_field_focus_entered() -> void:
+	print("[ROW:", key, "] _on_field_focus_entered")
+	row_selected.emit(key)
+	value_edit_started.emit(key, get_translation())
+
+func _on_field_focus_exited() -> void:
+	print("[ROW:", key, "] _on_field_focus_exited")
+	_update_row_style()
+	value_edit_committed.emit(key, get_translation())
 
 func _on_key_submitted(new_key_text: String) -> void:
 	_commit_key_rename(new_key_text)

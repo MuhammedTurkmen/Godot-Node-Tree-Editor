@@ -2,6 +2,7 @@
 class_name BayterekLocalizationEditor
 extends MarginContainer
 ## Editor tab — sidebar + key table + preview panel.
+## DEBUG BUILD — TextEdit caret sorununu tespit için bol print.
 
 const Localization = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd")
 const Service = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization_service.gd")
@@ -9,6 +10,7 @@ const Format = preload("res://addons/bayterek_localization/scripts/shared/bayter
 const KeyRow = preload("res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_key_row.gd")
 const PreviewPanel = preload("res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_preview_panel.gd")
 const ImportExportDialog = preload("res://addons/bayterek_localization/scripts/editor/bayterek_localization_import_export_dialog.gd")
+const UndoHelper = preload("res://addons/bayterek_localization/scripts/editor/bayterek_localization_undo_helper.gd")
 
 const SIDEBAR_EXPANDED := 240
 const SIDEBAR_COLLAPSED := 28
@@ -65,8 +67,9 @@ var _preview_collapsed: bool = false
 var _suppress_sidebar_signal: bool = false
 var _selected_key: String = ""
 
-## Cache: key -> Array[String] of {@key} references it points to.
 var _key_refs_cache: Dictionary = {}
+var _undo_helper: BayterekLocalizationUndoHelper
+var _field_edit_old_value: Dictionary = {}
 
 # ============================================================
 # LIFECYCLE
@@ -82,6 +85,7 @@ func _ready() -> void:
 
 func init() -> void:
 	_build_ui()
+	_undo_helper = UndoHelper.new(self)
 	_show_empty()
 	print("[BayterekLocalizationEditor] ready.")
 
@@ -369,6 +373,9 @@ func open_locale(locale: String) -> void:
 
 	dirty = false
 	_selected_key = ""
+	_field_edit_old_value.clear()
+	if _undo_helper:
+		_undo_helper.reset_batch()
 	_preview_panel.clear()
 
 	_rebuild_rows()
@@ -508,6 +515,8 @@ func _add_row(key: String, orig_val: String, trans_val: String) -> void:
 	row.row_selected.connect(_on_row_selected)
 	row.navigate_requested.connect(_on_row_navigate_requested)
 	row.key_rename_requested.connect(_on_row_key_rename_requested)
+	row.value_edit_started.connect(_on_row_value_edit_started)
+	row.value_edit_committed.connect(_on_row_value_edit_committed)
 	_rows_by_key[key] = row
 
 func _clear_rows() -> void:
@@ -650,16 +659,54 @@ func _apply_filter() -> void:
 # ROW INTERACTION
 # ============================================================
 
+func _on_row_value_edit_started(key: String, current_value: String) -> void:
+	print("[EDITOR] _on_row_value_edit_started('", key, "', '", current_value, "')")
+	_field_edit_old_value[key] = current_value
+
 func _on_row_value_changed(key: String, new_value: String) -> void:
+	print("[EDITOR] _on_row_value_changed('", key, "', '", new_value, "')")
+
+	if _undo_helper and _field_edit_old_value.has(key):
+		var old_value: String = _field_edit_old_value[key]
+		if old_value != new_value:
+			_undo_helper.push_value_change(
+				key,
+				old_value,
+				new_value,
+				current_locale,
+				_apply_value_from_undo
+			)
+			_field_edit_old_value[key] = new_value
+
 	translations[key] = new_value
 	_set_dirty(true)
 	_update_missing_count()
-	_update_validation_flags()
+	# YAZMA SIRASINDA VALIDATION VE PREVIEW ÇAĞRILMIYOR.
 
+func _on_row_value_edit_committed(key: String, _new_value: String) -> void:
+	print("[EDITOR] _on_row_value_edit_committed('", key, "')")
+	_update_validation_flags()
+	if key == _selected_key:
+		_update_preview_for(key)
+
+func _apply_value_from_undo(key: String, value: String) -> void:
+	print("[EDITOR] _apply_value_from_undo('", key, "', '", value, "')")
+	if not _rows_by_key.has(key):
+		return
+	var row: BayterekLocalizationKeyRow = _rows_by_key[key]
+	if not is_instance_valid(row):
+		return
+	row.set_translation(value, false)
+	translations[key] = value
+	_field_edit_old_value[key] = value
+	_set_dirty(true)
+	_update_missing_count()
+	_update_validation_flags()
 	if key == _selected_key:
 		_update_preview_for(key)
 
 func _on_row_selected(key: String) -> void:
+	print("[EDITOR] _on_row_selected('", key, "')")
 	if key.is_empty():
 		return
 	_selected_key = key
@@ -674,6 +721,7 @@ func _on_row_selected(key: String) -> void:
 	_update_preview_for(key)
 
 func _update_preview_for(key: String) -> void:
+	print("[EDITOR] _update_preview_for('", key, "')")
 	if not _preview_panel:
 		return
 	if not _rows_by_key.has(key):
@@ -792,7 +840,24 @@ func _on_row_key_rename_requested(old_key: String, new_key: String) -> void:
 				r._apply_values()
 		return
 
-	var renamed_count: int = 0
+	if _undo_helper:
+		_undo_helper.push_rename_key(
+			old_key,
+			new_key,
+			_apply_rename_key,
+			_apply_rename_key_undo
+		)
+	else:
+		_apply_rename_key(old_key, new_key)
+
+func _apply_rename_key(old_key: String, new_key: String) -> void:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
 	for locale in registry.get_all_locales():
 		var path: String = Service.get_locale_file_path(locale)
 		var data: Dictionary = Service.read_json(path)
@@ -800,15 +865,13 @@ func _on_row_key_rename_requested(old_key: String, new_key: String) -> void:
 			data[new_key] = data[old_key]
 			data.erase(old_key)
 			Service.write_json(path, data)
-			renamed_count += 1
-
-	print("[BayterekLocalizationEditor] renamed key '%s' -> '%s' across %d locale file(s)" % [
-		old_key, new_key, renamed_count
-	])
 
 	_selected_key = ""
 	open_locale(current_locale)
 	EditorInterface.get_resource_filesystem().scan()
+
+func _apply_rename_key_undo(old_key: String, new_key: String) -> void:
+	_apply_rename_key(new_key, old_key)
 
 func _row_key_exists_anywhere(registry: LocalizationRegistry, candidate: String) -> bool:
 	for locale in registry.get_all_locales():
@@ -866,13 +929,15 @@ func _on_add_key_pressed() -> void:
 			err_label.visible = true
 			return
 
-		originals[new_key] = ""
-		translations[new_key] = ""
-		_add_row(new_key, "", "")
-		_refresh_sidebar()
-		_set_dirty(true)
-		_update_missing_count()
-		_update_validation_flags()
+		if _undo_helper:
+			_undo_helper.push_add_key(
+				new_key,
+				_apply_add_key.bind(new_key),
+				_apply_remove_key.bind(new_key)
+			)
+		else:
+			_apply_add_key(new_key)
+
 		dialog.queue_free()
 	)
 	dialog.canceled.connect(func(): dialog.queue_free())
@@ -884,6 +949,35 @@ func _on_add_key_pressed() -> void:
 	dialog.popup_centered()
 
 	key_input.call_deferred("grab_focus")
+
+func _apply_add_key(key: String) -> void:
+	if originals.has(key) or translations.has(key):
+		return
+	originals[key] = ""
+	translations[key] = ""
+	_add_row(key, "", "")
+	_refresh_sidebar()
+	_set_dirty(true)
+	_update_missing_count()
+	_update_validation_flags()
+
+func _apply_remove_key(key: String) -> void:
+	if not originals.has(key) and not translations.has(key):
+		return
+	originals.erase(key)
+	translations.erase(key)
+	if _rows_by_key.has(key):
+		var row: BayterekLocalizationKeyRow = _rows_by_key[key]
+		if is_instance_valid(row):
+			row.queue_free()
+		_rows_by_key.erase(key)
+	if key == _selected_key:
+		_selected_key = ""
+		_preview_panel.clear()
+	_refresh_sidebar()
+	_set_dirty(true)
+	_update_missing_count()
+	_update_validation_flags()
 
 func _on_delete_key_pressed() -> void:
 	if not is_original_locale:
@@ -935,6 +1029,31 @@ func _delete_key_across_locales(target_key: String) -> void:
 	if not registry:
 		return
 
+	var deleted_values: Dictionary = {}
+	for locale in registry.get_all_locales():
+		var path: String = Service.get_locale_file_path(locale)
+		var data: Dictionary = Service.read_json(path)
+		if data.has(target_key):
+			deleted_values[locale] = data[target_key]
+
+	if _undo_helper:
+		_undo_helper.push_delete_key(
+			target_key,
+			deleted_values,
+			_apply_delete_key,
+			_apply_restore_key
+		)
+	else:
+		_apply_delete_key(target_key)
+
+func _apply_delete_key(target_key: String) -> void:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
 	for locale in registry.get_all_locales():
 		var path: String = Service.get_locale_file_path(locale)
 		var data: Dictionary = Service.read_json(path)
@@ -961,6 +1080,16 @@ func _delete_key_across_locales(target_key: String) -> void:
 	_update_validation_flags()
 	EditorInterface.get_resource_filesystem().scan()
 
+func _apply_restore_key(target_key: String, values: Dictionary) -> void:
+	for locale in values.keys():
+		var path: String = Service.get_locale_file_path(locale)
+		var data: Dictionary = Service.read_json(path)
+		data[target_key] = values[locale]
+		Service.write_json(path, data)
+
+	open_locale(current_locale)
+	EditorInterface.get_resource_filesystem().scan()
+
 # ============================================================
 # IMPORT / EXPORT
 # ============================================================
@@ -977,7 +1106,6 @@ func _on_export_pressed() -> void:
 		_csv_dialog = ImportExportDialog.new()
 		_csv_dialog.export_completed.connect(_on_csv_export_completed)
 		_csv_dialog.import_completed.connect(_on_csv_import_completed)
-		# ÖNEMLİ: add_child burada — _csv_dialog ağaca ekleniyor.
 		add_child(_csv_dialog)
 
 	_csv_dialog.open_export(registry, "user://localization_export.csv")
@@ -1068,10 +1196,23 @@ func _input(event: InputEvent) -> void:
 
 	var key: int = event.keycode
 	var ctrl: bool = event.ctrl_pressed or event.meta_pressed
+	var shift: bool = event.shift_pressed
 
 	if ctrl and key == KEY_S:
 		if dirty:
 			_on_save_pressed()
+		get_viewport().set_input_as_handled()
+		return
+
+	if ctrl and not shift and key == KEY_Z:
+		if _undo_helper:
+			_undo_helper.undo()
+		get_viewport().set_input_as_handled()
+		return
+
+	if (ctrl and key == KEY_Y) or (ctrl and shift and key == KEY_Z):
+		if _undo_helper:
+			_undo_helper.redo()
 		get_viewport().set_input_as_handled()
 		return
 
