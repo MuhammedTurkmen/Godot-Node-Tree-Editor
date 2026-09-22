@@ -1108,7 +1108,8 @@ func _on_export_pressed() -> void:
 		_csv_dialog.import_completed.connect(_on_csv_import_completed)
 		add_child(_csv_dialog)
 
-	_csv_dialog.open_export(registry, "")
+	var default_path: String = _make_export_default_path()
+	_csv_dialog.open_export(registry, default_path)
 
 func _on_import_pressed() -> void:
 	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
@@ -1124,7 +1125,28 @@ func _on_import_pressed() -> void:
 		_csv_dialog.import_completed.connect(_on_csv_import_completed)
 		add_child(_csv_dialog)
 
-	_csv_dialog.open_import(registry, "")
+	var default_path: String = _make_export_default_path()
+	_csv_dialog.open_import(registry, default_path)
+
+## Default CSV path: user://localization/<locale>_<timestamp>.csv
+##   locale   → editor'de açık olan locale (current_locale). Boşsa "all".
+##   timestamp → 2026-09-23_14-30
+func _make_export_default_path() -> String:
+	var locale_part: String = current_locale
+	if locale_part.is_empty():
+		locale_part = "all"
+
+	var dt: Dictionary = Time.get_datetime_dict_from_system()
+	var timestamp: String = "%04d-%02d-%02d_%02d-%02d" % [
+		dt.get("year", 0),
+		dt.get("month", 0),
+		dt.get("day", 0),
+		dt.get("hour", 0),
+		dt.get("minute", 0),
+	]
+
+	var filename: String = "%s_%s.csv" % [locale_part, timestamp]
+	return "user://localization/%s" % filename
 
 func _on_csv_export_completed(path: String) -> void:
 	print("[Editor] CSV exported: ", path)

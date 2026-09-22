@@ -2,9 +2,6 @@
 class_name BayterekLocalizationImportExportDialog
 extends ConfirmationDialog
 ## Import / Export CSV dialog for the Localization editor.
-##
-## Çözüm: Preview içeriğini popup'tan SONRA yaz. İlk frame'de RichTextLabel
-## boş kalır, content_min doğru hesaplanır, popup 760×560 olarak açılır.
 
 signal export_completed(path: String)
 signal import_completed(imported_count: int)
@@ -21,7 +18,6 @@ const PREVIEW_HEIGHT := 240
 
 ## Default export/import klasörü — user:// altında otomatik oluşturulur.
 const DEFAULT_USER_DIR := "user://localization"
-const DEFAULT_EXPORT_FILENAME := "localization_export.csv"
 
 var _mode: int = Mode.EXPORT
 var _path_input: LineEdit
@@ -32,7 +28,6 @@ var _include_original_check: CheckBox
 
 var _registry: LocalizationRegistry = null
 var _content_vbox: VBoxContainer = null
-
 var _file_dialog: FileDialog = null
 
 # ============================================================
@@ -70,7 +65,7 @@ func _build_ui() -> void:
 
 	_path_input = LineEdit.new()
 	_path_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_path_input.placeholder_text = "user://localization/localization_export.csv"
+	_path_input.placeholder_text = "user://localization/tr-TR_2026-09-23_14-30.csv"
 	_path_input.text_changed.connect(_on_path_changed)
 	path_row.add_child(_path_input)
 
@@ -144,7 +139,7 @@ func open_export(registry: LocalizationRegistry, default_path: String = "") -> v
 	_registry = registry
 	title = "Export CSV"
 	ok_button_text = "Export"
-	_path_input.text = default_path if not default_path.is_empty() else _get_default_path()
+	_path_input.text = default_path if not default_path.is_empty() else _make_fallback_path()
 	_info_label.text = "Export all locales to a single CSV file.\nEach locale becomes a column. Original locale first."
 	_include_original_check.visible = true
 	_include_empty_check.visible = true
@@ -156,20 +151,25 @@ func open_import(registry: LocalizationRegistry, default_path: String = "") -> v
 	_registry = registry
 	title = "Import CSV"
 	ok_button_text = "Import"
-	_path_input.text = default_path if not default_path.is_empty() else _get_default_path()
+	_path_input.text = default_path if not default_path.is_empty() else _make_fallback_path()
 	_info_label.text = "Import translations from a CSV file.\nNew keys are added to the original locale. Existing keys are updated. Missing keys are preserved."
 	_include_original_check.visible = false
 	_include_empty_check.visible = false
 	_preview_label.text = ""
 	_popup_then_refresh.call_deferred()
 
-## Default path — user://localization/localization_export.csv
-## Klasör otomatik oluşturulur.
-func _get_default_path() -> String:
+## Fallback — editor bir path geçmediyse.
+func _make_fallback_path() -> String:
 	_ensure_default_dir()
-	return "%s/%s" % [DEFAULT_USER_DIR, DEFAULT_EXPORT_FILENAME]
+	return "%s/export_%s.csv" % [DEFAULT_USER_DIR, _make_timestamp()]
 
-## user://localization/ klasörü yoksa oluştur.
+func _make_timestamp() -> String:
+	var dt: Dictionary = Time.get_datetime_dict_from_system()
+	return "%04d-%02d-%02d_%02d-%02d" % [
+		dt.get("year", 0), dt.get("month", 0), dt.get("day", 0),
+		dt.get("hour", 0), dt.get("minute", 0),
+	]
+
 func _ensure_default_dir() -> void:
 	var global_path: String = ProjectSettings.globalize_path(DEFAULT_USER_DIR)
 	if not DirAccess.dir_exists_absolute(global_path):
@@ -177,7 +177,6 @@ func _ensure_default_dir() -> void:
 		if err != OK:
 			push_warning("Localization: could not create default dir: %s (err=%d)" % [global_path, err])
 
-## Popup'ı doğru boyutta aç, SONRA preview'ı doldur.
 func _popup_then_refresh() -> void:
 	if not visible:
 		show()
@@ -200,21 +199,19 @@ func _on_browse_pressed() -> void:
 		_file_dialog.file_selected.connect(_on_file_dialog_selected)
 		add_child(_file_dialog)
 
-	# Mod'a göre file dialog ayarları.
 	if _mode == Mode.EXPORT:
 		_file_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
 		_file_dialog.title = "Export CSV — Save As"
-		_file_dialog.current_file = _path_input.text.get_file()
-		if _file_dialog.current_file.is_empty():
-			_file_dialog.current_file = DEFAULT_EXPORT_FILENAME
+		var current_file: String = _path_input.text.get_file()
+		if current_file.is_empty():
+			current_file = "export.csv"
+		_file_dialog.current_file = current_file
 	else:
 		_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 		_file_dialog.title = "Import CSV — Open File"
 
-	# Filtre.
 	_file_dialog.filters = PackedStringArray(["*.csv ; CSV Files"])
 
-	# Başlangıç klasörü — mevcut path'in klasörü.
 	var current_dir: String = _path_input.text.get_base_dir()
 	if not current_dir.is_empty():
 		var global_dir: String = current_dir
@@ -231,7 +228,7 @@ func _on_file_dialog_selected(path: String) -> void:
 		_refresh_preview()
 
 func _on_reset_path_pressed() -> void:
-	_path_input.text = _get_default_path()
+	_path_input.text = _make_fallback_path()
 	_refresh_preview()
 
 # ============================================================
@@ -401,7 +398,6 @@ func _do_export(path: String) -> void:
 
 	var csv: String = CSV.serialize(locale_codes, rows)
 
-	# Klasörü oluştur (kullanıcı manuel path girdiyse bile).
 	var dir: String = path.get_base_dir()
 	if not dir.is_empty() and not DirAccess.dir_exists_absolute(dir):
 		DirAccess.make_dir_recursive_absolute(dir)
