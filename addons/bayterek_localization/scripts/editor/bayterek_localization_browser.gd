@@ -2,11 +2,6 @@
 class_name BayterekLocalizationBrowser
 extends MarginContainer
 ## Browser tab — language / region tree with add/remove and context menu.
-##
-## Tree hierarchy:
-##   Language (e.g. English)
-##     └── Region (e.g. en-US)
-##   Language (no regions → language itself is the locale)
 
 const Localization = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd")
 const Service = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization_service.gd")
@@ -31,6 +26,7 @@ var _tree: Tree
 var _search: LineEdit
 var _lang_menu: MenuButton
 var _region_menu: MenuButton
+var _refresh_btn: Button
 var _lang_count_label: Label
 var _region_count_label: Label
 var _locale_count_label: Label
@@ -65,6 +61,12 @@ func init() -> void:
 	_create_dialogs()
 	_refresh()
 	print("[BayterekLocalizationBrowser] ready.")
+
+## Called by the MainScreen when the Browser tab becomes visible again.
+## Reloads the registry from disk and rebuilds the tree.
+func on_tab_shown() -> void:
+	_reload_registry_from_disk()
+	_refresh()
 
 # ============================================================
 # UI
@@ -105,6 +107,14 @@ func _build_ui() -> void:
 	_search.clear_button_enabled = true
 	_search.size_flags_horizontal = SIZE_EXPAND_FILL
 	top.add_child(_search)
+
+	_refresh_btn = Button.new()
+	_refresh_btn.name = "RefreshButton"
+	_refresh_btn.text = "⟳"
+	_refresh_btn.tooltip_text = "Reload registry from disk"
+	_refresh_btn.custom_minimum_size = Vector2(32, 0)
+	_refresh_btn.pressed.connect(_on_refresh_pressed)
+	top.add_child(_refresh_btn)
 
 	# --- Tree ---
 	_tree = Tree.new()
@@ -163,8 +173,6 @@ func _connect_signals() -> void:
 	_context_menu.id_pressed.connect(_on_context_menu_pressed)
 
 func _create_dialogs() -> void:
-	# Dialog'ları doğrudan bu browser'a child yapıyoruz ki subwindow
-	# sistemi bu panelin parent penceresine bağlansın.
 	if not _language_dialog:
 		_language_dialog = BayterekLocalizationLanguageDialog.new()
 		_language_dialog.applied.connect(_on_language_dialog_applied)
@@ -178,6 +186,16 @@ func _create_dialogs() -> void:
 # ============================================================
 # REFRESH
 # ============================================================
+
+## Reloads the registry from disk (bypassing the cached instance).
+func _reload_registry_from_disk() -> void:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if loader and loader.has_method("reload_registry"):
+		loader.call("reload_registry")
+
+func _on_refresh_pressed() -> void:
+	_reload_registry_from_disk()
+	_refresh()
 
 func _refresh() -> void:
 	_refresh_ui.call_deferred()
@@ -423,6 +441,8 @@ func _show_context_menu(mouse_pos: Vector2) -> void:
 
 	if not item:
 		_context_menu.add_item("Add Language...", ContextMenuId.CREATE_LANGUAGE)
+		_context_menu.add_separator()
+		_context_menu.add_item("Refresh", ContextMenuId.CREATE_LANGUAGE + 1000)
 	else:
 		var meta: Dictionary = item.get_metadata(0)
 		var t: String = meta.get("type", "")
@@ -442,6 +462,11 @@ func _show_context_menu(mouse_pos: Vector2) -> void:
 	))
 
 func _on_context_menu_pressed(id: int) -> void:
+	# Magic id for "Refresh"
+	if id == ContextMenuId.CREATE_LANGUAGE + 1000:
+		_on_refresh_pressed()
+		return
+
 	match id:
 		ContextMenuId.CREATE_LANGUAGE: _open_add_language()
 		ContextMenuId.CREATE_REGION: _open_add_region()
@@ -474,7 +499,6 @@ func _request_delete_selected() -> void:
 	_open_delete_dialog(message)
 
 func _open_delete_dialog(message: String) -> void:
-	# Clean up any previous instance.
 	if is_instance_valid(_delete_dialog):
 		_delete_dialog.queue_free()
 		_delete_dialog = null
@@ -488,7 +512,6 @@ func _open_delete_dialog(message: String) -> void:
 	_delete_dialog.min_size = Vector2i.ZERO
 	_delete_dialog.unresizable = true
 
-	# Direct VBoxContainer as child — NO MarginContainer (Bayterek pattern).
 	var vbox := VBoxContainer.new()
 	vbox.name = "ContentVBox"
 	vbox.custom_minimum_size = Vector2(440, 110)
@@ -503,8 +526,7 @@ func _open_delete_dialog(message: String) -> void:
 	info.add_theme_font_size_override("font_size", 13)
 	vbox.add_child(info)
 
-	var sep := HSeparator.new()
-	vbox.add_child(sep)
+	vbox.add_child(HSeparator.new())
 
 	_delete_delete_files_check = CheckBox.new()
 	_delete_delete_files_check.text = "Also delete JSON file(s) from disk"
@@ -520,7 +542,6 @@ func _open_delete_dialog(message: String) -> void:
 	if not _delete_dialog.visible:
 		await get_tree().process_frame
 
-	# Bayterek pattern: reset_size() + size + popup_centered() (no args).
 	_delete_dialog.reset_size()
 	_delete_dialog.size = Vector2i(500, 240)
 	_delete_dialog.popup_centered()

@@ -59,6 +59,7 @@ func _build_ui() -> void:
 	tab_container.name = "TabContainer"
 	tab_container.size_flags_horizontal = SIZE_EXPAND_FILL
 	tab_container.size_flags_vertical = SIZE_EXPAND_FILL
+	tab_container.tab_changed.connect(_on_tab_changed)
 	add_child(tab_container)
 
 	browser = BayterekLocalizationBrowser.new()
@@ -75,6 +76,20 @@ func _build_ui() -> void:
 	editor.size_flags_vertical = SIZE_EXPAND_FILL
 	tab_container.add_child(editor)
 	tab_container.set_tab_title(1, "Editor")
+
+# ============================================================
+# TAB CHANGE
+# ============================================================
+
+func _on_tab_changed(tab_idx: int) -> void:
+	# When the user switches back to the Browser tab, reload the registry
+	# from disk so any external changes (scripts, editor, hand edits) show
+	# up immediately.
+	if tab_container and browser:
+		var browser_idx: int = tab_container.get_tab_idx_from_control(browser)
+		if tab_idx == browser_idx:
+			if browser.has_method("on_tab_shown"):
+				browser.call("on_tab_shown")
 
 # ============================================================
 # OPEN REGION IN EDITOR TAB

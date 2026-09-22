@@ -4,33 +4,53 @@
 [ext_resource type="Script" uid="uid://crcrhyhokadjw" path="res://addons/bayterek_localization/scripts/resources/localization_language.gd" id="1_h0r5q"]
 [ext_resource type="Script" uid="uid://dgm0ag8qen374" path="res://addons/bayterek_localization/scripts/resources/localization_region.gd" id="2_na31a"]
 
-[sub_resource type="Resource" id="Resource_1tpuh"]
+[sub_resource type="Resource" id="Resource_na31a"]
 script = ExtResource("2_na31a")
 code = "US"
 name = "United States"
 language_code = "en"
 file_path = "res://data/localization/languages/en-US.json"
 
+[sub_resource type="Resource" id="Resource_1tpuh"]
+script = ExtResource("2_na31a")
+code = "GB"
+name = "United Kingdom"
+language_code = "en"
+file_path = "res://data/localization/languages/en-GB.json"
+
 [sub_resource type="Resource" id="Resource_5wenj"]
 script = ExtResource("1_h0r5q")
 code = "en"
 name = "English"
-regions = Array[ExtResource("2_na31a")]([SubResource("Resource_1tpuh")])
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_na31a"), SubResource("Resource_1tpuh")])
 
-[sub_resource type="Resource" id="Resource_na31a"]
+[sub_resource type="Resource" id="Resource_2ypsp"]
 script = ExtResource("2_na31a")
 code = "TR"
 name = "Türkiye"
 language_code = "tr"
 file_path = "res://data/localization/languages/tr-TR.json"
 
-[sub_resource type="Resource" id="Resource_2ypsp"]
+[sub_resource type="Resource" id="Resource_lok7u"]
 script = ExtResource("1_h0r5q")
 code = "tr"
 name = "Türkçe"
-regions = Array[ExtResource("2_na31a")]([SubResource("Resource_na31a")])
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_2ypsp")])
+
+[sub_resource type="Resource" id="Resource_kqv3v"]
+script = ExtResource("2_na31a")
+code = "DE"
+name = "Deutschland"
+language_code = "de"
+file_path = "res://data/localization/languages/de-DE.json"
+
+[sub_resource type="Resource" id="Resource_ikgdi"]
+script = ExtResource("1_h0r5q")
+code = "de"
+name = "Deutsch"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_kqv3v")])
 
 [resource]
 script = ExtResource("1_8qjge")
-languages = Array[ExtResource("1_h0r5q")]([SubResource("Resource_5wenj"), SubResource("Resource_2ypsp")])
+languages = Array[ExtResource("1_h0r5q")]([SubResource("Resource_5wenj"), SubResource("Resource_lok7u"), SubResource("Resource_ikgdi")])
 original_locale = "en-US"

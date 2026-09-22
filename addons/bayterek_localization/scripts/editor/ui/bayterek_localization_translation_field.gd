@@ -1,32 +1,23 @@
 @tool
 class_name BayterekLocalizationTranslationField
-extends Control
-## A LineEdit with placeholder highlighting.
+extends TextEdit
+## Single-line translation input with placeholder highlighting.
 ##
-## Architecture:
-##   - Bottom layer: RichTextLabel with BBCode → shows colored text.
-##   - Top layer:    LineEdit with fully transparent font → handles typing.
+## TextEdit already declares a native `text_changed` signal (no args). We
+## reuse that instead of declaring our own signal of the same name.
 ##
-## When the user types, the LineEdit.text changes and the RichTextLabel is
-## updated with a BBCode version where "{placeholder}" segments are wrapped
-## in [color=...].
-##
-## Note on signal names:
-##   `Control` already declares `focus_entered` / `focus_exited`, so our
-##   custom signals use `field_*` prefixes to avoid clashes.
+## Note: TextEdit's scrollbar properties are plain ints (0 = disabled).
+## There is no SCROLL_MODE_* enum on TextEdit (that's ScrollContainer).
 
-signal text_changed(new_text: String)
 signal field_focus_entered
 signal field_focus_exited
 signal text_submitted(text: String)
 
-const PLACEHOLDER_COLOR := "8eb4ff"    # soft blue
-const PLACEHOLDER_BOLD := true
-const MIN_HEIGHT := 22
+const Highlighter = preload("res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_placeholder_highlighter.gd")
 
-var _rt: RichTextLabel
-var _le: LineEdit
-var _updating_from_line: bool = false
+const MIN_HEIGHT := 24
+
+var _updating: bool = false
 
 # ============================================================
 # LIFECYCLE
@@ -35,99 +26,77 @@ var _updating_from_line: bool = false
 func _ready() -> void:
 	custom_minimum_size.y = MIN_HEIGHT
 	size_flags_horizontal = SIZE_EXPAND_FILL
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	size_flags_vertical = SIZE_SHRINK_CENTER
 
-	_build()
+	# Single-line behaviour.
+	wrap_mode = TextEdit.LINE_WRAPPING_NONE
+	scroll_fit_content_height = false
+	scroll_horizontal = 0
+	scroll_vertical = 0
+	context_menu_enabled = true
+	caret_blink = true
+	caret_blink_interval = 0.5
 
-func _build() -> void:
-	if _rt:
-		return
+	# Placeholder highlighting.
+	syntax_highlighter = Highlighter.new()
 
-	# --- Bottom: RichTextLabel ---
-	_rt = RichTextLabel.new()
-	_rt.name = "RichLayer"
-	_rt.bbcode_enabled = true
-	_rt.scroll_active = false
-	_rt.fit_content = false
-	_rt.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_rt.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_rt.focus_mode = Control.FOCUS_NONE
-	_rt.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_rt.add_theme_constant_override("line_separation", 0)
-	add_child(_rt)
-
-	# --- Top: transparent LineEdit ---
-	_le = LineEdit.new()
-	_le.name = "LineLayer"
-	_le.size_flags_horizontal = SIZE_EXPAND_FILL
-	_le.size_flags_vertical = SIZE_EXPAND_FILL
-	_le.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-
-	_le.add_theme_color_override("font_color", Color(0, 0, 0, 0))
-	_le.add_theme_color_override("font_placeholder_color", Color(0, 0, 0, 0))
-	_le.add_theme_color_override("font_selected_color", Color(0.3, 0.5, 0.8, 0.4))
-	_le.add_theme_color_override("caret_color", Color(1, 1, 1, 0.9))
-	_le.add_theme_color_override("selection_color", Color(0.3, 0.5, 0.8, 0.35))
-
-	var empty_style := StyleBoxEmpty.new()
-	_le.add_theme_stylebox_override("normal", empty_style)
-	_le.add_theme_stylebox_override("focus", empty_style)
-	_le.add_theme_stylebox_override("read_only", empty_style)
-
-	_le.text_changed.connect(_on_line_text_changed)
-	_le.focus_entered.connect(_on_inner_focus_entered)
-	_le.focus_exited.connect(_on_inner_focus_exited)
-	_le.text_submitted.connect(_on_inner_text_submitted)
-	add_child(_le)
+	# Native TextEdit signals — reused, not redefined.
+	text_changed.connect(_on_inner_text_changed)
+	focus_entered.connect(_on_inner_focus_entered)
+	focus_exited.connect(_on_inner_focus_exited)
+	gui_input.connect(_on_inner_gui_input)
 
 # ============================================================
 # PUBLIC API
 # ============================================================
 
 func set_text(new_text: String) -> void:
-	if not _le:
+	if _updating:
 		return
-	_updating_from_line = true
-	_le.text = new_text
-	_updating_from_line = false
-	_refresh_rich()
+	_updating = true
+	text = new_text
+	_updating = false
+	set_caret_line(0)
+	set_caret_column(text.length())
 
 func get_text() -> String:
-	if not _le:
-		return ""
-	return _le.text
+	return text.replace("\n", "").replace("\r", "")
 
 func set_placeholder(p: String) -> void:
-	if _le:
-		_le.placeholder_text = p
+	placeholder_text = p
 
 func grab_focus_field() -> void:
-	if _le:
-		_le.grab_focus()
+	grab_focus()
 
 func select_all() -> void:
-	if _le:
-		_le.select_all()
+	super.select_all()
 
 func set_editable(on: bool) -> void:
-	if _le:
-		_le.editable = on
+	editable = on
 
 func is_editable() -> bool:
-	return _le != null and _le.editable
+	return editable
 
 func has_field_focus() -> bool:
-	return _le != null and _le.has_focus()
+	return has_focus()
 
 # ============================================================
 # INTERNAL
 # ============================================================
 
-func _on_line_text_changed(new_text: String) -> void:
-	if _updating_from_line:
+func _on_inner_text_changed() -> void:
+	if _updating:
 		return
-	_refresh_rich()
-	text_changed.emit(new_text)
+
+	# Strip any newlines that sneak in (paste, IME, etc.).
+	var stripped: String = text.replace("\n", "").replace("\r", "")
+	if stripped != text:
+		var caret_col: int = get_caret_column()
+		_updating = true
+		text = stripped
+		_updating = false
+		set_caret_line(0)
+		set_caret_column(min(caret_col, text.length()))
 
 func _on_inner_focus_entered() -> void:
 	field_focus_entered.emit()
@@ -135,62 +104,8 @@ func _on_inner_focus_entered() -> void:
 func _on_inner_focus_exited() -> void:
 	field_focus_exited.emit()
 
-func _on_inner_text_submitted(text: String) -> void:
-	text_submitted.emit(text)
-
-## Rebuilds the RichTextLabel from the current LineEdit text,
-## colouring {placeholder} segments.
-func _refresh_rich() -> void:
-	if not _rt or not _le:
-		return
-
-	var raw: String = _le.text
-	_rt.clear()
-
-	if raw.is_empty():
-		return
-
-	var i: int = 0
-	var n: int = raw.length()
-
-	while i < n:
-		var c: String = raw[i]
-
-		if c == "{":
-			var close_idx: int = raw.find("}", i + 1)
-			if close_idx == -1:
-				_rt.append_text(_escape_bbcode(raw.substr(i)))
-				return
-
-			var name: String = raw.substr(i + 1, close_idx - i - 1).strip_edges()
-			if name.is_empty():
-				_rt.append_text(_escape_bbcode(raw.substr(i, close_idx - i + 1)))
-			else:
-				var seg: String = raw.substr(i, close_idx - i + 1)
-				_rt.push_color(Color.html(PLACEHOLDER_COLOR))
-				if PLACEHOLDER_BOLD:
-					_rt.push_bold()
-				_rt.append_text(_escape_bbcode(seg))
-				if PLACEHOLDER_BOLD:
-					_rt.pop()
-				_rt.pop()
-
-			i = close_idx + 1
-		else:
-			var next_open: int = raw.find("{", i)
-			if next_open == -1:
-				_rt.append_text(_escape_bbcode(raw.substr(i)))
-				return
-			_rt.append_text(_escape_bbcode(raw.substr(i, next_open - i)))
-			i = next_open
-
-func _escape_bbcode(s: String) -> String:
-	return s.replace("[", "[[")
-
-# ============================================================
-# NOTIFICATIONS
-# ============================================================
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_RESIZED and _rt:
-		_rt.queue_redraw()
+func _on_inner_gui_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+			text_submitted.emit(text)
+			accept_event()

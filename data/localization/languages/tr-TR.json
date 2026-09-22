@@ -1,1 +1,22 @@
-{}
+{
+	"dialog_cancel": "İptal",
+	"dialog_confirm": "Onayla",
+	"dialog_no": "Hayır",
+	"dialog_yes": "Evet",
+	"greeting_with_name": "Merhaba {player_name}!",
+	"greetings": "Merhaba",
+	"hud_gold": "Altın: {amount}",
+	"hud_health": "Can: {current} / {max}",
+	"hud_level": "Seviye {level}",
+	"hud_mana": "Mana: {current} / {max}",
+	"menu_credits": "Katkıda Bulunanlar",
+	"menu_load_game": "Oyun Yükle",
+	"menu_new_game": "Yeni Oyun",
+	"menu_options": "Seçenekler",
+	"menu_play": "Oyna",
+	"menu_quit": "Çıkış",
+	"menu_settings": "Ayarlar",
+	"opening": "Oyuna hoş geldin",
+	"start_hint": "Başlamak için {@menu_play} tuşuna bas",
+	"world": "Dünya"
+}

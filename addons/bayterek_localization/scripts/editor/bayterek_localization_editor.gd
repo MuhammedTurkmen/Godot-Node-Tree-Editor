@@ -1,14 +1,19 @@
 @tool
 class_name BayterekLocalizationEditor
 extends MarginContainer
-## Editor tab — key sidebar + Excel-like key table.
+## Editor tab — sidebar + key table + preview panel.
 
 const Localization = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd")
 const Service = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization_service.gd")
 const KeyRow = preload("res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_key_row.gd")
+const PreviewPanel = preload("res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_preview_panel.gd")
 
-const SIDEBAR_EXPANDED := 220
+const SIDEBAR_EXPANDED := 240
 const SIDEBAR_COLLAPSED := 28
+const PREVIEW_EXPANDED := 280
+const PREVIEW_COLLAPSED := 28
+
+const DEBUG := true
 
 var current_locale: String = ""
 var original_locale: String = ""
@@ -21,6 +26,10 @@ var dirty: bool = false
 var _rows_by_key: Dictionary = {}
 
 var _h_split: HSplitContainer
+## HBoxContainer, not HSplitContainer — we only need open/close, and
+## custom_minimum_size works reliably inside an HBoxContainer.
+var _inner_split: HBoxContainer
+
 var _sidebar_root: VBoxContainer
 var _sidebar_header: HBoxContainer
 var _sidebar_toggle_btn: Button
@@ -29,6 +38,7 @@ var _sidebar_content: VBoxContainer
 var _sidebar_search: LineEdit
 var _sidebar_list: ItemList
 
+var _main_panel: VBoxContainer
 var _toolbar: HBoxContainer
 var _save_btn: Button
 var _add_key_btn: Button
@@ -36,14 +46,26 @@ var _delete_key_btn: Button
 var _search_input: LineEdit
 var _missing_label: Label
 var _locale_label: Label
-
-var _main_panel: VBoxContainer
 var _rows_scroll: ScrollContainer
 var _rows_container: VBoxContainer
 var _empty_label: Label
+var _h_key: Label
+var _h_orig: Label
+var _h_trans: Label
+
+var _preview_root: VBoxContainer
+var _preview_panel: BayterekLocalizationPreviewPanel
+var _preview_toggle_btn: Button
+var _preview_title: Label
 
 var _sidebar_collapsed: bool = false
+var _preview_collapsed: bool = false
 var _suppress_sidebar_signal: bool = false
+var _selected_key: String = ""
+
+# ============================================================
+# LIFECYCLE
+# ============================================================
 
 func _ready() -> void:
 	add_theme_constant_override("margin_left", 4)
@@ -67,14 +89,14 @@ func _build_ui() -> void:
 		return
 
 	_h_split = HSplitContainer.new()
-	_h_split.name = "HSplit"
+	_h_split.name = "OuterSplit"
 	_h_split.size_flags_horizontal = SIZE_EXPAND_FILL
 	_h_split.size_flags_vertical = SIZE_EXPAND_FILL
 	_h_split.split_offset = SIDEBAR_EXPANDED
 	add_child(_h_split)
 
 	_build_sidebar()
-	_build_main_panel()
+	_build_inner_split()
 
 func _build_sidebar() -> void:
 	_sidebar_root = VBoxContainer.new()
@@ -126,13 +148,26 @@ func _build_sidebar() -> void:
 	_sidebar_list.item_selected.connect(_on_sidebar_item_selected)
 	_sidebar_content.add_child(_sidebar_list)
 
+func _build_inner_split() -> void:
+	# HBoxContainer instead of HSplitContainer — we only need open/close,
+	# not user-draggable split. custom_minimum_size works reliably here.
+	_inner_split = HBoxContainer.new()
+	_inner_split.name = "InnerSplit"
+	_inner_split.size_flags_horizontal = SIZE_EXPAND_FILL
+	_inner_split.size_flags_vertical = SIZE_EXPAND_FILL
+	_inner_split.add_theme_constant_override("separation", 0)
+	_h_split.add_child(_inner_split)
+
+	_build_main_panel()
+	_build_preview_panel()
+
 func _build_main_panel() -> void:
 	_main_panel = VBoxContainer.new()
 	_main_panel.name = "MainPanel"
 	_main_panel.size_flags_horizontal = SIZE_EXPAND_FILL
 	_main_panel.size_flags_vertical = SIZE_EXPAND_FILL
 	_main_panel.add_theme_constant_override("separation", 4)
-	_h_split.add_child(_main_panel)
+	_inner_split.add_child(_main_panel)
 
 	_toolbar = HBoxContainer.new()
 	_toolbar.name = "Toolbar"
@@ -151,21 +186,18 @@ func _build_main_panel() -> void:
 	_save_btn = Button.new()
 	_save_btn.name = "SaveButton"
 	_save_btn.text = "Save"
-	_save_btn.tooltip_text = "Save changes (Ctrl+S)"
 	_save_btn.pressed.connect(_on_save_pressed)
 	_toolbar.add_child(_save_btn)
 
 	_add_key_btn = Button.new()
 	_add_key_btn.name = "AddKeyButton"
 	_add_key_btn.text = "+ Add Key"
-	_add_key_btn.tooltip_text = "Add new key (only original locale)"
 	_add_key_btn.pressed.connect(_on_add_key_pressed)
 	_toolbar.add_child(_add_key_btn)
 
 	_delete_key_btn = Button.new()
 	_delete_key_btn.name = "DeleteKeyButton"
 	_delete_key_btn.text = "Delete Key"
-	_delete_key_btn.tooltip_text = "Delete selected key (only original locale)"
 	_delete_key_btn.pressed.connect(_on_delete_key_pressed)
 	_toolbar.add_child(_delete_key_btn)
 
@@ -176,6 +208,7 @@ func _build_main_panel() -> void:
 	_search_input.placeholder_text = "Search key or value"
 	_search_input.clear_button_enabled = true
 	_search_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	_search_input.custom_minimum_size.x = 160
 	_search_input.text_changed.connect(_on_search_changed)
 	_toolbar.add_child(_search_input)
 
@@ -191,31 +224,34 @@ func _build_main_panel() -> void:
 	header.custom_minimum_size.y = 24
 	_main_panel.add_child(header)
 
-	var h_key := Label.new()
-	h_key.text = "Key"
-	h_key.custom_minimum_size.x = BayterekLocalizationKeyRow.KEY_COLUMN_WIDTH
-	h_key.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	header.add_child(h_key)
+	_h_key = Label.new()
+	_h_key.text = "Key"
+	_h_key.custom_minimum_size.x = BayterekLocalizationKeyRow.KEY_COLUMN_WIDTH
+	_h_key.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	header.add_child(_h_key)
 
-	var h_orig := Label.new()
-	h_orig.text = "Original"
-	h_orig.size_flags_horizontal = SIZE_EXPAND_FILL
-	h_orig.size_flags_stretch_ratio = 1.0
-	h_orig.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
-	header.add_child(h_orig)
+	_h_orig = Label.new()
+	_h_orig.text = "Original"
+	_h_orig.size_flags_horizontal = SIZE_EXPAND_FILL
+	_h_orig.size_flags_stretch_ratio = 1.0
+	_h_orig.custom_minimum_size.x = BayterekLocalizationKeyRow.MIN_ORIGINAL_COL
+	_h_orig.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
+	header.add_child(_h_orig)
 
-	var h_trans := Label.new()
-	h_trans.text = "Translation"
-	h_trans.size_flags_horizontal = SIZE_EXPAND_FILL
-	h_trans.size_flags_stretch_ratio = 1.0
-	h_trans.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	header.add_child(h_trans)
+	_h_trans = Label.new()
+	_h_trans.text = "Translation"
+	_h_trans.size_flags_horizontal = SIZE_EXPAND_FILL
+	_h_trans.size_flags_stretch_ratio = 1.0
+	_h_trans.custom_minimum_size.x = BayterekLocalizationKeyRow.MIN_TRANSLATION_COL
+	_h_trans.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	header.add_child(_h_trans)
 
 	_rows_scroll = ScrollContainer.new()
 	_rows_scroll.name = "RowsScroll"
 	_rows_scroll.size_flags_horizontal = SIZE_EXPAND_FILL
 	_rows_scroll.size_flags_vertical = SIZE_EXPAND_FILL
-	_rows_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_rows_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_rows_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_main_panel.add_child(_rows_scroll)
 
 	_rows_container = VBoxContainer.new()
@@ -233,6 +269,54 @@ func _build_main_panel() -> void:
 	_main_panel.add_child(_empty_label)
 	_empty_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_empty_label.visible = false
+
+func _build_preview_panel() -> void:
+	_preview_root = VBoxContainer.new()
+	_preview_root.name = "PreviewRoot"
+	_preview_root.custom_minimum_size = Vector2(PREVIEW_COLLAPSED, 0)
+	_preview_root.size_flags_horizontal = Control.SIZE_FILL
+	_preview_root.size_flags_vertical = SIZE_EXPAND_FILL
+	_preview_root.add_theme_constant_override("separation", 2)
+	_inner_split.add_child(_preview_root)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 2)
+	_preview_root.add_child(header)
+
+	_preview_toggle_btn = Button.new()
+	_preview_toggle_btn.text = "▶"
+	_preview_toggle_btn.tooltip_text = "Collapse / expand preview"
+	_preview_toggle_btn.custom_minimum_size = Vector2(24, 24)
+	_preview_toggle_btn.flat = true
+	_preview_toggle_btn.pressed.connect(_on_preview_toggle)
+	header.add_child(_preview_toggle_btn)
+
+	_preview_title = Label.new()
+	_preview_title.text = "Preview"
+	_preview_title.size_flags_horizontal = SIZE_EXPAND_FILL
+	_preview_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	header.add_child(_preview_title)
+
+	_preview_panel = PreviewPanel.new()
+	_preview_panel.size_flags_horizontal = SIZE_EXPAND_FILL
+	_preview_panel.size_flags_vertical = SIZE_EXPAND_FILL
+	_preview_panel.set_lookup(_preview_lookup)
+	_preview_root.add_child(_preview_panel)
+
+	# Preview starts collapsed.
+	_preview_toggle_btn.text = "◀"
+	_preview_title.visible = false
+	_preview_collapsed = true
+	_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
+	_preview_panel.modulate.a = 0.0
+	_preview_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+func _preview_lookup(key: String) -> String:
+	if translations.has(key):
+		return String(translations[key])
+	if originals.has(key):
+		return String(originals[key])
+	return ""
 
 # ============================================================
 # PUBLIC API
@@ -266,15 +350,28 @@ func open_locale(locale: String) -> void:
 		translations = originals.duplicate()
 
 	dirty = false
+	_selected_key = ""
+	_preview_panel.clear()
 
 	_rebuild_rows()
 	_update_ui_state()
+	_update_header_visibility()
 	_update_missing_count()
 	_show_rows()
 
 	print("[BayterekLocalizationEditor] opened locale: %s (original=%s, is_original=%s, %d keys)" % [
 		locale, original_locale, str(is_original_locale), translations.size()
 	])
+
+func _update_header_visibility() -> void:
+	if not _h_orig or not _h_trans:
+		return
+	if is_original_locale:
+		_h_orig.visible = false
+		_h_trans.text = "Value (editable)"
+	else:
+		_h_orig.visible = true
+		_h_trans.text = "Translation"
 
 # ============================================================
 # ROW REBUILD
@@ -303,11 +400,13 @@ func _rebuild_rows() -> void:
 func _add_row(key: String, orig_val: String, trans_val: String) -> void:
 	var row := KeyRow.new()
 	row.name = "Row_%s" % key
+	row.size_flags_horizontal = SIZE_EXPAND_FILL
 	_rows_container.add_child(row)
 	row.setup(key, orig_val, trans_val, is_original_locale)
 	row.value_changed.connect(_on_row_value_changed)
 	row.row_selected.connect(_on_row_selected)
 	row.navigate_requested.connect(_on_row_navigate_requested)
+	row.key_rename_requested.connect(_on_row_key_rename_requested)
 	_rows_by_key[key] = row
 
 func _clear_rows() -> void:
@@ -343,7 +442,7 @@ func _show_rows() -> void:
 		_rows_scroll.visible = true
 
 # ============================================================
-# SIDEBAR COLLAPSE
+# SIDEBAR
 # ============================================================
 
 func _refresh_sidebar() -> void:
@@ -369,6 +468,53 @@ func _on_sidebar_toggle() -> void:
 		_h_split.split_offset = SIDEBAR_EXPANDED
 
 	_h_split.queue_sort()
+
+# ============================================================
+# PREVIEW PANEL TOGGLE
+# ============================================================
+
+func _on_preview_toggle() -> void:
+	_preview_collapsed = not _preview_collapsed
+
+	if DEBUG:
+		print("=== PREVIEW TOGGLE START ===")
+		print("  collapsed=", _preview_collapsed)
+		print("  selected_key='%s'" % _selected_key)
+		print("  BEFORE: preview_root.min.x=", _preview_root.custom_minimum_size.x,
+			" preview_panel.size.x=", _preview_panel.size.x)
+
+	if _preview_collapsed:
+		_preview_toggle_btn.text = "◀"
+		_preview_title.visible = false
+		_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
+		_preview_panel.modulate.a = 0.0
+		_preview_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	else:
+		_preview_toggle_btn.text = "▶"
+		_preview_title.visible = true
+		_preview_root.custom_minimum_size.x = PREVIEW_EXPANDED
+		_preview_panel.modulate.a = 1.0
+		_preview_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+
+	_inner_split.queue_sort()
+
+	if DEBUG:
+		print("  AFTER: preview_root.min.x=", _preview_root.custom_minimum_size.x)
+
+	_push_preview_after_layout.call_deferred()
+
+func _push_preview_after_layout() -> void:
+	if _selected_key.is_empty():
+		if DEBUG:
+			print("[Editor] push_preview: no selected_key, skipping.")
+		return
+	# Wait one frame so the container re-lays out before we push content.
+	await get_tree().process_frame
+	if not is_instance_valid(self) or _selected_key.is_empty():
+		return
+	if DEBUG:
+		print("[Editor] push_preview: forcing refresh for '%s'" % _selected_key)
+	_update_preview_for(_selected_key)
 
 func _on_sidebar_item_selected(index: int) -> void:
 	if _suppress_sidebar_signal:
@@ -424,13 +570,45 @@ func _on_row_value_changed(key: String, new_value: String) -> void:
 	_set_dirty(true)
 	_update_missing_count()
 
+	if key == _selected_key:
+		_update_preview_for(key)
+
 func _on_row_selected(key: String) -> void:
+	if key.is_empty():
+		return
+	if DEBUG:
+		print("[Editor] row selected: '%s'" % key)
+	_selected_key = key
+
 	for i in _sidebar_list.item_count:
 		if _sidebar_list.get_item_text(i) == key:
 			_suppress_sidebar_signal = true
 			_sidebar_list.select(i)
 			_suppress_sidebar_signal = false
 			break
+
+	_update_preview_for(key)
+
+func _update_preview_for(key: String) -> void:
+	if not _preview_panel:
+		return
+	if not _rows_by_key.has(key):
+		_preview_panel.clear()
+		return
+	var row: BayterekLocalizationKeyRow = _rows_by_key[key]
+	if not is_instance_valid(row):
+		_preview_panel.clear()
+		return
+
+	if DEBUG:
+		print("[Editor] updating preview for '%s'" % key)
+
+	_preview_panel.show_row(
+		key,
+		row.original_value,
+		row.get_translation(),
+		current_locale
+	)
 
 func _scroll_to_row(key: String) -> void:
 	if not _rows_by_key.has(key):
@@ -445,6 +623,9 @@ func _scroll_to_row(key: String) -> void:
 		var r: BayterekLocalizationKeyRow = _rows_by_key[k]
 		if is_instance_valid(r):
 			r.set_row_selected(k == key)
+
+	_selected_key = key
+	_update_preview_for(key)
 
 func _on_row_navigate_requested(key: String, direction: int) -> void:
 	if direction == 0:
@@ -475,6 +656,57 @@ func _on_row_navigate_requested(key: String, direction: int) -> void:
 	var next_row: BayterekLocalizationKeyRow = _rows_by_key[next_key]
 	if is_instance_valid(next_row):
 		next_row.focus_translation()
+
+# ============================================================
+# KEY RENAME
+# ============================================================
+
+func _on_row_key_rename_requested(old_key: String, new_key: String) -> void:
+	if not is_original_locale:
+		return
+	if old_key.is_empty() or new_key.is_empty() or old_key == new_key:
+		return
+
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	if _row_key_exists_anywhere(registry, new_key):
+		push_warning("[Editor] Rename failed: key '%s' already exists." % new_key)
+		if _rows_by_key.has(old_key):
+			var r: BayterekLocalizationKeyRow = _rows_by_key[old_key]
+			if is_instance_valid(r):
+				r._apply_values()
+		return
+
+	var renamed_count: int = 0
+	for locale in registry.get_all_locales():
+		var path: String = Service.get_locale_file_path(locale)
+		var data: Dictionary = Service.read_json(path)
+		if data.has(old_key):
+			data[new_key] = data[old_key]
+			data.erase(old_key)
+			Service.write_json(path, data)
+			renamed_count += 1
+
+	print("[BayterekLocalizationEditor] renamed key '%s' -> '%s' across %d locale file(s)" % [
+		old_key, new_key, renamed_count
+	])
+
+	_selected_key = ""
+	open_locale(current_locale)
+	EditorInterface.get_resource_filesystem().scan()
+
+func _row_key_exists_anywhere(registry: LocalizationRegistry, candidate: String) -> bool:
+	for locale in registry.get_all_locales():
+		var path: String = Service.get_locale_file_path(locale)
+		var data: Dictionary = Service.read_json(path)
+		if data.has(candidate):
+			return true
+	return false
 
 # ============================================================
 # ADD / DELETE KEY
@@ -546,11 +778,7 @@ func _on_delete_key_pressed() -> void:
 	if not is_original_locale:
 		return
 
-	var selected_key: String = ""
-	var sel_items: PackedInt32Array = _sidebar_list.get_selected_items()
-	if sel_items.size() > 0:
-		selected_key = _sidebar_list.get_item_text(sel_items[0])
-
+	var selected_key: String = _selected_key
 	if selected_key.is_empty():
 		push_warning("[Editor] No key selected for deletion.")
 		return
@@ -571,24 +799,13 @@ func _on_delete_key_pressed() -> void:
 	dialog.add_child(vbox)
 
 	var info := Label.new()
-	info.text = "Delete key \"%s\"?\nThis will remove it from the original file." % selected_key
+	info.text = "Delete key \"%s\"?\nThis will remove it from all locale files." % selected_key
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.custom_minimum_size = Vector2(400, 0)
 	vbox.add_child(info)
 
 	dialog.confirmed.connect(func():
-		originals.erase(selected_key)
-		translations.erase(selected_key)
-
-		if _rows_by_key.has(selected_key):
-			var row: BayterekLocalizationKeyRow = _rows_by_key[selected_key]
-			if is_instance_valid(row):
-				row.queue_free()
-			_rows_by_key.erase(selected_key)
-
-		_refresh_sidebar()
-		_set_dirty(true)
-		_update_missing_count()
+		_delete_key_across_locales(selected_key)
 		dialog.queue_free()
 	)
 	dialog.canceled.connect(func(): dialog.queue_free())
@@ -598,6 +815,39 @@ func _on_delete_key_pressed() -> void:
 	dialog.reset_size()
 	dialog.size = Vector2i(440, 180)
 	dialog.popup_centered()
+
+func _delete_key_across_locales(target_key: String) -> void:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	for locale in registry.get_all_locales():
+		var path: String = Service.get_locale_file_path(locale)
+		var data: Dictionary = Service.read_json(path)
+		if data.has(target_key):
+			data.erase(target_key)
+			Service.write_json(path, data)
+
+	originals.erase(target_key)
+	translations.erase(target_key)
+
+	if _rows_by_key.has(target_key):
+		var row: BayterekLocalizationKeyRow = _rows_by_key[target_key]
+		if is_instance_valid(row):
+			row.queue_free()
+		_rows_by_key.erase(target_key)
+
+	if target_key == _selected_key:
+		_selected_key = ""
+		_preview_panel.clear()
+
+	_refresh_sidebar()
+	_set_dirty(true)
+	_update_missing_count()
+	EditorInterface.get_resource_filesystem().scan()
 
 # ============================================================
 # SAVE

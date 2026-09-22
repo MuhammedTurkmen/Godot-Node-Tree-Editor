@@ -6,8 +6,11 @@ extends PanelContainer
 signal value_changed(key: String, new_value: String)
 signal row_selected(key: String)
 signal navigate_requested(key: String, direction: int)
+signal key_rename_requested(old_key: String, new_key: String)
 
-const KEY_COLUMN_WIDTH := 220
+const KEY_COLUMN_WIDTH := 200
+const MIN_ORIGINAL_COL := 160
+const MIN_TRANSLATION_COL := 200
 const STATE_NORMAL := Color(0, 0, 0, 0)
 const STATE_SELECTED := Color(0.3, 0.5, 0.8, 0.25)
 const STATE_MISSING := Color(1.0, 0.85, 0.4, 0.10)
@@ -21,19 +24,16 @@ var original_value: String = ""
 var translation_value: String = ""
 var is_original_locale: bool = false
 
-var _key_label: Label
+var _key_input: LineEdit
 var _original_label: Label
 var _translation_field: BayterekLocalizationTranslationField
 var _row_style: StyleBoxFlat
 var _selected: bool = false
-
-# ============================================================
-# LIFECYCLE
-# ============================================================
+var _suppress_key_signal: bool = false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
-	custom_minimum_size.y = 28
+	custom_minimum_size.y = 30
 
 	if not _row_style:
 		_row_style = StyleBoxFlat.new()
@@ -44,46 +44,57 @@ func _ready() -> void:
 		_row_style.content_margin_bottom = 2
 		add_theme_stylebox_override("panel", _row_style)
 
-	if _key_label and not _key_label.text.is_empty():
+	if _key_input and not _key_input.text.is_empty():
 		_apply_values()
 
 func _build() -> void:
-	if _key_label:
+	if _key_input:
 		return
 
 	var hbox := HBoxContainer.new()
 	hbox.name = "RowHBox"
 	hbox.add_theme_constant_override("separation", 4)
 	hbox.mouse_filter = Control.MOUSE_FILTER_PASS
+	hbox.size_flags_horizontal = SIZE_EXPAND_FILL
 	add_child(hbox)
 
-	# --- Key column ---
-	_key_label = Label.new()
-	_key_label.name = "KeyLabel"
-	_key_label.custom_minimum_size.x = KEY_COLUMN_WIDTH
-	_key_label.size_flags_horizontal = Control.SIZE_FILL
-	_key_label.clip_text = true
-	_key_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_key_label.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
-	_key_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hbox.add_child(_key_label)
+	# Key column
+	_key_input = LineEdit.new()
+	_key_input.name = "KeyInput"
+	_key_input.custom_minimum_size.x = KEY_COLUMN_WIDTH
+	_key_input.size_flags_horizontal = Control.SIZE_FILL
+	_key_input.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+	var key_style := StyleBoxFlat.new()
+	key_style.bg_color = Color(0.12, 0.14, 0.18, 0.5)
+	key_style.content_margin_left = 6
+	key_style.content_margin_right = 6
+	key_style.content_margin_top = 2
+	key_style.content_margin_bottom = 2
+	key_style.set_corner_radius_all(2)
+	_key_input.add_theme_stylebox_override("normal", key_style)
+	_key_input.add_theme_stylebox_override("focus", key_style)
+	_key_input.text_submitted.connect(_on_key_submitted)
+	_key_input.focus_exited.connect(_on_key_focus_exited)
+	hbox.add_child(_key_input)
 
-	# --- Original column ---
+	# Original column
 	_original_label = Label.new()
 	_original_label.name = "OriginalLabel"
 	_original_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_original_label.size_flags_stretch_ratio = 1.0
+	_original_label.custom_minimum_size.x = MIN_ORIGINAL_COL
 	_original_label.clip_text = true
 	_original_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_original_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
 	_original_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hbox.add_child(_original_label)
 
-	# --- Translation field ---
+	# Translation field
 	_translation_field = BayterekLocalizationTranslationField.new()
 	_translation_field.name = "TranslationField"
 	_translation_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_translation_field.size_flags_stretch_ratio = 1.0
+	_translation_field.custom_minimum_size.x = MIN_TRANSLATION_COL
 	_translation_field.text_changed.connect(_on_field_changed)
 	_translation_field.field_focus_entered.connect(_on_field_focus_entered)
 	_translation_field.text_submitted.connect(_on_field_submitted)
@@ -125,13 +136,25 @@ func focus_translation() -> void:
 		_translation_field.select_all()
 
 func has_field_focus() -> bool:
-	return _translation_field != null and _translation_field.has_field_focus()
+	if _translation_field != null and _translation_field.has_field_focus():
+		return true
+	if _key_input != null and _key_input.has_focus():
+		return true
+	return false
 
 func _apply_values() -> void:
-	if not _key_label:
+	if not _key_input:
 		return
 
-	_key_label.text = key
+	_suppress_key_signal = true
+	_key_input.text = key
+	_key_input.editable = is_original_locale
+	if not is_original_locale:
+		_key_input.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
+	else:
+		_key_input.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+	_suppress_key_signal = false
+
 	_original_label.text = original_value
 	_original_label.visible = not is_original_locale
 
@@ -139,10 +162,6 @@ func _apply_values() -> void:
 		_translation_field.set_text(translation_value)
 
 	_update_row_style()
-
-# ============================================================
-# STYLE / VALIDATION
-# ============================================================
 
 func _update_row_style() -> void:
 	if not _row_style:
@@ -182,7 +201,8 @@ func _has_placeholder_mismatch() -> bool:
 # SIGNAL HANDLERS
 # ============================================================
 
-func _on_field_changed(new_text: String) -> void:
+func _on_field_changed() -> void:
+	var new_text: String = _translation_field.get_text()
 	translation_value = new_text
 	_update_row_style()
 	value_changed.emit(key, new_text)
@@ -192,6 +212,28 @@ func _on_field_focus_entered() -> void:
 
 func _on_field_submitted(_text: String) -> void:
 	navigate_requested.emit(key, 1)
+
+func _on_key_submitted(new_key_text: String) -> void:
+	_commit_key_rename(new_key_text)
+
+func _on_key_focus_exited() -> void:
+	if _key_input and _key_input.text != key:
+		_commit_key_rename(_key_input.text)
+
+func _commit_key_rename(new_key_text: String) -> void:
+	if _suppress_key_signal:
+		return
+	if not is_original_locale:
+		return
+
+	var trimmed: String = new_key_text.strip_edges()
+	if trimmed.is_empty() or trimmed == key:
+		_suppress_key_signal = true
+		_key_input.text = key
+		_suppress_key_signal = false
+		return
+
+	key_rename_requested.emit(key, trimmed)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
