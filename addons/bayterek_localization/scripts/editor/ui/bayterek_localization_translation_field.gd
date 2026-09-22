@@ -1,8 +1,11 @@
 @tool
 class_name BayterekLocalizationTranslationField
 extends TextEdit
-## DEBUG BUILD — caret sorununu tespit etmek için.
-## TextEdit + SyntaxHighlighter kullanıyor (renkler için).
+## Single-line translation input with placeholder highlighting and
+## key auto-complete.
+##
+## TextEdit already declares a native `text_changed` signal (no args).
+## We reuse that instead of declaring our own signal of the same name.
 
 signal field_focus_entered
 signal field_focus_exited
@@ -15,14 +18,18 @@ const MIN_HEIGHT := 24
 var _updating: bool = false
 var _has_focus_tracked: bool = false
 
+## Key auto-complete popup.
+var _key_completer: BayterekLocalizationKeyCompleter = null
+var _key_provider: Callable = Callable()
+
 # ============================================================
 # LIFECYCLE
 # ============================================================
 
 func _ready() -> void:
 	custom_minimum_size.y = MIN_HEIGHT
-	size_flags_horizontal = SIZE_EXPAND_FILL
-	size_flags_vertical = SIZE_SHRINK_CENTER
+	size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 	wrap_mode = TextEdit.LINE_WRAPPING_NONE
 	scroll_fit_content_height = false
@@ -39,20 +46,20 @@ func _ready() -> void:
 	focus_exited.connect(_on_inner_focus_exited)
 	gui_input.connect(_on_inner_gui_input)
 
-	print("[TF:", name, "] _ready() — TextEdit + Highlighter")
+	# Key auto-complete popup.
+	_key_completer = BayterekLocalizationKeyCompleter.new()
+	_key_completer.set_target(self)
+	add_child(_key_completer)
 
 # ============================================================
 # PUBLIC API
 # ============================================================
 
 func set_text(new_text: String) -> void:
-	print("[TF:", name, "] set_text('", new_text, "') caret_before=", get_caret_column())
 	if _updating:
-		print("[TF:", name, "]   -> SKIP (_updating)")
 		return
 	var current: String = text
 	if current == new_text:
-		print("[TF:", name, "]   -> SKIP (same)")
 		return
 
 	var saved_line: int = get_caret_line()
@@ -68,11 +75,9 @@ func set_text(new_text: String) -> void:
 		var col: int = clampi(saved_col, 0, get_line(line).length())
 		set_caret_line(line)
 		set_caret_column(col)
-		print("[TF:", name, "]   -> restored caret to ", line, ":", col)
 	else:
 		set_caret_line(0)
 		set_caret_column(text.length())
-		print("[TF:", name, "]   -> caret to END (", text.length(), ")")
 
 func get_text() -> String:
 	return text.replace("\n", "").replace("\r", "")
@@ -95,6 +100,12 @@ func is_editable() -> bool:
 func has_field_focus() -> bool:
 	return _has_focus_tracked
 
+## Register a callback that returns the list of all keys.
+func set_key_provider(provider: Callable) -> void:
+	_key_provider = provider
+	if _key_completer:
+		_key_completer.set_key_provider(provider)
+
 # ============================================================
 # INTERNAL — TEXT CHANGE
 # ============================================================
@@ -103,41 +114,38 @@ func _on_inner_text_changed() -> void:
 	if _updating:
 		return
 
+	# Strip any newlines that sneak in (paste, IME, etc.).
 	var stripped: String = text.replace("\n", "").replace("\r", "")
+	if stripped != text:
+		var saved_line: int = get_caret_line()
+		var saved_col: int = get_caret_column()
 
-	# DEBUG: her text_changed'de caret ve text'i yaz.
-	print("[TF:", name, "] text_changed. caret=", get_caret_column(), " text='", text, "'")
+		_updating = true
+		text = stripped
+		_updating = false
 
-	if stripped == text:
-		return
+		var line_count: int = get_line_count()
+		var line: int = clampi(saved_line, 0, max(0, line_count - 1))
+		var col: int = clampi(saved_col, 0, get_line(line).length())
+		set_caret_line(line)
+		set_caret_column(col)
 
-	print("[TF:", name, "]   -> STRIPPING newlines")
-
-	var saved_line: int = get_caret_line()
-	var saved_col: int = get_caret_column()
-
-	_updating = true
-	text = stripped
-	_updating = false
-
-	var line_count: int = get_line_count()
-	var line: int = clampi(saved_line, 0, max(0, line_count - 1))
-	var col: int = clampi(saved_col, 0, get_line(line).length())
-	set_caret_line(line)
-	set_caret_column(col)
+	# Auto-complete trigger.
+	if _key_completer:
+		_key_completer.check_for_trigger()
 
 # ============================================================
 # INTERNAL — FOCUS
 # ============================================================
 
 func _on_inner_focus_entered() -> void:
-	print("[TF:", name, "] focus_entered. caret=", get_caret_column())
 	_has_focus_tracked = true
 	field_focus_entered.emit()
 
 func _on_inner_focus_exited() -> void:
-	print("[TF:", name, "] focus_exited. caret=", get_caret_column())
 	_has_focus_tracked = false
+	if _key_completer:
+		_key_completer.hide_popup()
 	field_focus_exited.emit()
 
 # ============================================================
@@ -145,7 +153,15 @@ func _on_inner_focus_exited() -> void:
 # ============================================================
 
 func _on_inner_gui_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-			text_submitted.emit(text)
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+
+	# Auto-complete popup has priority for navigation keys.
+	if _key_completer and _key_completer.visible:
+		if _key_completer.handle_key(event):
 			accept_event()
+			return
+
+	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+		text_submitted.emit(text)
+		accept_event()

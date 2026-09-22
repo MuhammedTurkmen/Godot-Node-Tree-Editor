@@ -2,7 +2,6 @@
 class_name BayterekLocalizationEditor
 extends MarginContainer
 ## Editor tab — sidebar + key table + preview panel.
-## DEBUG BUILD — TextEdit caret sorununu tespit için bol print.
 
 const Localization = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd")
 const Service = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization_service.gd")
@@ -517,12 +516,26 @@ func _add_row(key: String, orig_val: String, trans_val: String) -> void:
 	row.key_rename_requested.connect(_on_row_key_rename_requested)
 	row.value_edit_started.connect(_on_row_value_edit_started)
 	row.value_edit_committed.connect(_on_row_value_edit_committed)
+	row.set_key_provider_callback(_provide_all_keys)
 	_rows_by_key[key] = row
 
 func _clear_rows() -> void:
 	for child in _rows_container.get_children():
 		child.queue_free()
 	_rows_by_key.clear()
+
+# ============================================================
+# AUTO-COMPLETE KEY PROVIDER
+# ============================================================
+
+## Returns all keys in the current editor (used for auto-complete).
+func _provide_all_keys() -> PackedStringArray:
+	var keys: PackedStringArray = []
+	var all: Array = _rows_by_key.keys()
+	all.sort()
+	for k in all:
+		keys.append(k)
+	return keys
 
 # ============================================================
 # UI STATE
@@ -660,12 +673,9 @@ func _apply_filter() -> void:
 # ============================================================
 
 func _on_row_value_edit_started(key: String, current_value: String) -> void:
-	print("[EDITOR] _on_row_value_edit_started('", key, "', '", current_value, "')")
 	_field_edit_old_value[key] = current_value
 
 func _on_row_value_changed(key: String, new_value: String) -> void:
-	print("[EDITOR] _on_row_value_changed('", key, "', '", new_value, "')")
-
 	if _undo_helper and _field_edit_old_value.has(key):
 		var old_value: String = _field_edit_old_value[key]
 		if old_value != new_value:
@@ -681,22 +691,19 @@ func _on_row_value_changed(key: String, new_value: String) -> void:
 	translations[key] = new_value
 	_set_dirty(true)
 	_update_missing_count()
-	# YAZMA SIRASINDA VALIDATION VE PREVIEW ÇAĞRILMIYOR.
+	# No validation / preview refresh during typing.
 
 func _on_row_value_edit_committed(key: String, _new_value: String) -> void:
-	print("[EDITOR] _on_row_value_edit_committed('", key, "')")
 	_update_validation_flags()
 	if key == _selected_key:
 		_update_preview_for(key)
 
 func _apply_value_from_undo(key: String, value: String) -> void:
-	print("[EDITOR] _apply_value_from_undo('", key, "', '", value, "')")
+	# NOTE: Do NOT call row.set_translation() here. This callback runs
+	# immediately from commit_action() while the user is typing — touching
+	# the TextEdit field would reset the caret to 0.
 	if not _rows_by_key.has(key):
 		return
-	# NOT: row.set_translation() ÇAĞIRMA! Field zaten kullanıcı tarafından
-	# güncellendi (kullanıcı yazdı/sildi). Bu callback commit_action()
-	# anında HEMEN çalışır, field'a dokunursa caret 0'a atlar.
-	# Sadece translations dictionary'sini güncelle.
 	translations[key] = value
 	_field_edit_old_value[key] = value
 	_set_dirty(true)
@@ -706,7 +713,6 @@ func _apply_value_from_undo(key: String, value: String) -> void:
 		_update_preview_for(key)
 
 func _on_row_selected(key: String) -> void:
-	print("[EDITOR] _on_row_selected('", key, "')")
 	if key.is_empty():
 		return
 	_selected_key = key
@@ -721,7 +727,6 @@ func _on_row_selected(key: String) -> void:
 	_update_preview_for(key)
 
 func _update_preview_for(key: String) -> void:
-	print("[EDITOR] _update_preview_for('", key, "')")
 	if not _preview_panel:
 		return
 	if not _rows_by_key.has(key):
@@ -1129,7 +1134,7 @@ func _on_import_pressed() -> void:
 	_csv_dialog.open_import(registry, default_path)
 
 ## Default CSV path: user://localization/<locale>_<timestamp>.csv
-##   locale   → editor'de açık olan locale (current_locale). Boşsa "all".
+##   locale    → currently open locale in the editor (falls back to "all")
 ##   timestamp → 2026-09-23_14-30
 func _make_export_default_path() -> String:
 	var locale_part: String = current_locale

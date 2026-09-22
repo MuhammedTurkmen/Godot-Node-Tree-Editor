@@ -40,6 +40,9 @@ var _row_style: StyleBoxFlat
 var _selected: bool = false
 var _suppress_key_signal: bool = false
 
+## Callback provided by the editor — returns all keys for auto-complete.
+var _key_provider_callback: Callable = Callable()
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
 	custom_minimum_size.y = 30
@@ -64,7 +67,7 @@ func _build() -> void:
 	hbox.name = "RowHBox"
 	hbox.add_theme_constant_override("separation", 4)
 	hbox.mouse_filter = Control.MOUSE_FILTER_PASS
-	hbox.size_flags_horizontal = SIZE_EXPAND_FILL
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_child(hbox)
 
 	_key_input = LineEdit.new()
@@ -101,12 +104,15 @@ func _build() -> void:
 	_translation_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_translation_field.size_flags_stretch_ratio = 1.0
 	_translation_field.custom_minimum_size.x = MIN_TRANSLATION_COL
-	# TextEdit.text_changed argüman GEÇMİYOR — handler argümansız.
 	_translation_field.text_changed.connect(_on_field_changed)
 	_translation_field.text_submitted.connect(_on_field_submitted)
 	_translation_field.field_focus_entered.connect(_on_field_focus_entered)
 	_translation_field.field_focus_exited.connect(_on_field_focus_exited)
 	hbox.add_child(_translation_field)
+
+	# Wire auto-complete key provider.
+	if _key_provider_callback.is_valid():
+		_translation_field.set_key_provider(_key_provider_callback)
 
 # ============================================================
 # PUBLIC API
@@ -155,6 +161,12 @@ func has_field_focus() -> bool:
 	if _key_input != null and _key_input.has_focus():
 		return true
 	return false
+
+## Register a callback that returns all keys for auto-complete.
+func set_key_provider_callback(cb: Callable) -> void:
+	_key_provider_callback = cb
+	if _translation_field:
+		_translation_field.set_key_provider(cb)
 
 func _apply_values() -> void:
 	if not _key_input:
@@ -231,13 +243,12 @@ func _has_placeholder_mismatch() -> bool:
 # SIGNAL HANDLERS
 # ============================================================
 
-## TextEdit.text_changed argüman GEÇMİYOR — text'i kendimiz okuyoruz.
+## TextEdit.text_changed takes no arguments — read text manually.
 func _on_field_changed() -> void:
 	var new_text: String = get_translation()
 	translation_value = new_text
 	value_changed.emit(key, new_text)
 
-## TextEdit native text_submitted'i YOK — bizim custom sinyalimiz.
 func _on_field_submitted(_new_text: String) -> void:
 	navigate_requested.emit(key, 1)
 
