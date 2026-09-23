@@ -7,11 +7,21 @@ signal layers_changed(design: BayterekNodeDesign, change_type: String)
 signal name_changed(design: BayterekNodeDesign)
 signal description_changed(design: BayterekNodeDesign)
 signal exported_fields_changed(design: BayterekNodeDesign)
+signal render_mode_changed(design: BayterekNodeDesign)
+
+## Design-level render mode. Layers can override via `render_mode_override`.
+enum RenderMode {
+	VECTOR,
+	PIXEL,
+}
 
 @export_storage var id: String = ""
 @export_storage var name: String = "New Design"
 @export_storage var description: String = ""
 @export_storage var category: String = ""
+
+## Default render mode for this design's layers. Layers may override it.
+@export_storage var render_mode: RenderMode = RenderMode.VECTOR
 
 @export_storage var design_size: Vector2 = Vector2(100, 100)
 @export_storage var scale: Vector2 = Vector2.ONE
@@ -19,6 +29,17 @@ signal exported_fields_changed(design: BayterekNodeDesign)
 @export_storage var layers: Array[BayterekLayer] = []
 
 @export_storage var exported_fields: Dictionary = {}
+
+# ============================================================
+# RENDER MODE
+# ============================================================
+
+func set_render_mode(mode: RenderMode) -> void:
+	if render_mode == mode:
+		return
+	render_mode = mode
+	render_mode_changed.emit(self)
+	layers_changed.emit(self, "render_mode")
 
 # ============================================================
 # EXPORTED FIELDS
@@ -44,7 +65,7 @@ func clear_all_exported_fields() -> void:
 
 ## Parses a field path into structured components.
 ## Returns a Dictionary with keys:
-##   - "root": "design_size" | "scale" | "layer"
+##   - "root": "design_size" | "scale" | "render_mode" | "layer"
 ##   - "layer_id": String (only if root == "layer")
 ##   - "segments": Array[String] — remaining segments after layer_id
 func parse_field_path(path: String) -> Dictionary:
@@ -57,7 +78,7 @@ func parse_field_path(path: String) -> Dictionary:
 
 	var root: String = parts[0]
 
-	if root == "design_size" or root == "scale":
+	if root == "design_size" or root == "scale" or root == "render_mode":
 		return {"root": root, "segments": []}
 
 	if root == "layers":
@@ -84,6 +105,8 @@ func get_field_value(field_path: String) -> Variant:
 			return design_size
 		"scale":
 			return scale
+		"render_mode":
+			return int(render_mode)
 		"layer":
 			var layer_id: String = parsed.get("layer_id", "")
 			var layer: BayterekLayer = get_layer_by_id(layer_id)
@@ -107,6 +130,8 @@ func set_field_value(field_path: String, value: Variant) -> void:
 			design_size = value
 		"scale":
 			scale = value
+		"render_mode":
+			set_render_mode(value as RenderMode)
 		"layer":
 			var layer_id: String = parsed.get("layer_id", "")
 			var layer: BayterekLayer = get_layer_by_id(layer_id)
@@ -124,7 +149,7 @@ func is_field_exportable(field_path: String) -> bool:
 
 	var root: String = parsed.get("root", "")
 
-	if root == "design_size" or root == "scale":
+	if root == "design_size" or root == "scale" or root == "render_mode":
 		return true
 
 	if root == "layer":
@@ -319,6 +344,7 @@ func duplicate_design() -> BayterekNodeDesign:
 	copy.name = name + " Copy"
 	copy.description = description
 	copy.category = category
+	copy.render_mode = render_mode
 	copy.design_size = design_size
 	copy.scale = scale
 	copy.copy_layers_from(layers)
@@ -326,4 +352,6 @@ func duplicate_design() -> BayterekNodeDesign:
 	return copy
 
 func _to_string() -> String:
-	return "BayterekNodeDesign(id='%s', name='%s', layers=%d)" % [id, name, layers.size()]
+	return "BayterekNodeDesign(id='%s', name='%s', mode=%s, layers=%d)" % [
+		id, name, RenderMode.keys()[render_mode], layers.size()
+	]

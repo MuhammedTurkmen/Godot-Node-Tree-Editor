@@ -26,6 +26,10 @@ const MAX_LAYERS := 6
 
 @export_storage var design_id: String = ""
 
+## Cached from the design at apply time. Lets the node keep its render mode
+## even if the design resource is later deleted or changed.
+@export_storage var render_mode: BayterekNodeDesign.RenderMode = BayterekNodeDesign.RenderMode.VECTOR
+
 # ============================================================
 # LAYOUT
 # ============================================================
@@ -125,6 +129,7 @@ func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPr
 	copy_layers_from(design.layers)
 	design_size = design.design_size
 	scale = design.scale
+	render_mode = design.render_mode
 
 	# Toplanacak field path'ler: design.exported_fields + prefab.exported_fields
 	var all_paths: Dictionary = {}
@@ -145,6 +150,11 @@ func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPr
 			var v2: Variant = resolve_exported_value(field_path, prefab_ref, design)
 			if v2 is Vector2:
 				scale = v2
+			continue
+		if field_path == "render_mode":
+			var v3: Variant = resolve_exported_value(field_path, prefab_ref, design)
+			if typeof(v3) == TYPE_INT or typeof(v3) == TYPE_FLOAT:
+				render_mode = int(v3) as BayterekNodeDesign.RenderMode
 			continue
 
 		var resolved: Variant = resolve_exported_value(field_path, prefab_ref, design)
@@ -265,6 +275,7 @@ func apply_design(design: BayterekNodeDesign) -> void:
 	design_id = design.id
 	design_size = design.design_size
 	scale = design.scale
+	render_mode = design.render_mode
 	copy_layers_from(design.layers)
 
 func apply_defaults_from_tree(tree: BayterekTree) -> void:

@@ -1426,6 +1426,7 @@ func _node_to_dict(node_data: BayterekNode) -> Dictionary:
 	d["external_id"] = node_data.external_id
 	d["reference_id"] = node_data.reference_id
 	d["design_id"] = node_data.design_id
+	d["render_mode"] = int(node_data.render_mode)
 	d["group_id"] = node_data.group_id
 	d["prerequisite_group_id"] = node_data.prerequisite_group_id
 
@@ -1587,6 +1588,9 @@ func _dict_to_node(nd: Dictionary, new_id: int, id_map: Dictionary, offset: Vect
 	node_data.locked = bool(nd.get("locked", false))
 	node_data.external_id = nd.get("external_id", "")
 	node_data.design_id = nd.get("design_id", "")
+	var rm = nd.get("render_mode", int(BayterekNodeDesign.RenderMode.VECTOR))
+	if typeof(rm) == TYPE_INT or typeof(rm) == TYPE_FLOAT:
+		node_data.render_mode = int(rm) as BayterekNodeDesign.RenderMode
 
 	var old_ref: String = nd.get("reference_id", "")
 	var prefab_exists: bool = false
@@ -1727,6 +1731,7 @@ func _layer_to_dict(layer: BayterekLayer) -> Dictionary:
 	d["visible"] = layer.visible
 	d["animation_id"] = layer.animation_id
 	d["animated"] = layer.animated
+	d["render_mode_override"] = int(layer.render_mode_override)
 	d["transform"] = _transform_to_dict(layer.transform)
 
 	if layer is BayterekShapeLayer:
@@ -1737,6 +1742,11 @@ func _layer_to_dict(layer: BayterekLayer) -> Dictionary:
 		d["fill_configs"] = _configs_to_dict(layer.fill_configs)
 		d["border_enabled"] = layer.border_enabled
 		d["border_width"] = layer.border_width
+		d["border_corner_gap"] = layer.border_corner_gap
+		d["border_top_enabled"] = layer.border_top_enabled
+		d["border_right_enabled"] = layer.border_right_enabled
+		d["border_bottom_enabled"] = layer.border_bottom_enabled
+		d["border_left_enabled"] = layer.border_left_enabled
 		d["border_configs"] = _configs_to_dict(layer.border_configs)
 		d["shadow_enabled"] = layer.shadow_enabled
 		d["shadow_color"] = _color_to_dict(layer.shadow_color)
@@ -1811,6 +1821,9 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 	layer.visible = d.get("visible", true)
 	layer.animation_id = d.get("animation_id", "")
 	layer.animated = d.get("animated", false)
+	var rmo = d.get("render_mode_override", int(BayterekLayer.RenderModeOverride.INHERIT))
+	if typeof(rmo) == TYPE_INT or typeof(rmo) == TYPE_FLOAT:
+		layer.render_mode_override = int(rmo) as BayterekLayer.RenderModeOverride
 
 	layer.transform = _dict_to_transform(d.get("transform", {}))
 
@@ -1821,6 +1834,11 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 		layer.fill_configs = _dict_to_configs(d.get("fill_configs", {}))
 		layer.border_enabled = d.get("border_enabled", false)
 		layer.border_width = float(d.get("border_width", 2.0))
+		layer.border_corner_gap = bool(d.get("border_corner_gap", false))
+		layer.border_top_enabled = bool(d.get("border_top_enabled", true))
+		layer.border_right_enabled = bool(d.get("border_right_enabled", true))
+		layer.border_bottom_enabled = bool(d.get("border_bottom_enabled", true))
+		layer.border_left_enabled = bool(d.get("border_left_enabled", true))
 		layer.border_configs = _dict_to_configs(d.get("border_configs", {}))
 		layer.shadow_enabled = d.get("shadow_enabled", false)
 		layer.shadow_color = _dict_to_color(d.get("shadow_color", {}), Color(0, 0, 0, 0.5))

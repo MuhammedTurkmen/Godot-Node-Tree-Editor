@@ -21,7 +21,12 @@ var _toggle_btn: Button
 var _content_root: VBoxContainer
 var _bottom_box: HBoxContainer
 
+## Render mode dropdown (design-level).
+var _render_mode_row: HBoxContainer
+var _render_mode_dropdown: OptionButton
+
 var _collapsed: bool = false
+var _updating_ui: bool = false
 
 var _id_to_item: Dictionary = {}
 
@@ -54,6 +59,28 @@ func _build_ui() -> void:
 	_content_root.add_theme_constant_override("separation", 4)
 	add_child(_content_root)
 
+	# --- Render mode row ---
+	_render_mode_row = HBoxContainer.new()
+	_render_mode_row.add_theme_constant_override("separation", 4)
+	_content_root.add_child(_render_mode_row)
+
+	var rm_label := Label.new()
+	rm_label.text = "Render"
+	rm_label.custom_minimum_size = Vector2(48, 0)
+	rm_label.tooltip_text = "Default render mode for this design's layers."
+	rm_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	_render_mode_row.add_child(rm_label)
+
+	_render_mode_dropdown = OptionButton.new()
+	_render_mode_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	_render_mode_dropdown.tooltip_text = rm_label.tooltip_text
+	_render_mode_dropdown.add_item("Vector", BayterekNodeDesign.RenderMode.VECTOR)
+	_render_mode_dropdown.add_item("Pixel", BayterekNodeDesign.RenderMode.PIXEL)
+	_render_mode_dropdown.disabled = true
+	_render_mode_dropdown.item_selected.connect(_on_render_mode_selected)
+	_render_mode_row.add_child(_render_mode_dropdown)
+
+	# --- Search row ---
 	var top := HBoxContainer.new()
 	_content_root.add_child(top)
 
@@ -140,6 +167,7 @@ func refresh() -> void:
 
 	var reg = Bayterek.get_designs_registry()
 	if not reg:
+		_update_render_mode_ui()
 		return
 
 	var filter: String = _search_input.text.strip_edges() if _search_input else ""
@@ -164,6 +192,8 @@ func refresh() -> void:
 		if item:
 			item.select(0)
 
+	_update_render_mode_ui()
+
 func _clear_items() -> void:
 	if not _root_item:
 		return
@@ -187,6 +217,41 @@ func _add_design_item(design: BayterekNodeDesign) -> void:
 	_id_to_item[design.id] = item
 
 # ============================================================
+# RENDER MODE UI
+# ============================================================
+
+func _update_render_mode_ui() -> void:
+	if not _render_mode_dropdown:
+		return
+
+	var design: BayterekNodeDesign = get_selected_design()
+	_updating_ui = true
+	if design:
+		_render_mode_dropdown.disabled = false
+		var idx: int = _render_mode_dropdown.get_item_index(int(design.render_mode))
+		if idx >= 0:
+			_render_mode_dropdown.select(idx)
+	else:
+		_render_mode_dropdown.disabled = true
+		_render_mode_dropdown.select(0)
+	_updating_ui = false
+
+func _on_render_mode_selected(index: int) -> void:
+	if _updating_ui:
+		return
+	var design: BayterekNodeDesign = get_selected_design()
+	if not design:
+		return
+	var meta = _render_mode_dropdown.get_item_id(index)
+	if typeof(meta) != TYPE_INT:
+		return
+	var mode: BayterekNodeDesign.RenderMode = meta as BayterekNodeDesign.RenderMode
+	if design.render_mode == mode:
+		return
+	design.set_render_mode(mode)
+	BayterekDesignService.save_design(design)
+
+# ============================================================
 # PUBLIC
 # ============================================================
 
@@ -203,6 +268,7 @@ func select_design(design: BayterekNodeDesign) -> void:
 		var item: TreeItem = _id_to_item[design.id]
 		if item:
 			item.select(0)
+	_update_render_mode_ui()
 
 # ============================================================
 # SIGNAL HANDLERS
@@ -220,6 +286,7 @@ func _on_item_selected() -> void:
 		return
 	_selected_design_id = id
 	var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(id)
+	_update_render_mode_ui()
 	if design:
 		design_selected.emit(design)
 
@@ -415,8 +482,6 @@ func _rebuild_category_dropdown(dropdown: OptionButton, current_category: String
 # NEW CATEGORY DIALOG
 # ============================================================
 
-## Opens a small dialog to enter a new category name.
-## Non-exclusive — parent rename dialog stays visible underneath.
 func _open_new_category_dialog(dropdown: OptionButton, _parent_dialog: ConfirmationDialog) -> void:
 	var dlg := AcceptDialog.new()
 	dlg.title = "New Category"
@@ -449,7 +514,6 @@ func _open_new_category_dialog(dropdown: OptionButton, _parent_dialog: Confirmat
 		if new_cat.is_empty():
 			error_lbl.text = "Category name cannot be empty."
 			error_lbl.visible = true
-			# AcceptDialog auto-closes on confirm; reopen to show error.
 			dlg.popup_centered(Vector2i(360, 200))
 			return
 

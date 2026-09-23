@@ -442,6 +442,40 @@ func _rebuild_detail_form() -> void:
 	)
 	name_row.add_child(name_input)
 
+	# --- Render Mode override ---
+	var rmode_row := HBoxContainer.new()
+	rmode_row.add_theme_constant_override("separation", 4)
+	_detail_root.add_child(rmode_row)
+
+	var rmode_label := Label.new()
+	rmode_label.text = "Render Mode"
+	rmode_label.custom_minimum_size = Vector2(80, 0)
+	rmode_label.tooltip_text = "Inherit uses the design's mode. Override per layer."
+	rmode_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	rmode_row.add_child(rmode_label)
+
+	var rmode_dropdown := OptionButton.new()
+	rmode_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	rmode_dropdown.tooltip_text = rmode_label.tooltip_text
+	rmode_dropdown.add_item("Inherit", BayterekLayer.RenderModeOverride.INHERIT)
+	rmode_dropdown.add_item("Vector", BayterekLayer.RenderModeOverride.VECTOR)
+	rmode_dropdown.add_item("Pixel", BayterekLayer.RenderModeOverride.PIXEL)
+	var rmode_idx: int = rmode_dropdown.get_item_index(int(layer.render_mode_override))
+	if rmode_idx >= 0:
+		rmode_dropdown.select(rmode_idx)
+	rmode_dropdown.item_selected.connect(func(idx: int):
+		var new_mode_int = rmode_dropdown.get_item_id(idx)
+		if typeof(new_mode_int) != TYPE_INT:
+			return
+		layer.render_mode_override = new_mode_int as BayterekLayer.RenderModeOverride
+		design.notify_layer_modified()
+		changed.emit()
+	)
+	rmode_row.add_child(rmode_dropdown)
+
+	var field_rmode: String = "layers.%s.render_mode_override" % layer.layer_id
+	BayterekExportHelper.make_exportable(rmode_row, field_rmode, design, _on_export_changed)
+
 	var transform_fold := _make_fold("Transform")
 	_detail_root.add_child(transform_fold)
 
@@ -646,7 +680,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	edges_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
 	border_inner.add_child(edges_label)
 
-	# Circle: note that edges are ignored
 	if layer.shape_type == BayterekShapeLayer.ShapeType.CIRCLE:
 		var note := Label.new()
 		note.text = "  (Circle always draws a full ring)"
@@ -659,7 +692,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	_build_edge_checkbox(border_inner, layer, "Bottom", "border_bottom_enabled")
 	_build_edge_checkbox(border_inner, layer, "Left", "border_left_enabled")
 
-	# Border state colors
 	var border_colors := BayterekLayerStateColors.new()
 	border_inner.add_child(border_colors)
 	border_colors.bind(layer, "border_configs")

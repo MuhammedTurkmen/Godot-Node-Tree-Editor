@@ -3,6 +3,19 @@ class_name BayterekLayer
 extends Resource
 ## Tüm katmanların türediği base sınıf.
 
+## Layer-level override for the design's render mode.
+enum RenderModeOverride {
+	INHERIT,
+	VECTOR,
+	PIXEL,
+}
+
+## Render mode int values, matching BayterekNodeDesign.RenderMode.
+## Duplicated here to avoid a cyclic dependency between
+## BayterekLayer and BayterekNodeDesign.
+const RENDER_MODE_VECTOR := 0
+const RENDER_MODE_PIXEL := 1
+
 const STATES: Array[String] = [
 	"normal",
 	"hover",
@@ -36,6 +49,9 @@ const STATE_PRIORITY: Array[String] = [
 @export_storage var animation_id: String = ""
 @export_storage var animated: bool = false
 
+## Per-layer render mode override. INHERIT uses the design's mode.
+@export_storage var render_mode_override: RenderModeOverride = RenderModeOverride.INHERIT
+
 func _init() -> void:
 	if layer_id.is_empty():
 		layer_id = BayterekUUIDGenerator.v4()
@@ -65,6 +81,19 @@ func get_matrix(design_size: Vector2) -> Transform2D:
 		return Transform2D.IDENTITY
 	return transform.get_matrix(design_size)
 
+## Resolves the effective render mode for this layer.
+## `design_mode` is an int (0 = Vector, 1 = Pixel), same values as
+## BayterekNodeDesign.RenderMode. Returns the effective int mode.
+## Does NOT reference BayterekNodeDesign to avoid a cyclic dependency.
+func get_effective_render_mode(design_mode: int) -> int:
+	match render_mode_override:
+		RenderModeOverride.VECTOR:
+			return RENDER_MODE_VECTOR
+		RenderModeOverride.PIXEL:
+			return RENDER_MODE_PIXEL
+		_:
+			return design_mode
+
 ## Duplicate ederken layer_id KORUNUR. Yeni bir ID istiyorsanız
 ## caller tarafından atanmalı (örn. Layer Editor'ün "Duplicate" butonu).
 func duplicate_layer() -> BayterekLayer:
@@ -79,6 +108,7 @@ func _copy_base_to(target: BayterekLayer) -> void:
 	target.transform = transform.duplicate_transform() if transform else BayterekLayerTransform.new()
 	target.animation_id = animation_id
 	target.animated = animated
+	target.render_mode_override = render_mode_override
 
 func _to_string() -> String:
 	return "%s(id=%s, name='%s', visible=%s)" % [

@@ -75,21 +75,29 @@ func _build_ui() -> void:
 	_size_x.value_changed.connect(_on_size_changed)
 	_size_y.value_changed.connect(_on_size_changed)
 
-	# --- Scale ---
+	# --- Scale (explicitly configured for 0.01 .. 100, step 0.05) ---
 	var scale_row_data := _make_pair_row_container("Scale", "X", "Y", false)
 	var scale_row: HBoxContainer = scale_row_data["row"]
 	_scale_x = scale_row_data["a"]
 	_scale_y = scale_row_data["b"]
+
+	# Configure spinboxes BEFORE setting their value.
 	_scale_x.min_value = 0.01
 	_scale_x.max_value = 100.0
 	_scale_x.step = 0.05
 	_scale_x.allow_greater = true
+	_scale_x.allow_lesser = false
+	_scale_x.rounded = false
 	_scale_x.value = 1.0
+
 	_scale_y.min_value = 0.01
 	_scale_y.max_value = 100.0
 	_scale_y.step = 0.05
 	_scale_y.allow_greater = true
+	_scale_y.allow_lesser = false
+	_scale_y.rounded = false
 	_scale_y.value = 1.0
+
 	_scale_x.value_changed.connect(_on_scale_changed)
 	_scale_y.value_changed.connect(_on_scale_changed)
 
@@ -264,6 +272,7 @@ func _make_pair_row_container(label_text: String, axis_a: String, axis_b: String
 	spin_a.max_value = 99999
 	spin_a.allow_lesser = allow_negative
 	spin_a.step = 1.0
+	spin_a.rounded = true
 	row.add_child(spin_a)
 
 	var b_label := Label.new()
@@ -278,6 +287,7 @@ func _make_pair_row_container(label_text: String, axis_a: String, axis_b: String
 	spin_b.max_value = 99999
 	spin_b.allow_lesser = allow_negative
 	spin_b.step = 1.0
+	spin_b.rounded = true
 	row.add_child(spin_b)
 
 	return {"row": row, "a": spin_a, "b": spin_b}
@@ -369,7 +379,6 @@ func _on_size_changed(_v: float) -> void:
 func _on_scale_changed(_v: float) -> void:
 	if _updating or not _transform: return
 	var new_scale := Vector2(_scale_x.value, _scale_y.value)
-	# Keep scale strictly positive — flip is handled by flip_x / flip_y.
 	if new_scale.x <= 0.0:
 		new_scale.x = 0.01
 	if new_scale.y <= 0.0:
