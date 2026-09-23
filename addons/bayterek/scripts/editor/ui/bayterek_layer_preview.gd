@@ -204,7 +204,6 @@ func _get_simulated_states() -> Dictionary:
 	}
 
 func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: Vector2, xform: Transform2D) -> void:
-	# --- Shadow (based on full outline) ---
 	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
 		var full_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
 		if not full_verts.is_empty():
@@ -213,7 +212,6 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 	var draw_border: bool = layer.should_draw_border(state_key)
 	var draw_fill: bool = layer.should_draw_fill(state_key)
 
-	# --- Fill (bottom layer) ---
 	if draw_fill:
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
@@ -223,98 +221,41 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 			if not fill_verts.is_empty():
 				_draw_fill(fill_verts, xform, fill_color)
 
-	# --- Border (ring on top of fill) ---
 	if draw_border:
-		if layer.border_mode == BayterekShapeLayer.BorderMode.TEXTURE and layer.border_texture:
-			_draw_shape_border_texture(layer, xform, effective_size)
-		else:
-			var border_color: Color = layer.get_border_color_for_state(state_key)
-			if border_color.a > 0.0 and layer.border_width > 0.0:
-				var center_verts: PackedVector2Array = layer.get_border_centerline_vertices(effective_size)
-				if not center_verts.is_empty():
-					var scaled_width: float = layer.border_width * preview_scale
-					_draw_border_ring(center_verts, xform, border_color, scaled_width)
+		var border_color: Color = layer.get_border_color_for_state(state_key)
+		if border_color.a > 0.0 and layer.border_width > 0.0:
+			var scaled_width: float = layer.border_width * preview_scale
+			var use_caps: bool = not layer.border_corner_gap
 
-func _draw_border_ring(verts: PackedVector2Array, xform: Transform2D, color: Color, width: float) -> void:
-	if verts.size() < 2:
+			var segments: Array = layer.get_border_segments(effective_size)
+			for seg in segments:
+				if not (seg is PackedVector2Array):
+					continue
+				var pts: PackedVector2Array = seg
+				if pts.size() < 2:
+					continue
+
+				var transformed := PackedVector2Array()
+				transformed.resize(pts.size())
+				for i in pts.size():
+					transformed[i] = xform * pts[i]
+
+				if transformed.size() == 2:
+					draw_line(transformed[0], transformed[1], border_color, scaled_width, true)
+					if use_caps:
+						_draw_cap(transformed[0], border_color, scaled_width)
+						_draw_cap(transformed[1], border_color, scaled_width)
+				else:
+					draw_polyline(transformed, border_color, scaled_width, true)
+					if use_caps:
+						_draw_cap(transformed[0], border_color, scaled_width)
+						_draw_cap(transformed[transformed.size() - 1], border_color, scaled_width)
+
+func _draw_cap(pos: Vector2, color: Color, width: float) -> void:
+	var radius: float = width * 0.5
+	if radius < 0.5:
 		return
-
-	var pts := PackedVector2Array()
-	pts.resize(verts.size() + 1)
-	for i in verts.size():
-		pts[i] = xform * verts[i]
-	pts[verts.size()] = pts[0]
-
-	draw_polyline(pts, color, width, true)
-
-## Texture border (9-slice) for preview — same as BayterekNodeButton version.
-func _draw_shape_border_texture(layer: BayterekShapeLayer, xform: Transform2D, effective_size: Vector2) -> void:
-	var tex: Texture2D = layer.border_texture
-	if not tex:
-		return
-
-	var tex_size: Vector2 = tex.get_size()
-	if tex_size.x <= 0 or tex_size.y <= 0:
-		return
-
-	# 9-slice margin ölçeklenir (preview_scale ile). Texture'ın kendi
-	# pixel kalınlığı korunur ama preview zoom'u da yansıtılır.
-	var requested_margin: float = float(layer.border_texture_margin) * preview_scale
-	var max_margin_x: float = (tex_size.x * 0.5) * preview_scale
-	var max_margin_y: float = (tex_size.y * 0.5) * preview_scale
-	var margin_x: float = minf(requested_margin, max_margin_x)
-	var margin_y: float = minf(requested_margin, max_margin_y)
-
-	var half: Vector2 = effective_size * 0.5
-	var margin: Vector2 = Vector2(margin_x, margin_y)
-
-	draw_set_transform_matrix(xform)
-
-	# Scale texture source rects — because we're drawing in local
-	# (design) coordinates, and the transform already scales by preview_scale,
-	# we need to divide the source region by preview_scale to keep 1:1 pixel
-	# mapping... actually the simplest is to use design-space coordinates and
-	# let transform handle scale.
-	var safe_scale: float = max(preview_scale, 0.0001)
-	var src_margin: Vector2 = Vector2(float(layer.border_texture_margin), float(layer.border_texture_margin))
-
-	# 4 corners (fixed size in source texture, scaled in destination)
-	_draw_texture_region(tex, Rect2(Vector2(0, 0), src_margin),
-		Rect2(Vector2(-half.x, -half.y), margin))
-	_draw_texture_region(tex, Rect2(Vector2(tex_size.x - src_margin.x, 0), src_margin),
-		Rect2(Vector2(half.x - margin.x, -half.y), margin))
-	_draw_texture_region(tex, Rect2(Vector2(0, tex_size.y - src_margin.y), src_margin),
-		Rect2(Vector2(-half.x, half.y - margin.y), margin))
-	_draw_texture_region(tex, Rect2(Vector2(tex_size.x - src_margin.x, tex_size.y - src_margin.y), src_margin),
-		Rect2(Vector2(half.x - margin.x, half.y - margin.y), margin))
-
-	# 4 edges
-	var edge_src_h: Vector2 = Vector2(tex_size.x - src_margin.x * 2.0, src_margin.y)
-	var edge_dst_h: Vector2 = Vector2(effective_size.x - margin.x * 2.0, margin.y)
-
-	var edge_src_v: Vector2 = Vector2(src_margin.x, tex_size.y - src_margin.y * 2.0)
-	var edge_dst_v: Vector2 = Vector2(margin.x, effective_size.y - margin.y * 2.0)
-
-	if edge_dst_h.x > 0:
-		_draw_texture_region(tex,
-			Rect2(Vector2(src_margin.x, 0), edge_src_h),
-			Rect2(Vector2(-half.x + margin.x, -half.y), edge_dst_h))
-		_draw_texture_region(tex,
-			Rect2(Vector2(src_margin.x, tex_size.y - src_margin.y), edge_src_h),
-			Rect2(Vector2(-half.x + margin.x, half.y - margin.y), edge_dst_h))
-
-	if edge_dst_v.y > 0:
-		_draw_texture_region(tex,
-			Rect2(Vector2(0, src_margin.y), edge_src_v),
-			Rect2(Vector2(-half.x, -half.y + margin.y), edge_dst_v))
-		_draw_texture_region(tex,
-			Rect2(Vector2(tex_size.x - src_margin.x, src_margin.y), edge_src_v),
-			Rect2(Vector2(half.x - margin.x, -half.y + margin.y), edge_dst_v))
-
-	draw_set_transform_matrix(Transform2D.IDENTITY)
-
-func _draw_texture_region(tex: Texture2D, src: Rect2, dst: Rect2) -> void:
-	draw_texture_rect_region(tex, dst, src)
+	draw_circle(pos, radius, color)
 
 func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
 	var offset: Vector2 = layer.shadow_size * preview_scale

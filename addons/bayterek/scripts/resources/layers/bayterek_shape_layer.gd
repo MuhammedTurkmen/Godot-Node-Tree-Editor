@@ -2,7 +2,7 @@
 class_name BayterekShapeLayer
 extends BayterekLayer
 ## Shape layer — circle, square, triangle, pentagon, hexagon.
-## Supports fill, border (vector or 9-slice texture) and shadow.
+## Supports fill, border (per-edge vector lines) and shadow.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -14,10 +14,11 @@ enum ShapeType {
 	HEXAGON,
 }
 
-enum BorderMode {
-	VECTOR,   ## Vektörel çizgi (draw_polyline). Corner radius desteklenir.
-	TEXTURE,  ## 9-slice texture. Pixel art için uygun, corner radius yok.
-}
+## Edge indices — used by `is_edge_enabled()`.
+const EDGE_TOP := 0
+const EDGE_RIGHT := 1
+const EDGE_BOTTOM := 2
+const EDGE_LEFT := 3
 
 @export_storage var shape_type: ShapeType = ShapeType.CIRCLE
 
@@ -31,15 +32,21 @@ enum BorderMode {
 
 # --- Border ---
 @export_storage var border_enabled: bool = false
-@export_storage var border_mode: BorderMode = BorderMode.VECTOR
 @export_storage var border_width: float = 2.0
+
+## When true, each straight edge is trimmed by `border_width / 2` at both
+## ends so the corners stay empty (each corner shows a border_width ×
+## border_width square gap). Useful for pixel art style frames.
+@export_storage var border_corner_gap: bool = false
+
+## Which edges are drawn. Ignored for CIRCLE (always draws a full ring).
+@export_storage var border_top_enabled: bool = true
+@export_storage var border_right_enabled: bool = true
+@export_storage var border_bottom_enabled: bool = true
+@export_storage var border_left_enabled: bool = true
+
 ## state -> {"enabled": bool, "color": Color}
 @export_storage var border_configs: Dictionary = {}
-
-## Texture border (only used when border_mode == TEXTURE)
-@export_storage var border_texture: Texture2D = null
-## 9-slice margin in pixels (only used when border_mode == TEXTURE)
-@export_storage var border_texture_margin: int = 8
 
 # --- Shadow ---
 @export_storage var shadow_enabled: bool = false
@@ -130,14 +137,31 @@ func should_draw_fill(state_key: String) -> bool:
 func should_draw_border(state_key: String) -> bool:
 	if not border_enabled:
 		return false
-	if border_mode == BorderMode.TEXTURE:
-		# Texture modunda texture var mı kontrolü caller tarafında yapılır.
-		if _is_config_enabled(border_configs, state_key):
-			return true
-		return _is_config_enabled(border_configs, "normal")
 	if _is_config_enabled(border_configs, state_key):
 		return true
 	return _is_config_enabled(border_configs, "normal")
+
+# ============================================================
+# EDGE MASKS
+# ============================================================
+
+func is_edge_enabled(edge: int) -> bool:
+	if shape_type == ShapeType.CIRCLE:
+		return true
+	match edge:
+		EDGE_TOP:    return border_top_enabled
+		EDGE_RIGHT:  return border_right_enabled
+		EDGE_BOTTOM: return border_bottom_enabled
+		EDGE_LEFT:   return border_left_enabled
+	return false
+
+func enabled_edge_count() -> int:
+	var c: int = 0
+	if border_top_enabled: c += 1
+	if border_right_enabled: c += 1
+	if border_bottom_enabled: c += 1
+	if border_left_enabled: c += 1
+	return c
 
 # ============================================================
 # CONFIG SETTERS
@@ -184,8 +208,7 @@ func get_fill_vertices(effective_size: Vector2) -> PackedVector2Array:
 	if not border_enabled or border_width <= 0.0:
 		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
 
-	# Fill border'ın iç kenarından bir miktar içeride kalır (saydamlıkta
-	# border'ın arkasında görünmesin diye).
+	# Fill, border'ın iç kenarından bir miktar içeride kalır.
 	var inset: float = border_width
 	var inner_size: Vector2 = effective_size - Vector2(inset, inset) * 2.0
 	if inner_size.x <= 0.5 or inner_size.y <= 0.5:
@@ -212,6 +235,139 @@ func get_border_centerline_vertices(effective_size: Vector2) -> PackedVector2Arr
 
 func get_border_vertices(effective_size: Vector2) -> PackedVector2Array:
 	return get_polygon_vertices(effective_size)
+
+# ============================================================
+# BORDER SEGMENT COMPUTATION
+# ============================================================
+
+## Returns an Array of PackedVector2Array polylines to draw as border.
+##
+## Rules:
+##   CIRCLE  → single closed ring (edge masks & corner gap ignored).
+##   Others, corner_gap = false (normal mode):
+##     4 edges on  → single closed ring (guarantees closed corners).
+##     1-3 edges   → one polyline per enabled edge.
+##   Others, corner_gap = true (pixel-art frame):
+##     Each enabled edge is a straight 2-point line, trimmed by
+##     `border_width / 2` at each end. Corners show a border_width ×
+##     border_width square gap.
+func get_border_segments(effective_size: Vector2) -> Array:
+	var center_verts: PackedVector2Array = get_border_centerline_vertices(effective_size)
+	if center_verts.size() < 2:
+		return []
+
+	# Circle: always a full closed ring.
+	if shape_type == ShapeType.CIRCLE:
+		return [_make_closed_ring(center_verts)]
+
+	# Normal mode + all 4 edges on → single closed ring.
+	if not border_corner_gap and enabled_edge_count() >= 4:
+		return [_make_closed_ring(center_verts)]
+
+	var half: Vector2 = effective_size * 0.5
+	var tol: float = maxf(border_width * 0.5 + 0.5, 1.0) + get_clamped_corner_radius(effective_size)
+
+	var result: Array = []
+
+	if border_corner_gap:
+		# --- Corner gap mode: each edge is a straight 2-point line. ---
+		# Her uçtan border_width / 2 kırpılır → köşede toplam border_width
+		# kadar (yani border_width × border_width kare) boşluk kalır.
+		var gap: float = maxf(border_width, 1.0) * 0.5
+		var endpoints: Dictionary = _find_edge_endpoints(center_verts, half, tol)
+
+		for edge in [EDGE_TOP, EDGE_RIGHT, EDGE_BOTTOM, EDGE_LEFT]:
+			if not is_edge_enabled(edge):
+				continue
+			if not endpoints.has(edge):
+				continue
+
+			var ep: Dictionary = endpoints[edge]
+			var a: Vector2 = ep["start"]
+			var b: Vector2 = ep["end"]
+			var seg_len: float = a.distance_to(b)
+			if seg_len <= gap * 2.0:
+				continue
+
+			var dir: Vector2 = (b - a) / seg_len
+			var a_trim: Vector2 = a + dir * gap
+			var b_trim: Vector2 = b - dir * gap
+
+			result.append(PackedVector2Array([a_trim, b_trim]))
+	else:
+		# --- Normal mode with 1-3 edges: per-edge polylines. ---
+		for edge in [EDGE_TOP, EDGE_RIGHT, EDGE_BOTTOM, EDGE_LEFT]:
+			if not is_edge_enabled(edge):
+				continue
+			var pts: PackedVector2Array = _collect_edge_vertices(center_verts, half, tol, edge)
+			if pts.size() >= 2:
+				result.append(pts)
+
+	return result
+
+func _make_closed_ring(center_verts: PackedVector2Array) -> PackedVector2Array:
+	var ring := PackedVector2Array()
+	ring.resize(center_verts.size() + 1)
+	for i in center_verts.size():
+		ring[i] = center_verts[i]
+	ring[center_verts.size()] = center_verts[0]
+	return ring
+
+func _collect_edge_vertices(
+	center_verts: PackedVector2Array,
+	half: Vector2,
+	tol: float,
+	edge: int
+) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for v in center_verts:
+		if _vertex_on_edge(v, half, tol, edge):
+			out.append(v)
+	return out
+
+func _vertex_on_edge(p: Vector2, half: Vector2, tol: float, edge: int) -> bool:
+	match edge:
+		EDGE_TOP:    return absf(p.y - (-half.y)) <= tol
+		EDGE_BOTTOM: return absf(p.y - half.y) <= tol
+		EDGE_LEFT:   return absf(p.x - (-half.x)) <= tol
+		EDGE_RIGHT:  return absf(p.x - half.x) <= tol
+	return false
+
+## Finds, for each edge, the pair of vertices on that edge that are
+## farthest apart. These act as the edge's endpoints when corner gap is on.
+## For sharp-cornered polygons this is exactly the two corner vertices.
+## For rounded corners this ignores the arc and gives the arc's two ends.
+func _find_edge_endpoints(
+	center_verts: PackedVector2Array,
+	half: Vector2,
+	tol: float
+) -> Dictionary:
+	var edge_verts: Dictionary = {}
+	for v in center_verts:
+		for edge in [EDGE_TOP, EDGE_RIGHT, EDGE_BOTTOM, EDGE_LEFT]:
+			if _vertex_on_edge(v, half, tol, edge):
+				if not edge_verts.has(edge):
+					edge_verts[edge] = []
+				edge_verts[edge].append(v)
+
+	var result: Dictionary = {}
+	for edge in edge_verts.keys():
+		var arr: Array = edge_verts[edge]
+		if arr.size() < 2:
+			continue
+		var best_dist: float = -1.0
+		var best_a: Vector2 = arr[0]
+		var best_b: Vector2 = arr[0]
+		for i in arr.size():
+			for j in range(i + 1, arr.size()):
+				var d: float = (arr[i] as Vector2).distance_to(arr[j] as Vector2)
+				if d > best_dist:
+					best_dist = d
+					best_a = arr[i]
+					best_b = arr[j]
+		result[edge] = {"start": best_a, "end": best_b}
+
+	return result
 
 # ============================================================
 # INTERNAL POLYGON BUILDER
@@ -339,7 +495,6 @@ func _apply_corner_rounding(verts: PackedVector2Array, radius: float) -> PackedV
 			while delta < -TAU:
 				delta += TAU
 
-		# Sabit segment sayısı — Bayterek.CORNER_SEGMENTS
 		var segments: int = Bayterek.CORNER_SEGMENTS
 		for s in range(segments + 1):
 			var t: float = float(s) / float(segments)
@@ -360,11 +515,13 @@ func duplicate_layer() -> BayterekLayer:
 	copy.fill_enabled = fill_enabled
 	copy.fill_configs = fill_configs.duplicate(true)
 	copy.border_enabled = border_enabled
-	copy.border_mode = border_mode
 	copy.border_width = border_width
+	copy.border_corner_gap = border_corner_gap
+	copy.border_top_enabled = border_top_enabled
+	copy.border_right_enabled = border_right_enabled
+	copy.border_bottom_enabled = border_bottom_enabled
+	copy.border_left_enabled = border_left_enabled
 	copy.border_configs = border_configs.duplicate(true)
-	copy.border_texture = border_texture
-	copy.border_texture_margin = border_texture_margin
 	copy.shadow_enabled = shadow_enabled
 	copy.shadow_color = shadow_color
 	copy.shadow_size = shadow_size
