@@ -57,7 +57,8 @@ func _ready() -> void:
 
 func _build_ui() -> void:
 	# --- Position ---
-	var pos_row_data := _make_pair_row_container("Position", "X", "Y", true)
+	var pos_row_data := _make_pair_row_container("Position", "X", "Y",
+		-99999.0, 99999.0, 1.0, true, 0.0, "")
 	var pos_row: HBoxContainer = pos_row_data["row"]
 	_pos_x = pos_row_data["a"]
 	_pos_y = pos_row_data["b"]
@@ -69,35 +70,19 @@ func _build_ui() -> void:
 		BayterekExportHelper.make_exportable(pos_row, fp_pos, _design, _on_export_changed)
 
 	# --- Size ---
-	var size_row_data := _make_pair_row_container("Size", "W", "H", false)
+	var size_row_data := _make_pair_row_container("Size", "W", "H",
+		0.0, 99999.0, 1.0, true, 0.0, "")
 	_size_x = size_row_data["a"]
 	_size_y = size_row_data["b"]
 	_size_x.value_changed.connect(_on_size_changed)
 	_size_y.value_changed.connect(_on_size_changed)
 
-	# --- Scale (explicitly configured for 0.01 .. 100, step 0.05) ---
-	var scale_row_data := _make_pair_row_container("Scale", "X", "Y", false)
+	# --- Scale (min 0.01, max 100, step 0.01, rounded=false, initial 1.0) ---
+	var scale_row_data := _make_pair_row_container("Scale", "X", "Y",
+		0.01, 100.0, 0.01, false, 1.0, "")
 	var scale_row: HBoxContainer = scale_row_data["row"]
 	_scale_x = scale_row_data["a"]
 	_scale_y = scale_row_data["b"]
-
-	# Configure spinboxes BEFORE setting their value.
-	_scale_x.min_value = 0.01
-	_scale_x.max_value = 100.0
-	_scale_x.step = 0.05
-	_scale_x.allow_greater = true
-	_scale_x.allow_lesser = false
-	_scale_x.rounded = false
-	_scale_x.value = 1.0
-
-	_scale_y.min_value = 0.01
-	_scale_y.max_value = 100.0
-	_scale_y.step = 0.05
-	_scale_y.allow_greater = true
-	_scale_y.allow_lesser = false
-	_scale_y.rounded = false
-	_scale_y.value = 1.0
-
 	_scale_x.value_changed.connect(_on_scale_changed)
 	_scale_y.value_changed.connect(_on_scale_changed)
 
@@ -154,15 +139,10 @@ func _build_ui() -> void:
 		BayterekExportHelper.make_exportable(rot_row, fp_rot, _design, _on_export_changed)
 
 	# --- Skew ---
-	var skew_row_data := _make_pair_row_container("Skew", "X", "Y", true)
+	var skew_row_data := _make_pair_row_container("Skew", "X", "Y",
+		-89.0, 89.0, 1.0, true, 0.0, "°")
 	_skew_x = skew_row_data["a"]
 	_skew_y = skew_row_data["b"]
-	_skew_x.min_value = -89.0
-	_skew_x.max_value = 89.0
-	_skew_x.suffix = "°"
-	_skew_y.min_value = -89.0
-	_skew_y.max_value = 89.0
-	_skew_y.suffix = "°"
 	_skew_x.value_changed.connect(_on_skew_changed)
 	_skew_y.value_changed.connect(_on_skew_changed)
 
@@ -250,7 +230,23 @@ func _get_or_make_group() -> ButtonGroup:
 		_btn_group = ButtonGroup.new()
 	return _btn_group
 
-func _make_pair_row_container(label_text: String, axis_a: String, axis_b: String, allow_negative: bool) -> Dictionary:
+## Creates a labeled two-spinbox row.
+##
+## IMPORTANT: min/max/step/rounded are configured BEFORE `value` is set.
+## Godot's SpinBox snaps `value` to the current `step` at set time, so
+## setting value first and step later can leave the display out of sync
+## (e.g. "1.01" instead of "1.00").
+func _make_pair_row_container(
+	label_text: String,
+	axis_a: String,
+	axis_b: String,
+	min_v: float,
+	max_v: float,
+	step_v: float,
+	rounded_v: bool,
+	initial_v: float,
+	suffix_v: String
+) -> Dictionary:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	add_child(row)
@@ -268,11 +264,15 @@ func _make_pair_row_container(label_text: String, axis_a: String, axis_b: String
 
 	var spin_a := SpinBox.new()
 	spin_a.size_flags_horizontal = SIZE_EXPAND_FILL
-	spin_a.min_value = -99999 if allow_negative else 0
-	spin_a.max_value = 99999
-	spin_a.allow_lesser = allow_negative
-	spin_a.step = 1.0
-	spin_a.rounded = true
+	spin_a.min_value = min_v
+	spin_a.max_value = max_v
+	spin_a.step = step_v
+	spin_a.rounded = rounded_v
+	spin_a.allow_lesser = true
+	spin_a.allow_greater = true
+	if not suffix_v.is_empty():
+		spin_a.suffix = suffix_v
+	spin_a.value = initial_v
 	row.add_child(spin_a)
 
 	var b_label := Label.new()
@@ -283,11 +283,15 @@ func _make_pair_row_container(label_text: String, axis_a: String, axis_b: String
 
 	var spin_b := SpinBox.new()
 	spin_b.size_flags_horizontal = SIZE_EXPAND_FILL
-	spin_b.min_value = -99999 if allow_negative else 0
-	spin_b.max_value = 99999
-	spin_b.allow_lesser = allow_negative
-	spin_b.step = 1.0
-	spin_b.rounded = true
+	spin_b.min_value = min_v
+	spin_b.max_value = max_v
+	spin_b.step = step_v
+	spin_b.rounded = rounded_v
+	spin_b.allow_lesser = true
+	spin_b.allow_greater = true
+	if not suffix_v.is_empty():
+		spin_b.suffix = suffix_v
+	spin_b.value = initial_v
 	row.add_child(spin_b)
 
 	return {"row": row, "a": spin_a, "b": spin_b}
