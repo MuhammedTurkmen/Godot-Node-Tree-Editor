@@ -23,6 +23,7 @@ const EDGE_LEFT := 3
 @export_storage var shape_type: ShapeType = ShapeType.CIRCLE
 
 ## Corner rounding radius in pixels. 0 = sharp corners.
+## Ignored when `border_corner_gap` is true (pixel-art frame mode).
 @export_storage var corner_radius: float = 0.0
 
 # --- Fill ---
@@ -36,7 +37,8 @@ const EDGE_LEFT := 3
 
 ## When true, each straight edge is trimmed by `border_width / 2` at both
 ## ends so the corners stay empty (each corner shows a border_width ×
-## border_width square gap). Useful for pixel art style frames.
+## border_width square gap). Corner radius is ignored in this mode, since
+## pixel-art frames and rounded corners don't mix.
 @export_storage var border_corner_gap: bool = false
 
 ## Which edges are drawn. Ignored for CIRCLE (always draws a full ring).
@@ -186,6 +188,10 @@ func ensure_border_config(state: String) -> void:
 # ============================================================
 
 func get_clamped_corner_radius(effective_size: Vector2) -> float:
+	# Corner gap aktifken corner radius yok sayılır — pixel art frame ile
+	# yuvarlak köşe bir arada kullanılmaz, ikisi birlikte bozuluyor.
+	if border_corner_gap:
+		return 0.0
 	if corner_radius <= 0.0:
 		return 0.0
 	var limit: float = _corner_radius_limit(effective_size)
@@ -250,7 +256,7 @@ func get_border_vertices(effective_size: Vector2) -> PackedVector2Array:
 ##   Others, corner_gap = true (pixel-art frame):
 ##     Each enabled edge is a straight 2-point line, trimmed by
 ##     `border_width / 2` at each end. Corners show a border_width ×
-##     border_width square gap.
+##     border_width square gap. Corner radius is ignored in this mode.
 func get_border_segments(effective_size: Vector2) -> Array:
 	var center_verts: PackedVector2Array = get_border_centerline_vertices(effective_size)
 	if center_verts.size() < 2:
@@ -336,7 +342,9 @@ func _vertex_on_edge(p: Vector2, half: Vector2, tol: float, edge: int) -> bool:
 ## Finds, for each edge, the pair of vertices on that edge that are
 ## farthest apart. These act as the edge's endpoints when corner gap is on.
 ## For sharp-cornered polygons this is exactly the two corner vertices.
-## For rounded corners this ignores the arc and gives the arc's two ends.
+## For rounded corners this ignores the arc and gives the arc's two ends
+## (but corner radius is disabled when corner gap is on, so this is only
+## relevant when the shape is drawn rounded for other reasons).
 func _find_edge_endpoints(
 	center_verts: PackedVector2Array,
 	half: Vector2,
