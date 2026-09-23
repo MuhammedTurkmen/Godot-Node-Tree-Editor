@@ -20,6 +20,14 @@ var _pos_y: SpinBox
 var _size_x: SpinBox
 var _size_y: SpinBox
 
+# --- Scale ---
+var _scale_x: SpinBox
+var _scale_y: SpinBox
+
+# --- Flip ---
+var _flip_x_check: CheckBox
+var _flip_y_check: CheckBox
+
 # --- Rotation ---
 var _rotation: SpinBox
 
@@ -32,6 +40,9 @@ var _pivot_buttons: Array[Button] = []
 var _pivot_custom_x: SpinBox
 var _pivot_custom_y: SpinBox
 var _pivot_custom_panel: HBoxContainer
+
+# --- Scale from pivot ---
+var _scale_from_pivot_check: CheckBox
 
 var _btn_group: ButtonGroup = null
 
@@ -63,6 +74,56 @@ func _build_ui() -> void:
 	_size_y = size_row_data["b"]
 	_size_x.value_changed.connect(_on_size_changed)
 	_size_y.value_changed.connect(_on_size_changed)
+
+	# --- Scale ---
+	var scale_row_data := _make_pair_row_container("Scale", "X", "Y", false)
+	var scale_row: HBoxContainer = scale_row_data["row"]
+	_scale_x = scale_row_data["a"]
+	_scale_y = scale_row_data["b"]
+	_scale_x.min_value = 0.01
+	_scale_x.max_value = 100.0
+	_scale_x.step = 0.05
+	_scale_x.allow_greater = true
+	_scale_x.value = 1.0
+	_scale_y.min_value = 0.01
+	_scale_y.max_value = 100.0
+	_scale_y.step = 0.05
+	_scale_y.allow_greater = true
+	_scale_y.value = 1.0
+	_scale_x.value_changed.connect(_on_scale_changed)
+	_scale_y.value_changed.connect(_on_scale_changed)
+
+	if not _layer_id.is_empty():
+		var fp_scale: String = "layers.%s.transform.scale" % _layer_id
+		BayterekExportHelper.make_exportable(scale_row, fp_scale, _design, _on_export_changed)
+
+	# --- Flip ---
+	var flip_row := HBoxContainer.new()
+	flip_row.add_theme_constant_override("separation", 4)
+	add_child(flip_row)
+
+	var flip_label := Label.new()
+	flip_label.text = "Flip"
+	flip_label.custom_minimum_size = Vector2(80, 0)
+	flip_row.add_child(flip_label)
+
+	_flip_x_check = CheckBox.new()
+	_flip_x_check.text = "X"
+	_flip_x_check.size_flags_horizontal = SIZE_EXPAND_FILL
+	_flip_x_check.tooltip_text = "Mirror horizontally"
+	_flip_x_check.toggled.connect(_on_flip_toggled)
+	flip_row.add_child(_flip_x_check)
+
+	_flip_y_check = CheckBox.new()
+	_flip_y_check.text = "Y"
+	_flip_y_check.size_flags_horizontal = SIZE_EXPAND_FILL
+	_flip_y_check.tooltip_text = "Mirror vertically"
+	_flip_y_check.toggled.connect(_on_flip_toggled)
+	flip_row.add_child(_flip_y_check)
+
+	if not _layer_id.is_empty():
+		var fp_flip: String = "layers.%s.transform.flip_x" % _layer_id
+		BayterekExportHelper.make_exportable(flip_row, fp_flip, _design, _on_export_changed)
 
 	# --- Rotation ---
 	var rot_row := HBoxContainer.new()
@@ -150,6 +211,32 @@ func _build_ui() -> void:
 	_pivot_custom_y.value_changed.connect(_on_custom_pivot_changed)
 	_pivot_custom_panel.add_child(_pivot_custom_y)
 
+	# --- Scale from pivot ---
+	var sfp_row := HBoxContainer.new()
+	sfp_row.add_theme_constant_override("separation", 4)
+	add_child(sfp_row)
+
+	var sfp_label := Label.new()
+	sfp_label.text = "Scale from Pivot"
+	sfp_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	sfp_label.tooltip_text = (
+		"When ON, Position is interpreted as the pivot point and size/scale grow " +
+		"away from the pivot. When OFF, Position is the layer center and size/scale " +
+		"grow symmetrically."
+	)
+	sfp_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	sfp_row.add_child(sfp_label)
+
+	_scale_from_pivot_check = CheckBox.new()
+	_scale_from_pivot_check.text = "On"
+	_scale_from_pivot_check.tooltip_text = sfp_label.tooltip_text
+	_scale_from_pivot_check.toggled.connect(_on_scale_from_pivot_toggled)
+	sfp_row.add_child(_scale_from_pivot_check)
+
+	if not _layer_id.is_empty():
+		var fp_sfp: String = "layers.%s.transform.scale_from_pivot" % _layer_id
+		BayterekExportHelper.make_exportable(sfp_row, fp_sfp, _design, _on_export_changed)
+
 func _get_or_make_group() -> ButtonGroup:
 	if not _btn_group:
 		_btn_group = ButtonGroup.new()
@@ -217,16 +304,21 @@ func _refresh_export_markers() -> void:
 func _refresh_from_data() -> void:
 	if not _transform:
 		return
-
 	if not _ui_ready:
 		return
 	if not _pos_x or not _pos_y or not _size_x or not _size_y or not _rotation:
+		return
+	if not _scale_x or not _scale_y:
+		return
+	if not _flip_x_check or not _flip_y_check:
 		return
 	if not _skew_x or not _skew_y:
 		return
 	if not _pivot_custom_x or not _pivot_custom_y:
 		return
 	if _pivot_buttons.size() < 10:
+		return
+	if not _scale_from_pivot_check:
 		return
 
 	_updating = true
@@ -235,9 +327,14 @@ func _refresh_from_data() -> void:
 	_pos_y.set_value_no_signal(_transform.position.y)
 	_size_x.set_value_no_signal(_transform.size.x)
 	_size_y.set_value_no_signal(_transform.size.y)
+	_scale_x.set_value_no_signal(_transform.scale.x)
+	_scale_y.set_value_no_signal(_transform.scale.y)
+	_flip_x_check.button_pressed = _transform.flip_x
+	_flip_y_check.button_pressed = _transform.flip_y
 	_rotation.set_value_no_signal(_transform.rotation)
 	_skew_x.set_value_no_signal(_transform.skew.x)
 	_skew_y.set_value_no_signal(_transform.skew.y)
+	_scale_from_pivot_check.button_pressed = _transform.scale_from_pivot
 
 	var idx: int = int(_transform.pivot_mode)
 	if idx >= 0 and idx < 9:
@@ -267,6 +364,23 @@ func _on_pos_changed(_v: float) -> void:
 func _on_size_changed(_v: float) -> void:
 	if _updating or not _transform: return
 	_transform.size = Vector2(_size_x.value, _size_y.value)
+	changed.emit()
+
+func _on_scale_changed(_v: float) -> void:
+	if _updating or not _transform: return
+	var new_scale := Vector2(_scale_x.value, _scale_y.value)
+	# Keep scale strictly positive — flip is handled by flip_x / flip_y.
+	if new_scale.x <= 0.0:
+		new_scale.x = 0.01
+	if new_scale.y <= 0.0:
+		new_scale.y = 0.01
+	_transform.scale = new_scale
+	changed.emit()
+
+func _on_flip_toggled(_pressed: bool) -> void:
+	if _updating or not _transform: return
+	_transform.flip_x = _flip_x_check.button_pressed
+	_transform.flip_y = _flip_y_check.button_pressed
 	changed.emit()
 
 func _on_rotation_changed(v: float) -> void:
@@ -299,6 +413,11 @@ func _on_pivot_custom_pressed() -> void:
 func _on_custom_pivot_changed(_v: float) -> void:
 	if _updating or not _transform: return
 	_transform.pivot = Vector2(_pivot_custom_x.value, _pivot_custom_y.value)
+	changed.emit()
+
+func _on_scale_from_pivot_toggled(pressed: bool) -> void:
+	if _updating or not _transform: return
+	_transform.scale_from_pivot = pressed
 	changed.emit()
 
 func _on_export_changed(_field_path: String) -> void:

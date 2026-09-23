@@ -1758,10 +1758,14 @@ func _transform_to_dict(t: BayterekLayerTransform) -> Dictionary:
 	return {
 		"position": {"x": t.position.x, "y": t.position.y},
 		"size": {"x": t.size.x, "y": t.size.y},
+		"scale": {"x": t.scale.x, "y": t.scale.y},
+		"flip_x": t.flip_x,
+		"flip_y": t.flip_y,
 		"rotation": t.rotation,
 		"skew": {"x": t.skew.x, "y": t.skew.y},
 		"pivot": {"x": t.pivot.x, "y": t.pivot.y},
 		"pivot_mode": int(t.pivot_mode),
+		"scale_from_pivot": t.scale_from_pivot,
 	}
 
 func _configs_to_dict(configs: Dictionary) -> Dictionary:
@@ -1835,10 +1839,14 @@ func _dict_to_transform(d: Dictionary) -> BayterekLayerTransform:
 	var t := BayterekLayerTransform.new()
 	t.position = _dict_to_vector2(d.get("position", {}), Vector2.ZERO)
 	t.size = _dict_to_vector2(d.get("size", {}), Vector2.ZERO)
+	t.scale = _dict_to_vector2(d.get("scale", {}), Vector2.ONE)
+	t.flip_x = bool(d.get("flip_x", false))
+	t.flip_y = bool(d.get("flip_y", false))
 	t.rotation = float(d.get("rotation", 0.0))
 	t.skew = _dict_to_vector2(d.get("skew", {}), Vector2.ZERO)
 	t.pivot = _dict_to_vector2(d.get("pivot", {}), Vector2(0.5, 0.5))
 	t.pivot_mode = int(d.get("pivot_mode", BayterekLayerTransform.PivotMode.CENTER)) as BayterekLayerTransform.PivotMode
+	t.scale_from_pivot = bool(d.get("scale_from_pivot", false))
 	return t
 
 func _dict_to_configs(d: Dictionary) -> Dictionary:

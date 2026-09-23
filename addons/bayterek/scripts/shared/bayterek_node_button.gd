@@ -251,9 +251,13 @@ func _draw_shape_layer(
 	if draw_border:
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
-			var s: Vector2 = node_data.scale if node_data else Vector2.ONE
-			var avg_scale: float = (absf(s.x) + absf(s.y)) * 0.5
-			var scaled_width: float = layer.border_width * avg_scale
+			# Node scale × layer transform scale.
+			var node_s: Vector2 = node_data.scale if node_data else Vector2.ONE
+			var node_avg: float = (absf(node_s.x) + absf(node_s.y)) * 0.5
+			var layer_avg: float = 1.0
+			if layer.transform:
+				layer_avg = layer.transform.get_avg_scale()
+			var scaled_width: float = layer.border_width * node_avg * layer_avg
 			var use_caps: bool = not layer.border_corner_gap
 
 			var segments: Array = layer.get_border_segments(effective_size)

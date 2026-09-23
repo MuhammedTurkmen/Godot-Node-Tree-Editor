@@ -224,7 +224,11 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 	if draw_border:
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
-			var scaled_width: float = layer.border_width * preview_scale
+			# Preview scale × layer transform scale.
+			var layer_avg: float = 1.0
+			if layer.transform:
+				layer_avg = layer.transform.get_avg_scale()
+			var scaled_width: float = layer.border_width * preview_scale * layer_avg
 			var use_caps: bool = not layer.border_corner_gap
 
 			var segments: Array = layer.get_border_segments(effective_size)
