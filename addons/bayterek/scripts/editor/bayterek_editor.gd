@@ -32,8 +32,11 @@ var settings_editor: BayterekSettingsEditor
 var attributes_editor: BayterekAttributesEditor
 var prefabs_bar: BayterekPrefabsBar
 
-## Dedicated BayterekEditorContext instance (was inline PopupMenu).
+## Dedicated BayterekEditorContext instance.
 var context_menu: BayterekEditorContext
+
+## Central keyboard shortcut handler.
+var _shortcuts: BayterekShortcuts
 
 var validator: BayterekValidator
 var rename_dialog: BayterekRenameDialog
@@ -110,6 +113,7 @@ func load_tree(path: String) -> void:
 		tree.tree_state = BayterekTreeState.new()
 
 	undo_redo = UndoRedo.new()
+	_shortcuts = BayterekShortcuts.new(self)
 
 	_build_ui()
 	_create_tree_view()
@@ -268,12 +272,10 @@ func _build_ui() -> void:
 	v_split.add_child(prefabs_bar)
 	prefabs_bar.init(self)
 
-	# Bar sinyalleri
 	prefabs_bar.card_rename_requested.connect(_on_prefab_card_rename)
 	prefabs_bar.card_duplicate_requested.connect(_on_prefab_card_duplicate)
 	prefabs_bar.card_delete_requested.connect(_on_prefab_card_delete)
 
-	# Kalıcı collapse durumu
 	var bar_visible: bool = tree.prefabs_bar_visible if tree else true
 	prefabs_bar.set_collapsed(not bar_visible, false)
 
@@ -390,7 +392,6 @@ func _create_tree_view() -> void:
 		attributes_editor.attribute_removed.connect(_on_attr_removed)
 		attributes_editor.attributes_list_changed.connect(_on_attrs_list_changed)
 
-	# Prefab bar'ı ilk kez doldur
 	if prefabs_bar:
 		prefabs_bar.refresh()
 
@@ -1155,38 +1156,9 @@ func _make_selected_root() -> void:
 # ============================================================
 
 func _input(event: InputEvent) -> void:
-	if not is_visible_in_tree():
+	if not _shortcuts:
 		return
-	if not (event is InputEventKey and event.pressed and not event.echo):
-		return
-
-	var key: int = event.keycode
-	var ctrl: bool = event.ctrl_pressed or event.meta_pressed
-	var shift: bool = event.shift_pressed
-
-	if ctrl and key == KEY_S:
-		save_tree()
-		get_viewport().set_input_as_handled()
-	elif ctrl and not shift and key == KEY_Z:
-		do_undo()
-		get_viewport().set_input_as_handled()
-	elif ctrl and (key == KEY_Y or (shift and key == KEY_Z)):
-		do_redo()
-		get_viewport().set_input_as_handled()
-	elif ctrl and key == KEY_D:
-		duplicate_selected_nodes()
-		get_viewport().set_input_as_handled()
-	elif ctrl and key == KEY_C:
-		_copy_selected_nodes()
-		get_viewport().set_input_as_handled()
-	elif ctrl and key == KEY_V:
-		_paste_nodes()
-		get_viewport().set_input_as_handled()
-	elif key == KEY_C and not ctrl and not shift:
-		_toggle_chain_connection_mode()
-		get_viewport().set_input_as_handled()
-	elif key == KEY_F2:
-		_open_rename_dialog()
+	if _shortcuts.handle_input(event):
 		get_viewport().set_input_as_handled()
 
 # ============================================================

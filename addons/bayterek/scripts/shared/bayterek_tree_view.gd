@@ -105,6 +105,36 @@ func center_camera_on_content() -> void:
 	camera.focus_on(centroid, 1.0)
 
 # ============================================================
+# SCROLL / FOCUS HELPERS
+# ============================================================
+
+## Ensures the given node is visible on screen by nudging the camera
+## if it's outside the current viewport. Does not change the zoom.
+func scroll_to_node(node: BayterekNodeButton) -> void:
+	if not node or not node.node_data or not camera:
+		return
+
+	var viewport_size: Vector2 = size
+	var node_pos: Vector2 = node.node_data.position
+
+	# Where the node currently appears on screen (relative to view center).
+	var zoom: float = camera.get_zoom()
+	var centered_offset: Vector2 = node_pos * zoom
+
+	# If the node is well inside the viewport, do nothing.
+	var safe_margin: Vector2 = viewport_size * 0.15
+	var half: Vector2 = viewport_size * 0.5
+	var screen_pos: Vector2 = half + centered_offset
+
+	var inside_x: bool = screen_pos.x > safe_margin.x and screen_pos.x < viewport_size.x - safe_margin.x
+	var inside_y: bool = screen_pos.y > safe_margin.y and screen_pos.y < viewport_size.y - safe_margin.y
+	if inside_x and inside_y:
+		return
+
+	# Otherwise gently re-center on the node, preserving zoom.
+	camera.focus_on(node_pos, zoom)
+
+# ============================================================
 # TOOLTIP
 # ============================================================
 
