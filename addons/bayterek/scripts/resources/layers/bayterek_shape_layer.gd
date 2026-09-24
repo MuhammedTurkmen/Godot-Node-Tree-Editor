@@ -4,9 +4,10 @@ extends BayterekLayer
 ## Shape layer — circle, square, triangle, pentagon, hexagon.
 ## Supports fill, border (per-edge vector lines), corner rounding and shadow.
 ##
-## Pixel mode uses a per-pixel "inside shape?" test with pixel centers.
-## Polygons are rescaled so they fill the requested W x H box exactly —
-## triangle / pentagon / hexagon bottoms therefore always draw.
+## Pixel mode: per-pixel "inside shape?" test on pixel centers.
+## Border = inside outer AND within `bw` pixels of the outer edge.
+## Fill   = inside outer AND farther than `bw` from the outer edge.
+## This gives uniform border thickness on diagonal edges too (no gaps).
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -336,7 +337,7 @@ func _find_edge_endpoints(center_verts: PackedVector2Array, half: Vector2, tol: 
 	return result
 
 # ============================================================
-# PIXEL SCANLINE — point-in-shape test
+# PIXEL SCANLINE — point-in-shape test + edge-distance border
 # ============================================================
 
 func is_axis_aligned() -> bool:
@@ -346,6 +347,9 @@ func is_axis_aligned() -> bool:
 
 ## Returns { "fill": [Rect2i...], "border": [Rect2i...] } in design
 ## coordinates (0,0 = shape center). All rects have height 1.
+##
+## Border classification uses distance-to-edge, not an inner polygon.
+## This guarantees uniform thickness on diagonal edges across all shapes.
 func get_pixel_spans(effective_size: Vector2) -> Dictionary:
 	var fill_spans: Array = []
 	var border_spans: Array = []
@@ -364,17 +368,9 @@ func get_pixel_spans(effective_size: Vector2) -> Dictionary:
 		var limit: int = int(floor(min(W, H) * 0.5 * Bayterek.CORNER_RADIUS_CLAMP_FACTOR))
 		R = clampi(int(round(corner_radius)), 0, limit)
 
-	var inner_W: int = W - 2 * bw
-	var inner_H: int = H - 2 * bw
-	var inner_R: int = maxi(0, R - bw)
-	var has_inner: bool = bw > 0 and inner_W > 0 and inner_H > 0
-
 	var outer_poly: PackedVector2Array = PackedVector2Array()
-	var inner_poly: PackedVector2Array = PackedVector2Array()
 	if shape_type in [ShapeType.TRIANGLE, ShapeType.PENTAGON, ShapeType.HEXAGON]:
 		outer_poly = _shape_pixel_outline(W, H, R)
-		if has_inner:
-			inner_poly = _shape_pixel_outline(inner_W, inner_H, inner_R)
 
 	var x_off: int = -W / 2
 	var y_off: int = -H / 2
@@ -393,14 +389,20 @@ func get_pixel_spans(effective_size: Vector2) -> Dictionary:
 
 			var outer_hit: bool = _pixel_inside(ox, oy, W, H, R, outer_poly)
 
-			var inner_hit: bool = false
-			if outer_hit and has_inner:
-				var ix: float = ox - float(bw)
-				var iy: float = oy - float(bw)
-				inner_hit = _pixel_inside(ix, iy, inner_W, inner_H, inner_R, inner_poly)
+			var is_fill: bool = false
+			var is_border: bool = false
 
-			var is_fill: bool = outer_hit and inner_hit
-			var is_border: bool = outer_hit and not inner_hit
+			if outer_hit:
+				if bw > 0:
+					var dist_to_edge: float = _pixel_edge_distance(
+						ox, oy, W, H, R, outer_poly
+					)
+					if dist_to_edge <= float(bw):
+						is_border = true
+					else:
+						is_fill = true
+				else:
+					is_fill = true
 
 			if is_fill and not fill_active:
 				fill_active = true
@@ -428,9 +430,60 @@ func get_pixel_spans(effective_size: Vector2) -> Dictionary:
 
 	return {"fill": fill_spans, "border": border_spans}
 
+## Distance from (px, py) to the shape's nearest edge.
+## Circle: r - d. Square: min(hw - |lx|, hh - |ly|). Polygon: min segment distance.
+func _pixel_edge_distance(px: float, py: float, W: int, H: int, R: int, poly: PackedVector2Array) -> float:
+	if shape_type == ShapeType.CIRCLE:
+		var cx: float = float(W) * 0.5
+		var cy: float = float(H) * 0.5
+		var r: float = minf(cx, cy)
+		return r - Vector2(px, py).distance_to(Vector2(cx, cy))
+
+	if shape_type == ShapeType.SQUARE:
+		var cx2: float = float(W) * 0.5
+		var cy2: float = float(H) * 0.5
+		var hw: float = float(W) * 0.5
+		var hh: float = float(H) * 0.5
+		var dx: float = hw - absf(px - cx2)
+		var dy: float = hh - absf(py - cy2)
+		var r2: int = clampi(R, 0, int(minf(hw, hh)))
+		if r2 > 0:
+			# Near a rounded corner, distance is along the arc.
+			var ax: float = absf(px - cx2)
+			var ay: float = absf(py - cy2)
+			if ax > hw - r2 and ay > hh - r2:
+				var arc_cx: float = hw - r2
+				var arc_cy: float = hh - r2
+				var qx: float = ax - arc_cx
+				var qy: float = ay - arc_cy
+				return float(r2) - sqrt(qx * qx + qy * qy)
+		return minf(dx, dy)
+
+	# Polygon: min distance to any edge segment.
+	if poly.size() < 2:
+		return 1e9
+	var best: float = 1e9
+	var n: int = poly.size()
+	for i in n:
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[(i + 1) % n]
+		var d: float = _point_segment_distance(px, py, a, b)
+		if d < best:
+			best = d
+	return best
+
+func _point_segment_distance(px: float, py: float, a: Vector2, b: Vector2) -> float:
+	var ab: Vector2 = b - a
+	var ap: Vector2 = Vector2(px, py) - a
+	var ab_len_sq: float = ab.length_squared()
+	if ab_len_sq < 0.0001:
+		return ap.length()
+	var t: float = clampf(ap.dot(ab) / ab_len_sq, 0.0, 1.0)
+	var closest: Vector2 = a + ab * t
+	return Vector2(px, py).distance_to(closest)
+
 ## Returns a polygon outline in local pixel coords [0..W, 0..H].
-## The polygon is rescale-normalized so it exactly fills the W x H box
-## on BOTH axes — triangle bottoms therefore always reach y = H.
+## Normalized on both axes so the polygon fills the box exactly.
 func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 	if shape_type == ShapeType.CIRCLE or shape_type == ShapeType.SQUARE:
 		return PackedVector2Array()
@@ -439,7 +492,6 @@ func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 	var half_x: float = float(W) * 0.5
 	var half_y: float = float(H) * 0.5
 
-	# Generate raw polygon in centered space.
 	var base: PackedVector2Array = PackedVector2Array()
 	base.resize(sides)
 	var start_angle: float = -PI * 0.5
@@ -447,7 +499,7 @@ func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 		var angle: float = start_angle + TAU * float(i) / float(sides)
 		base[i] = Vector2(cos(angle) * half_x, sin(angle) * half_y)
 
-	# Normalize vertically so the shape fills [0, H].
+	# Normalize vertically to fill [0, H].
 	var y_min: float = INF
 	var y_max: float = -INF
 	for v in base:
@@ -459,7 +511,7 @@ func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 		for i in base.size():
 			base[i].y = (base[i].y - y_min) * scale_y
 
-	# Normalize horizontally so the shape fills [0, W].
+	# Normalize horizontally to fill [0, W].
 	var x_min: float = INF
 	var x_max: float = -INF
 	for v in base:
@@ -471,7 +523,7 @@ func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 		for i in base.size():
 			base[i].x = (base[i].x - x_min) * scale_x
 
-	# Optional corner rounding, done in centered coordinates.
+	# Optional corner rounding.
 	if R > 0:
 		var center_pt: Vector2 = Vector2(float(W) * 0.5, float(H) * 0.5)
 		for i in base.size():
@@ -482,8 +534,7 @@ func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 
 	return base
 
-## True if pixel center (px, py) in local coords [0..W, 0..H] lies inside the shape.
-## Polygon test uses half-open ray casting (y_min inclusive, y_max exclusive).
+## True if pixel center (px, py) in local coords [0..W, 0..H] lies inside.
 func _pixel_inside(px: float, py: float, W: int, H: int, R: int, poly: PackedVector2Array) -> bool:
 	if shape_type == ShapeType.CIRCLE:
 		var cx: float = float(W) * 0.5
