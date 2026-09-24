@@ -48,16 +48,16 @@ func handle_input(event: InputEvent) -> bool:
 			editor._paste_nodes()
 			return true
 		if key == KEY_G and shift:
-			_ungroup_selected()
+			editor.ungroup_selected()
 			return true
 		if key == KEY_G:
 			editor.open_group_create_dialog()
 			return true
 		if key == KEY_L and shift:
-			_unlock_all()
+			editor.unlock_all_nodes()
 			return true
 		if key == KEY_L:
-			_toggle_lock_selected()
+			editor.toggle_lock_selected()
 			return true
 		if key == KEY_R:
 			_reset_camera()
@@ -145,73 +145,6 @@ func _deselect_all() -> void:
 	editor.tree_view.clear_selection()
 	BayterekToast.info(editor.tree_view, "Selection cleared")
 
-func _ungroup_selected() -> void:
-	if not editor.tree_view:
-		return
-	var count: int = 0
-	for node in editor.tree_view.selected_nodes:
-		if not is_instance_valid(node) or not node.node_data:
-			continue
-		if node.node_data.group_id.is_empty():
-			continue
-		editor._assign_node_to_group(node, "")
-		count += 1
-	if count == 0:
-		BayterekToast.info(editor.tree_view, "No grouped nodes in selection")
-		return
-	if editor.hierarchy:
-		editor.hierarchy.refresh_all()
-	if editor.tree_view.group_frames_service:
-		editor.tree_view.group_frames_service.refresh_all()
-	editor.set_dirty(true)
-	BayterekToast.success(editor.tree_view, "Removed %d node%s from group%s" % [count, "s" if count > 1 else "", "s" if count > 1 else ""])
-
-func _toggle_lock_selected() -> void:
-	if not editor.tree_view:
-		return
-	var locked: int = 0
-	var unlocked: int = 0
-	for node in editor.tree_view.selected_nodes:
-		if not is_instance_valid(node) or not node.node_data:
-			continue
-		node.node_data.locked = not node.node_data.locked
-		if node.node_data.locked:
-			locked += 1
-		else:
-			unlocked += 1
-		if node.has_method("refresh_visuals"):
-			node.refresh_visuals()
-	if editor.hierarchy:
-		editor.hierarchy.refresh_all()
-	editor.set_dirty(true)
-	if locked > 0 and unlocked == 0:
-		BayterekToast.info(editor.tree_view, "Locked %d node%s" % [locked, "s" if locked > 1 else ""])
-	elif unlocked > 0 and locked == 0:
-		BayterekToast.info(editor.tree_view, "Unlocked %d node%s" % [unlocked, "s" if unlocked > 1 else ""])
-	else:
-		BayterekToast.info(editor.tree_view, "Locked %d, unlocked %d" % [locked, unlocked])
-
-func _unlock_all() -> void:
-	if not editor.tree or not editor.tree_view or not editor.tree_view.nodes_service:
-		return
-	var count: int = 0
-	for node in editor.tree_view.nodes_service.get_all_nodes():
-		if not is_instance_valid(node) or not node.node_data:
-			continue
-		if not node.node_data.locked:
-			continue
-		node.node_data.locked = false
-		if node.has_method("refresh_visuals"):
-			node.refresh_visuals()
-		count += 1
-	if count == 0:
-		BayterekToast.info(editor.tree_view, "No locked nodes")
-		return
-	if editor.hierarchy:
-		editor.hierarchy.refresh_all()
-	editor.set_dirty(true)
-	BayterekToast.success(editor.tree_view, "Unlocked %d node%s" % [count, "s" if count > 1 else ""])
-
 func _reset_camera() -> void:
 	if not editor.tree_view or not editor.tree_view.camera:
 		return
@@ -251,9 +184,9 @@ func _cycle_selection(direction: int) -> void:
 	all_nodes.sort_custom(func(a, b): return a.id < b.id)
 	var candidates: Array = []
 	for n in all_nodes:
-		if not is_instance_valid(n) or not n.node_data:
+		if not is_instance_valid(n):
 			continue
-		if n.node_data.locked:
+		if n.node_data and n.node_data.locked:
 			continue
 		candidates.append(n)
 	if candidates.is_empty():

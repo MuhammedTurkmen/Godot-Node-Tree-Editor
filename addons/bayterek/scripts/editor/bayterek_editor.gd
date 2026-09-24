@@ -32,10 +32,7 @@ var settings_editor: BayterekSettingsEditor
 var attributes_editor: BayterekAttributesEditor
 var prefabs_bar: BayterekPrefabsBar
 
-## Dedicated BayterekEditorContext instance.
 var context_menu: BayterekEditorContext
-
-## Central keyboard shortcut handler.
 var _shortcuts: BayterekShortcuts
 
 var validator: BayterekValidator
@@ -56,6 +53,25 @@ var _resize_debounce: float = 0.0
 
 var _group_dialog_mode: String = ""
 var _group_dialog_target_id: String = ""
+
+# ============================================================
+# UNDO / REDO HELPERS
+# ============================================================
+
+## Wraps an action in undo/redo boilerplate. Both callables must be
+## self-contained — no captured state that becomes invalid between do
+## and undo.
+func _commit_action(action_name: String, do_callable: Callable, undo_callable: Callable) -> void:
+	if not undo_redo:
+		return
+	undo_redo.create_action(action_name)
+	undo_redo.add_do_method(do_callable)
+	undo_redo.add_undo_method(undo_callable)
+	undo_redo.commit_action()
+
+# ============================================================
+# LIFECYCLE
+# ============================================================
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -179,7 +195,6 @@ func _show_chain_mode_notification() -> void:
 # ============================================================
 
 func _build_ui() -> void:
-	# --- Outer vertical split: [top area] / [prefab bar] ---
 	v_split = VSplitContainer.new()
 	v_split.name = "VSplit"
 	v_split.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -188,7 +203,6 @@ func _build_ui() -> void:
 	v_split.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v_split.split_offset = -120
 
-	# --- Top: horizontal split ---
 	h_split = HSplitContainer.new()
 	h_split.name = "HSplit"
 	h_split.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -266,7 +280,6 @@ func _build_ui() -> void:
 	tab_container.add_child(attributes_editor)
 	tab_container.set_tab_title(2, "Attributes")
 
-	# --- Bottom: prefab bar ---
 	prefabs_bar = BayterekPrefabsBar.new()
 	prefabs_bar.name = "PrefabsBar"
 	v_split.add_child(prefabs_bar)
@@ -488,9 +501,17 @@ func _on_delete_confirmed() -> void:
 	var prefab_to_delete = _pending_delete_prefab
 	_pending_delete_prefab = null
 
-	tree_view.prefabs_service.delete_prefab(prefab_to_delete, mode)
+	# Snapshot affected nodes for undo.
+	var affected_nodes: Array = prefab_to_delete.get_nodes().duplicate()
 
-	set_dirty(true)
+	var do_callable := func():
+		tree_view.prefabs_service.delete_prefab(prefab_to_delete, mode)
+		set_dirty(true)
+	var undo_callable := func():
+		_restore_prefab_snapshot(prefab_to_delete, affected_nodes)
+		set_dirty(true)
+
+	_commit_action("Delete Prefab", do_callable, undo_callable)
 
 	var action_label: String = "Deleted prefab"
 	match mode:
@@ -498,6 +519,27 @@ func _on_delete_confirmed() -> void:
 		1: action_label = "Deleted prefab and its nodes"
 		2: action_label = "Made prefab nodes unique"
 	BayterekToast.success(tree_view, action_label)
+
+func _restore_prefab_snapshot(prefab: BayterekPrefab, affected_nodes: Array) -> void:
+	if not prefab or not tree or not tree_view:
+		return
+	if not tree.prefabs.has(prefab):
+		tree.prefabs.append(prefab)
+	if not tree_view.prefabs_service._ref_id_to_prefab.has(prefab.reference_id):
+		tree_view.prefabs_service._ref_id_to_prefab[prefab.reference_id] = prefab
+
+	# Restore node bindings.
+	for node in affected_nodes:
+		if not is_instance_valid(node):
+			continue
+		node.prefab = prefab
+		if node.node_data:
+			node.node_data.reference_id = prefab.reference_id
+		prefab.add_node(node)
+
+	tree_view.prefabs_service.prefab_created.emit(prefab)
+	if prefabs_bar:
+		prefabs_bar.refresh()
 
 func _on_delete_option_changed(index: int) -> void:
 	_update_delete_description(index)
@@ -537,16 +579,32 @@ func _on_rename_applied(new_name: String, new_description: String) -> void:
 		BayterekToast.warning(tree_view, "Node is locked. Unlock it first.")
 		return
 
+	# Snapshot old values for undo.
+	var old_name: String = node.node_data.name
+	var old_desc: String = node.node_data.description
+	var target_prefab: BayterekPrefab = node.prefab
+
+	var do_callable := func():
+		_apply_node_rename(node, target_prefab, new_name, new_description)
+	var undo_callable := func():
+		_apply_node_rename(node, target_prefab, old_name, old_desc)
+
+	_commit_action("Rename Node", do_callable, undo_callable)
+
+func _apply_node_rename(node: BayterekNodeButton, prefab: BayterekPrefab, new_name: String, new_desc: String) -> void:
+	if not is_instance_valid(node) or not node.node_data:
+		return
+
 	var display_name: String = new_name
 	if display_name.is_empty():
 		display_name = "Node %d" % node.id
 
-	if node.prefab:
-		node.prefab.set_node_name(display_name)
-		node.prefab.set_description(new_description)
+	if prefab:
+		prefab.set_node_name(display_name)
+		prefab.set_description(new_desc)
 	else:
 		node.node_data.name = display_name
-		node.node_data.description = new_description
+		node.node_data.description = new_desc
 
 	if hierarchy:
 		hierarchy.refresh_node_display(node)
@@ -558,7 +616,6 @@ func _on_rename_applied(new_name: String, new_description: String) -> void:
 		node.refresh_visuals()
 
 	set_dirty(true)
-	BayterekToast.success(tree_view, "Node updated")
 
 func _open_rename_dialog() -> void:
 	if not tree_view or tree_view.selected_nodes.is_empty():
@@ -593,43 +650,107 @@ func _on_group_dialog_applied(group_name: String, group_color: Color) -> void:
 		return
 
 	if _group_dialog_mode == "create":
-		var group := BayterekNodeGroup.new()
-		group.id = BayterekNodeGroup.generate_id()
-		group.name = group_name
-		group.color = group_color
-		tree.node_groups.append(group)
-
-		if tree_view:
-			for node in tree_view.selected_nodes:
-				if is_instance_valid(node) and node.node_data:
-					_assign_node_to_group(node, group.id)
-
-		if hierarchy:
-			hierarchy.refresh_all()
-
-		if tree_view and tree_view.group_frames_service:
-			tree_view.group_frames_service.rebuild()
-
-		BayterekToast.success(tree_view, "Group \"%s\" created" % group_name)
-		set_dirty(true)
-
+		_create_group_undoable(group_name, group_color)
 	elif _group_dialog_mode == "edit":
-		var group: BayterekNodeGroup = tree.get_group_by_id(_group_dialog_target_id)
-		if not group:
-			return
-		group.name = group_name
-		group.color = group_color
-
-		if hierarchy:
-			hierarchy.refresh_all()
-
-		if tree_view and tree_view.group_frames_service and not _group_dialog_target_id.is_empty():
-			tree_view.group_frames_service.refresh_group(_group_dialog_target_id)
-
-		set_dirty(true)
+		_edit_group_undoable(_group_dialog_target_id, group_name, group_color)
 
 	_group_dialog_mode = ""
 	_group_dialog_target_id = ""
+
+func _create_group_undoable(group_name: String, group_color: Color) -> void:
+	var new_group := BayterekNodeGroup.new()
+	new_group.id = BayterekNodeGroup.generate_id()
+	new_group.name = group_name
+	new_group.color = group_color
+
+	var member_ids: Array = []
+	if tree_view:
+		for node in tree_view.selected_nodes:
+			if is_instance_valid(node) and node.node_data:
+				member_ids.append(node.id)
+
+	for nid in member_ids:
+		new_group.add_node_id(nid)
+
+	var do_callable := func():
+		_do_apply_group_create(new_group)
+	var undo_callable := func():
+		_do_undo_group_create(new_group)
+
+	_commit_action("Create Group", do_callable, undo_callable)
+
+func _do_apply_group_create(group: BayterekNodeGroup) -> void:
+	if not tree:
+		return
+	if not tree.node_groups.has(group):
+		tree.node_groups.append(group)
+
+	for nid in group.node_ids:
+		if not tree_view or not tree_view.nodes_service:
+			continue
+		var node = tree_view.nodes_service.get_node(nid)
+		if not is_instance_valid(node) or not node.node_data:
+			continue
+		node.node_data.group_id = group.id
+
+	if hierarchy:
+		hierarchy.refresh_all()
+	if tree_view and tree_view.group_frames_service:
+		tree_view.group_frames_service.rebuild()
+
+	set_dirty(true)
+	BayterekToast.success(tree_view, "Group \"%s\" created" % group.name)
+
+func _do_undo_group_create(group: BayterekNodeGroup) -> void:
+	if not tree:
+		return
+	for nid in group.node_ids:
+		if not tree_view or not tree_view.nodes_service:
+			continue
+		var node = tree_view.nodes_service.get_node(nid)
+		if not is_instance_valid(node) or not node.node_data:
+			continue
+		node.node_data.group_id = ""
+
+	tree.remove_group(group)
+
+	if hierarchy:
+		hierarchy.refresh_all()
+	if tree_view and tree_view.group_frames_service:
+		tree_view.group_frames_service.rebuild()
+	set_dirty(true)
+
+func _edit_group_undoable(group_id: String, new_name: String, new_color: Color) -> void:
+	if not tree:
+		return
+	var group: BayterekNodeGroup = tree.get_group_by_id(group_id)
+	if not group:
+		return
+
+	var old_name: String = group.name
+	var old_color: Color = group.color
+
+	var do_callable := func():
+		_do_apply_group_edit(group_id, new_name, new_color)
+	var undo_callable := func():
+		_do_apply_group_edit(group_id, old_name, old_color)
+
+	_commit_action("Edit Group", do_callable, undo_callable)
+
+func _do_apply_group_edit(group_id: String, new_name: String, new_color: Color) -> void:
+	if not tree:
+		return
+	var group: BayterekNodeGroup = tree.get_group_by_id(group_id)
+	if not group:
+		return
+	group.name = new_name
+	group.color = new_color
+
+	if hierarchy:
+		hierarchy.refresh_all()
+	if tree_view and tree_view.group_frames_service:
+		tree_view.group_frames_service.refresh_group(group_id)
+	set_dirty(true)
 
 func open_group_create_dialog() -> void:
 	if not group_dialog:
@@ -675,12 +796,12 @@ func request_delete_group(group_id: String) -> void:
 	dialog.unresizable = true
 
 	dialog.confirmed.connect(func() -> void:
-		_do_delete_group(group_id, false)
+		_delete_group_undoable(group_id, false)
 		dialog.queue_free()
 	)
 	dialog.custom_action.connect(func(action: String) -> void:
 		if action == "delete_nodes":
-			_do_delete_group(group_id, true)
+			_delete_group_undoable(group_id, true)
 			dialog.hide()
 			dialog.queue_free()
 	)
@@ -691,20 +812,36 @@ func request_delete_group(group_id: String) -> void:
 	add_child(dialog)
 	dialog.popup_centered(Vector2i(420, 200))
 
-func _do_delete_group(group_id: String, delete_nodes: bool) -> void:
+func _delete_group_undoable(group_id: String, delete_nodes: bool) -> void:
 	if not tree:
 		return
 	var group: BayterekNodeGroup = tree.get_group_by_id(group_id)
 	if not group:
 		return
 
-	if delete_nodes and tree_view:
-		var members: Array = []
+	# Snapshot for undo
+	var group_snapshot := group.duplicate() as BayterekNodeGroup
+	var node_snapshots: Array = []
+	var node_indices: Array = []
+	if tree_view and tree_view.nodes_service:
 		for node in tree_view.nodes_service.get_all_nodes():
 			if is_instance_valid(node) and node.node_data and node.node_data.group_id == group_id:
-				members.append(node)
+				node_snapshots.append(node)
+				node_indices.append(tree.nodes.find(node.node_data))
 
-		for node in members:
+	var do_callable := func():
+		_do_apply_group_delete(group_id, delete_nodes, group_snapshot, node_snapshots)
+	var undo_callable := func():
+		_do_undo_group_delete(group_snapshot, node_snapshots, node_indices)
+
+	_commit_action("Delete Group", do_callable, undo_callable)
+
+func _do_apply_group_delete(group_id: String, delete_nodes: bool, group_snapshot: BayterekNodeGroup, member_nodes: Array) -> void:
+	if not tree:
+		return
+
+	if delete_nodes and tree_view:
+		for node in member_nodes:
 			if is_instance_valid(node):
 				tree_view.connections_service.remove_all_connections_of(node)
 				tree_view.nodes_service.delete_node(node)
@@ -714,19 +851,51 @@ func _do_delete_group(group_id: String, delete_nodes: bool) -> void:
 			if node_data.group_id == group_id:
 				node_data.group_id = ""
 
-	tree.remove_group(group)
+	var group: BayterekNodeGroup = tree.get_group_by_id(group_id)
+	if group:
+		tree.remove_group(group)
 
 	if hierarchy:
 		hierarchy.refresh_all()
-
 	if tree_view and tree_view.group_frames_service:
 		tree_view.group_frames_service.rebuild()
-
 	set_dirty(true)
-
 	BayterekToast.success(tree_view, "Group deleted")
 
+func _do_undo_group_delete(group_snapshot: BayterekNodeGroup, member_nodes: Array, node_indices: Array) -> void:
+	if not tree:
+		return
+
+	if not tree.get_group_by_id(group_snapshot.id):
+		tree.node_groups.append(group_snapshot)
+
+	if tree_view and tree_view.nodes_service:
+		for i in range(member_nodes.size()):
+			var node = member_nodes[i]
+			if not is_instance_valid(node) or not node.node_data:
+				continue
+			var idx: int = node_indices[i] if i < node_indices.size() else -1
+			node.node_data.group_id = group_snapshot.id
+			if not tree.nodes.has(node.node_data):
+				if idx >= 0 and idx <= tree.nodes.size():
+					tree.nodes.insert(idx, node.node_data)
+				else:
+					tree.nodes.append(node.node_data)
+			tree_view.nodes_service.restore_node(node, node.node_data, idx)
+
+	if hierarchy:
+		hierarchy.refresh_all()
+	if tree_view and tree_view.group_frames_service:
+		tree_view.group_frames_service.rebuild()
+	set_dirty(true)
+
+# ============================================================
+# GROUP ASSIGN / UNASSIGN (UNDOABLE)
+# ============================================================
+
 func _assign_node_to_group(node: BayterekNodeButton, group_id: String) -> void:
+	# Raw version without undo. Used internally by undoable helpers and
+	# by the group creation flow.
 	if not node or not node.node_data or not tree:
 		return
 
@@ -750,24 +919,168 @@ func _assign_node_to_group(node: BayterekNodeButton, group_id: String) -> void:
 		if not group_id.is_empty():
 			tree_view.group_frames_service.refresh_group(group_id)
 
+## Undoable group assignment. `group_id` of "" means unassign.
 func assign_selected_to_group(group_id: String) -> void:
 	if not tree_view:
 		return
 
-	var count: int = 0
+	# Build old/new id maps for each affected node.
+	var node_ids: Array = []
+	var old_ids: Array = []
 	for node in tree_view.selected_nodes:
 		if is_instance_valid(node) and node.node_data:
-			_assign_node_to_group(node, group_id)
-			count += 1
+			node_ids.append(node.id)
+			old_ids.append(node.node_data.group_id)
+
+	if node_ids.is_empty():
+		return
+
+	var new_ids: Array = []
+	for _i in node_ids.size():
+		new_ids.append(group_id)
+
+	var do_callable := func():
+		_do_assign_nodes_to_group(node_ids, new_ids)
+	var undo_callable := func():
+		_do_assign_nodes_to_group(node_ids, old_ids)
+
+	var action_name: String = "Unassign from Group" if group_id.is_empty() else "Assign to Group"
+	_commit_action(action_name, do_callable, undo_callable)
+
+func _do_assign_nodes_to_group(node_ids: Array, group_ids: Array) -> void:
+	if not tree_view or not tree_view.nodes_service or not tree:
+		return
+
+	for i in node_ids.size():
+		var nid: int = node_ids[i]
+		var gid: String = group_ids[i]
+		var node = tree_view.nodes_service.get_node(nid)
+		if not is_instance_valid(node) or not node.node_data:
+			continue
+		_assign_node_to_group(node, gid)
 
 	if hierarchy:
 		hierarchy.refresh_all()
-
-	if tree_view and tree_view.group_frames_service:
+	if tree_view.group_frames_service:
 		tree_view.group_frames_service.refresh_all()
+	set_dirty(true)
 
-	if count > 0:
-		set_dirty(true)
+## Undoable ungroup of all selected nodes.
+func ungroup_selected() -> void:
+	if not tree_view:
+		return
+	var node_ids: Array = []
+	var old_ids: Array = []
+	for node in tree_view.selected_nodes:
+		if is_instance_valid(node) and node.node_data:
+			if node.node_data.group_id.is_empty():
+				continue
+			node_ids.append(node.id)
+			old_ids.append(node.node_data.group_id)
+
+	if node_ids.is_empty():
+		BayterekToast.info(tree_view, "No grouped nodes in selection")
+		return
+
+	var new_ids: Array = []
+	for _i in node_ids.size():
+		new_ids.append("")
+
+	var do_callable := func():
+		_do_assign_nodes_to_group(node_ids, new_ids)
+	var undo_callable := func():
+		_do_assign_nodes_to_group(node_ids, old_ids)
+
+	_commit_action("Ungroup Nodes", do_callable, undo_callable)
+	BayterekToast.success(tree_view, "Removed %d node%s from group%s" % [
+		node_ids.size(),
+		"s" if node_ids.size() > 1 else "",
+		"s" if node_ids.size() > 1 else ""
+	])
+
+# ============================================================
+# NODE LOCK / ROOT TOGGLE (UNDOABLE)
+# ============================================================
+
+func toggle_lock_selected() -> void:
+	if not tree_view:
+		return
+
+	var node_ids: Array = []
+	var old_locks: Array = []
+	for node in tree_view.selected_nodes:
+		if is_instance_valid(node) and node.node_data:
+			node_ids.append(node.id)
+			old_locks.append(node.node_data.locked)
+
+	if node_ids.is_empty():
+		return
+
+	var new_locks: Array = []
+	for old in old_locks:
+		new_locks.append(not old)
+
+	var do_callable := func():
+		_do_set_node_locked(node_ids, new_locks)
+	var undo_callable := func():
+		_do_set_node_locked(node_ids, old_locks)
+
+	_commit_action("Toggle Lock", do_callable, undo_callable)
+
+	var locked_count: int = 0
+	var unlocked_count: int = 0
+	for nv in new_locks:
+		if nv: locked_count += 1
+		else: unlocked_count += 1
+
+	if locked_count > 0 and unlocked_count == 0:
+		BayterekToast.info(tree_view, "Locked %d node%s" % [locked_count, "s" if locked_count > 1 else ""])
+	elif unlocked_count > 0 and locked_count == 0:
+		BayterekToast.info(tree_view, "Unlocked %d node%s" % [unlocked_count, "s" if unlocked_count > 1 else ""])
+	else:
+		BayterekToast.info(tree_view, "Locked %d, unlocked %d" % [locked_count, unlocked_count])
+
+func unlock_all_nodes() -> void:
+	if not tree_view or not tree_view.nodes_service:
+		return
+
+	var node_ids: Array = []
+	var old_locks: Array = []
+	for node in tree_view.nodes_service.get_all_nodes():
+		if is_instance_valid(node) and node.node_data and node.node_data.locked:
+			node_ids.append(node.id)
+			old_locks.append(true)
+
+	if node_ids.is_empty():
+		BayterekToast.info(tree_view, "No locked nodes")
+		return
+
+	var new_locks: Array = []
+	for _i in node_ids.size():
+		new_locks.append(false)
+
+	var do_callable := func():
+		_do_set_node_locked(node_ids, new_locks)
+	var undo_callable := func():
+		_do_set_node_locked(node_ids, old_locks)
+
+	_commit_action("Unlock All", do_callable, undo_callable)
+	BayterekToast.success(tree_view, "Unlocked %d node%s" % [node_ids.size(), "s" if node_ids.size() > 1 else ""])
+
+func _do_set_node_locked(node_ids: Array, locked_flags: Array) -> void:
+	if not tree_view or not tree_view.nodes_service:
+		return
+	for i in node_ids.size():
+		var node = tree_view.nodes_service.get_node(node_ids[i])
+		if not is_instance_valid(node) or not node.node_data:
+			continue
+		node.node_data.locked = locked_flags[i]
+		if node.has_method("refresh_visuals"):
+			node.refresh_visuals()
+
+	if hierarchy:
+		hierarchy.refresh_all()
+	set_dirty(true)
 
 # ============================================================
 # PREFAB SIGNAL HANDLERS
@@ -868,10 +1181,21 @@ func _on_prefab_card_rename(prefab: BayterekPrefab) -> void:
 func _on_prefab_card_duplicate(prefab: BayterekPrefab) -> void:
 	if not prefab or not tree_view or not tree_view.prefabs_service:
 		return
-	var copy := tree_view.prefabs_service.duplicate_prefab(prefab)
-	if copy:
+
+	var copy: BayterekPrefab = tree_view.prefabs_service.duplicate_prefab(prefab)
+	if not copy:
+		return
+
+	# Undo: remove the copy from the tree.
+	var do_callable := func():
 		set_dirty(true)
 		BayterekToast.success(tree_view, "Prefab duplicated: %s" % copy.node_name)
+	var undo_callable := func():
+		if tree_view and tree_view.prefabs_service:
+			tree_view.prefabs_service.delete_prefab(copy, BayterekPrefabsService.DeleteMode.ORPHAN_NODES)
+		set_dirty(true)
+
+	_commit_action("Duplicate Prefab", do_callable, undo_callable)
 
 func _on_prefab_card_delete(prefab: BayterekPrefab) -> void:
 	if not prefab:
@@ -881,6 +1205,8 @@ func _on_prefab_card_delete(prefab: BayterekPrefab) -> void:
 func _show_prefab_rename_dialog(prefab: BayterekPrefab) -> void:
 	if not prefab:
 		return
+
+	var old_name: String = prefab.node_name
 
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Rename Prefab"
@@ -911,9 +1237,17 @@ func _show_prefab_rename_dialog(prefab: BayterekPrefab) -> void:
 		if new_name.is_empty():
 			dialog.queue_free()
 			return
-		if tree_view and tree_view.prefabs_service:
-			tree_view.prefabs_service.rename_prefab(prefab, new_name)
-			set_dirty(true)
+
+		var do_callable := func():
+			if tree_view and tree_view.prefabs_service:
+				tree_view.prefabs_service.rename_prefab(prefab, new_name)
+				set_dirty(true)
+		var undo_callable := func():
+			if tree_view and tree_view.prefabs_service:
+				tree_view.prefabs_service.rename_prefab(prefab, old_name)
+				set_dirty(true)
+
+		_commit_action("Rename Prefab", do_callable, undo_callable)
 		dialog.queue_free()
 	)
 	dialog.canceled.connect(func(): dialog.queue_free())
@@ -1071,9 +1405,18 @@ func _save_selected_as_prefab() -> void:
 		var prefab_name: String = name_input.text.strip_edges()
 		if prefab_name.is_empty():
 			prefab_name = node.node_data.name
-		tree_view.prefabs_service.create_prefab(node, prefab_name)
-		set_dirty(true)
-		BayterekToast.success(tree_view, "Prefab \"%s\" created" % prefab_name)
+
+		var created_prefab: BayterekPrefab = null
+		var do_callable := func():
+			created_prefab = tree_view.prefabs_service.create_prefab(node, prefab_name)
+			set_dirty(true)
+			BayterekToast.success(tree_view, "Prefab \"%s\" created" % prefab_name)
+		var undo_callable := func():
+			if created_prefab:
+				tree_view.prefabs_service.delete_prefab(created_prefab, BayterekPrefabsService.DeleteMode.ORPHAN_NODES)
+			set_dirty(true)
+
+		_commit_action("Create Prefab", do_callable, undo_callable)
 		dialog.queue_free()
 	)
 	dialog.canceled.connect(func(): dialog.queue_free())
@@ -1088,16 +1431,35 @@ func _make_selected_unique() -> void:
 	if not tree_view or not tree_view.prefabs_service:
 		return
 
-	var count: int = 0
+	var entries: Array = []
 	for node in tree_view.selected_nodes:
-		if is_instance_valid(node):
-			tree_view.prefabs_service.make_unique(node)
-			count += 1
+		if not is_instance_valid(node) or not node.prefab:
+			continue
+		entries.append({
+			"node": node,
+			"prefab": node.prefab,
+		})
 
-	set_dirty(true)
-	if count > 0:
-		var plural: String = "s" if count > 1 else ""
-		BayterekToast.success(tree_view, "Made %d node%s unique" % [count, plural])
+	if entries.is_empty():
+		return
+
+	var do_callable := func():
+		for entry in entries:
+			tree_view.prefabs_service.make_unique(entry["node"])
+		set_dirty(true)
+		BayterekToast.success(tree_view, "Made %d node%s unique" % [entries.size(), "s" if entries.size() > 1 else ""])
+	var undo_callable := func():
+		for entry in entries:
+			var node = entry["node"]
+			var prefab = entry["prefab"]
+			if is_instance_valid(node) and prefab:
+				node.prefab = prefab
+				if node.node_data:
+					node.node_data.reference_id = prefab.reference_id
+				prefab.add_node(node)
+		set_dirty(true)
+
+	_commit_action("Make Unique", do_callable, undo_callable)
 
 func _delete_selected() -> void:
 	if not tree_view:
@@ -1128,7 +1490,8 @@ func _make_selected_root() -> void:
 	if not tree_view:
 		return
 
-	var count: int = 0
+	var node_ids: Array = []
+	var old_roots: Array = []
 	for node in tree_view.selected_nodes:
 		if not is_instance_valid(node) or not node.node_data:
 			continue
@@ -1136,20 +1499,37 @@ func _make_selected_root() -> void:
 			continue
 		if node.node_data.is_root:
 			continue
+		node_ids.append(node.id)
+		old_roots.append(false)
 
-		node.node_data.is_root = true
+	if node_ids.is_empty():
+		return
+
+	var new_roots: Array = []
+	for _i in node_ids.size():
+		new_roots.append(true)
+
+	var do_callable := func():
+		_do_set_node_root(node_ids, new_roots)
+	var undo_callable := func():
+		_do_set_node_root(node_ids, old_roots)
+
+	_commit_action("Make Root", do_callable, undo_callable)
+	BayterekToast.success(tree_view, "Marked %d node%s as root" % [node_ids.size(), "s" if node_ids.size() > 1 else ""])
+
+func _do_set_node_root(node_ids: Array, root_flags: Array) -> void:
+	if not tree_view or not tree_view.nodes_service:
+		return
+	for i in node_ids.size():
+		var node = tree_view.nodes_service.get_node(node_ids[i])
+		if not is_instance_valid(node) or not node.node_data:
+			continue
+		node.node_data.is_root = root_flags[i]
 		if node.has_method("refresh_visuals"):
 			node.refresh_visuals()
-
-		if has_method("notify_node_root_changed"):
+		if root_flags[i]:
 			notify_node_root_changed(node)
-
-		count += 1
-
-	if count > 0:
-		var plural: String = "s" if count > 1 else ""
-		BayterekToast.success(tree_view, "Marked %d node%s as root" % [count, plural])
-		set_dirty(true)
+	set_dirty(true)
 
 # ============================================================
 # INPUT (keyboard)

@@ -68,7 +68,12 @@ static func _prepare_tree_resource() -> void:
 
 	EditorInterface.get_resource_filesystem().scan()
 
+## Deletes physical files, then asks the editor to re-scan so that the
+## resource cache evicts the entry for the deleted .tres. Without this
+## second step, Godot's resource loader trips over a missing file on
+## the next idle frame (`resource_format_text.cpp:1587`).
 static func _cleanup() -> void:
+	# Delete physical files first.
 	if FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
 
@@ -83,6 +88,10 @@ static func _cleanup() -> void:
 		var files: PackedStringArray = DirAccess.get_files_at(FIXTURE_DIR)
 		if files.is_empty():
 			DirAccess.remove_absolute(FIXTURE_DIR)
+
+	# Then ask the editor to re-scan. This evicts the cached entry
+	# for the deleted .tres so the next idle frame doesn't crash.
+	EditorInterface.get_resource_filesystem().scan()
 
 # ============================================================
 # ROUND-TRIP
