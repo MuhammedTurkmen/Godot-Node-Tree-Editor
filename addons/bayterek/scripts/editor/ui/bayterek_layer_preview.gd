@@ -69,21 +69,92 @@ func _notification(what: int) -> void:
 		_recompute_scale()
 		queue_redraw()
 
+# ============================================================
+# FIT SCALE + PAN
+# ============================================================
+
+## Computes the union bounding box of all visible layer transforms, in
+## design-space coordinates. Used by `_recompute_scale()` to fit EVERYTHING
+## (not just design_size) on screen.
+##
+## If a layer's effective size is bigger than design_size (or it's offset
+## outside the design bounds), this still captures it.
+func _compute_content_bounds() -> Rect2:
+	if not design:
+		return Rect2()
+
+	var has_any: bool = false
+	var min_x: float = INF
+	var min_y: float = INF
+	var max_x: float = -INF
+	var max_y: float = -INF
+
+	var design_size: Vector2 = design.design_size
+
+	for layer in design.layers:
+		if not layer or not layer.visible:
+			continue
+
+		var effective_size: Vector2 = layer.get_size(design_size)
+		if effective_size.x <= 0.0 or effective_size.y <= 0.0:
+			continue
+
+		var matrix: Transform2D = layer.get_matrix(design_size)
+		var half: Vector2 = effective_size * 0.5
+
+		# All shape vertices are generated centered at origin, so the
+		# layer's local bounding box is [-half, +half]. Transform the four
+		# corners by the layer matrix to get world-space corners.
+		var corners: Array[Vector2] = [
+			Vector2(-half.x, -half.y),
+			Vector2( half.x, -half.y),
+			Vector2( half.x,  half.y),
+			Vector2(-half.x,  half.y),
+		]
+
+		for c in corners:
+			var w: Vector2 = matrix * c
+			min_x = minf(min_x, w.x)
+			min_y = minf(min_y, w.y)
+			max_x = maxf(max_x, w.x)
+			max_y = maxf(max_y, w.y)
+			has_any = true
+
+	if not has_any:
+		return Rect2()
+
+	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+
 func _recompute_scale() -> void:
 	if not design:
 		_fit_scale = 1.0
 		preview_scale = user_zoom
+		pan_offset = Vector2.ZERO
 		return
 
+	# 1) Union bounds of all visible layers.
+	var bounds: Rect2 = _compute_content_bounds()
+
+	# 2) Fallback to design_size if there are no valid layers yet.
+	if bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
+		bounds = Rect2(-design.design_size * 0.5, design.design_size)
+
+	# 3) Fit scale from available space (with margin).
 	var available: Vector2 = size - Vector2(Bayterek.PREVIEW_MARGIN, Bayterek.PREVIEW_MARGIN) * 2.0
-	if design.design_size.x <= 0 or design.design_size.y <= 0:
+	if available.x <= 0.0 or available.y <= 0.0:
 		_fit_scale = 1.0
 	else:
-		var sx: float = available.x / design.design_size.x
-		var sy: float = available.y / design.design_size.y
+		var sx: float = available.x / bounds.size.x
+		var sy: float = available.y / bounds.size.y
 		_fit_scale = min(sx, sy)
 
 	preview_scale = _fit_scale * user_zoom
+
+	# 4) Pan so the content center lands at the preview center.
+	#    In `_draw()`, screen position = size*0.5 + pan_offset + world * scale.
+	#    We want content_center → size*0.5, so pan_offset = -content_center * scale.
+	var content_center: Vector2 = bounds.position + bounds.size * 0.5
+	pan_offset = -content_center * preview_scale
 
 # ============================================================
 # INPUT — zoom & pan
@@ -224,7 +295,6 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 	if draw_border:
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
-			# Preview scale × layer transform scale.
 			var layer_avg: float = 1.0
 			if layer.transform:
 				layer_avg = layer.transform.get_avg_scale()

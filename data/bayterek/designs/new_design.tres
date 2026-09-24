@@ -1,18 +1,17 @@
-[gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://cs1hc4ww5gsk6"]
+[gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://cc7onwl1wc0na"]
 
 [ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="1_a6nu6"]
 [ext_resource type="Script" uid="uid://bnggwadduoie5" path="res://addons/bayterek/scripts/resources/layers/bayterek_shape_layer.gd" id="2_3ujw7"]
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="3_paddw"]
 [ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="4_u1mso"]
 
-[sub_resource type="Resource" id="Resource_joamw"]
+[sub_resource type="Resource" id="Resource_a6nu6"]
 script = ExtResource("3_paddw")
-size = Vector2(100, 100)
+size = Vector2(5, 5)
 
-[sub_resource type="Resource" id="Resource_5qdsx"]
+[sub_resource type="Resource" id="Resource_3ujw7"]
 script = ExtResource("2_3ujw7")
 shape_type = 1
-corner_radius = 12.0
 fill_configs = {
 "allocateable": {
 "color": Color(0.5568628, 0.9607843, 0.5568628, 1),
@@ -52,7 +51,7 @@ fill_configs = {
 }
 }
 border_enabled = true
-border_width = 5.0
+border_width = 0.5
 border_configs = {
 "allocateable": {
 "color": Color(0.3019608, 0.85882354, 0.3019608, 1),
@@ -91,13 +90,11 @@ border_configs = {
 "enabled": false
 }
 }
-layer_id = "72bc1dfc-871e-4140-8ee3-ff5b19c213ac"
+layer_id = "c6030a7a-b50e-4766-8053-2bbe06b3f54d"
 layer_name = "Background"
-transform = SubResource("Resource_joamw")
+transform = SubResource("Resource_a6nu6")
 
 [resource]
 script = ExtResource("4_u1mso")
 id = "new_design"
-name = "TestButonu"
-category = "Kategori"
-layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_5qdsx")])
+layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_3ujw7")])
