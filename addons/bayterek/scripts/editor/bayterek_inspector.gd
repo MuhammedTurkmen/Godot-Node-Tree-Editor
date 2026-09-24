@@ -2,6 +2,11 @@
 class_name BayterekTreeEditorInspector
 extends Control
 ## Node Inspector with Prefab mode support.
+##
+## The three content panels (Exported Fields, Attributes, Connections)
+## are separated into their own scripts. This file coordinates them and
+## owns the top-level layout (mode banner, root toggle, info rows,
+## design dropdown, transform, etc.).
 
 signal changed
 
@@ -49,19 +54,10 @@ var _transform_panel: VBoxContainer
 var _pos_x_input: SpinBox
 var _pos_y_input: SpinBox
 
-var _exported_panel: VBoxContainer
-var _exported_empty: Label
-var _exported_list: VBoxContainer
-
-var _attributes_panel: VBoxContainer
-var _attributes_empty: Label
-var _attributes_list: VBoxContainer
-var _attr_checkboxes: Dictionary = {}
-var _attr_value_inputs: Dictionary = {}
-
-var _connections_panel: VBoxContainer
-var _connections_empty: Label
-var _connections_list: VBoxContainer
+# --- Sub-panels (own scripts) ---
+var _exported_fields: BayterekInspectorExportedFields
+var _attributes: BayterekInspectorAttributes
+var _connections: BayterekInspectorConnections
 
 var _updating_ui: bool = false
 
@@ -378,68 +374,24 @@ func _build_ui() -> void:
 	_pos_y_input.value_changed.connect(_on_position_changed)
 	y_row.add_child(_pos_y_input)
 
-	# --- Exported Fields ---
-	_exported_panel = VBoxContainer.new()
-	_content.add_child(_exported_panel)
+	# --- Sub-panels ---
+	_exported_fields = BayterekInspectorExportedFields.new()
+	_exported_fields.inspector = self
+	_exported_fields.changed.connect(_on_subpanel_changed)
+	_content.add_child(_exported_fields)
 
-	var exp_sep := HSeparator.new()
-	_exported_panel.add_child(exp_sep)
+	_attributes = BayterekInspectorAttributes.new()
+	_attributes.inspector = self
+	_attributes.changed.connect(_on_subpanel_changed)
+	_content.add_child(_attributes)
 
-	var exp_title := Label.new()
-	exp_title.text = "Exported Fields"
-	exp_title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
-	_exported_panel.add_child(exp_title)
+	_connections = BayterekInspectorConnections.new()
+	_connections.inspector = self
+	_connections.changed.connect(_on_subpanel_changed)
+	_content.add_child(_connections)
 
-	_exported_empty = Label.new()
-	_exported_empty.text = "(No fields exported from this design)"
-	_exported_empty.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	_exported_panel.add_child(_exported_empty)
-
-	_exported_list = VBoxContainer.new()
-	_exported_list.add_theme_constant_override("separation", 4)
-	_exported_panel.add_child(_exported_list)
-
-	# --- Attributes ---
-	_attributes_panel = VBoxContainer.new()
-	_content.add_child(_attributes_panel)
-
-	var attr_sep := HSeparator.new()
-	_attributes_panel.add_child(attr_sep)
-
-	var attr_title := Label.new()
-	attr_title.text = "Attributes"
-	attr_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	_attributes_panel.add_child(attr_title)
-
-	_attributes_empty = Label.new()
-	_attributes_empty.text = "(No attributes defined in tree)"
-	_attributes_empty.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	_attributes_panel.add_child(_attributes_empty)
-
-	_attributes_list = VBoxContainer.new()
-	_attributes_list.add_theme_constant_override("separation", 4)
-	_attributes_panel.add_child(_attributes_list)
-
-	# --- Connections ---
-	_connections_panel = VBoxContainer.new()
-	_content.add_child(_connections_panel)
-
-	var conn_sep := HSeparator.new()
-	_connections_panel.add_child(conn_sep)
-
-	var conn_title := Label.new()
-	conn_title.text = "Connections"
-	conn_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	_connections_panel.add_child(conn_title)
-
-	_connections_empty = Label.new()
-	_connections_empty.text = "(No outgoing connections)"
-	_connections_empty.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	_connections_panel.add_child(_connections_empty)
-
-	_connections_list = VBoxContainer.new()
-	_connections_list.add_theme_constant_override("separation", 4)
-	_connections_panel.add_child(_connections_list)
+func _on_subpanel_changed() -> void:
+	changed.emit()
 
 # ============================================================
 # INIT
@@ -449,13 +401,14 @@ func init(_tree_view: BayterekTreeView) -> void:
 	pass
 
 func refresh_attributes() -> void:
-	_rebuild_attributes_list()
+	if _attributes:
+		_attributes.refresh()
 
 func remove_attribute_from_node(attr_id: String) -> void:
 	if _current_node:
 		if _current_node.node_data.attributes.has(attr_id):
 			_current_node.node_data.attributes.erase(attr_id)
-	_rebuild_attributes_list()
+	refresh_attributes()
 
 # ============================================================
 # VISIBILITY
@@ -490,7 +443,6 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_root_panel.visible = true
 	_transform_panel.visible = true
-	_connections_panel.visible = true
 	_design_row.visible = true
 	_design_size_row.visible = true
 	_scale_row.visible = true
@@ -529,9 +481,9 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_updating_ui = false
 
-	_rebuild_exported_fields_list()
-	_rebuild_attributes_list()
-	_rebuild_connections_list()
+	_exported_fields.refresh()
+	_attributes.refresh()
+	_connections.refresh()
 
 func _refresh_design_size_label() -> void:
 	if not _design_size_label or not _current_node:
@@ -600,7 +552,7 @@ func _on_design_changed(index: int) -> void:
 
 	_current_node.rebuild_from_design()
 	_refresh_design_size_label()
-	_rebuild_exported_fields_list()
+	_exported_fields.refresh()
 
 	if editor and editor.tree_view and editor.tree_view.connections_service:
 		editor.tree_view.connections_service.update_lines_of(_current_node)
@@ -632,294 +584,6 @@ func _on_scale_changed(_value: float) -> void:
 	_notify_editor_dirty()
 
 # ============================================================
-# EXPORTED FIELDS LIST
-# ============================================================
-
-func _rebuild_exported_fields_list() -> void:
-	for child in _exported_list.get_children():
-		child.queue_free()
-
-	if not editor or not editor.tree:
-		_exported_empty.visible = true
-		_exported_panel.visible = false
-		return
-
-	if _current_prefab:
-		_exported_panel.visible = true
-		_exported_empty.visible = false
-		_build_prefab_exported_fields()
-		return
-
-	if not _current_node or not _current_node.node_data:
-		_exported_empty.visible = true
-		_exported_panel.visible = false
-		return
-
-	var source_fields: Dictionary = {}
-	var prefab: BayterekPrefab = _current_node.prefab
-
-	if prefab:
-		source_fields = prefab.exported_fields
-	else:
-		var design_id: String = _current_node.node_data.design_id
-		if not design_id.is_empty():
-			var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(design_id)
-			if design:
-				source_fields = design.exported_fields
-
-	if source_fields.is_empty():
-		_exported_empty.text = "(No fields exported on this design)"
-		_exported_empty.visible = true
-		_exported_panel.visible = true
-		return
-
-	_exported_panel.visible = true
-	_exported_empty.visible = false
-	_build_node_exported_fields(prefab)
-
-func _build_prefab_exported_fields() -> void:
-	var prefab: BayterekPrefab = _current_prefab
-	if not prefab or prefab.exported_fields.is_empty():
-		_exported_empty.text = "(No fields exported from this design)"
-		_exported_empty.visible = true
-		return
-
-	var design: BayterekNodeDesign = null
-	if not prefab.design_id.is_empty():
-		design = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
-
-	var paths: Array = prefab.exported_fields.keys()
-	paths.sort()
-
-	for field_path in paths:
-		_build_exported_field_row(prefab, field_path, design, true, false)
-
-func _build_node_exported_fields(prefab: BayterekPrefab) -> void:
-	var node: BayterekNodeButton = _current_node
-	if not node or not node.node_data:
-		return
-
-	var design_id: String = node.node_data.design_id
-	var design: BayterekNodeDesign = null
-	if not design_id.is_empty():
-		design = Bayterek.get_designs_registry().get_design_by_id(design_id)
-
-	var paths: Array = []
-	if prefab and not prefab.exported_fields.is_empty():
-		paths = prefab.exported_fields.keys()
-	elif design and not design.exported_fields.is_empty():
-		paths = design.exported_fields.keys()
-	paths.sort()
-
-	for field_path in paths:
-		var is_override: bool = node.node_data.has_exported_override(field_path)
-		_build_exported_field_row(prefab, field_path, design, false, is_override)
-
-func _build_exported_field_row(
-	prefab: BayterekPrefab,
-	field_path: String,
-	design: BayterekNodeDesign,
-	is_prefab: bool,
-	is_override: bool
-) -> void:
-	var block := VBoxContainer.new()
-	block.add_theme_constant_override("separation", 2)
-	_exported_list.add_child(block)
-
-	var header_row := HBoxContainer.new()
-	header_row.add_theme_constant_override("separation", 4)
-	block.add_child(header_row)
-
-	var name_label := Label.new()
-	name_label.text = _humanize_field_path(field_path)
-	name_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	name_label.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
-	name_label.add_theme_font_size_override("font_size", 12)
-	header_row.add_child(name_label)
-
-	if not is_prefab and is_override:
-		var reset_btn := Button.new()
-		reset_btn.text = "↺"
-		reset_btn.tooltip_text = "Reset to default"
-		reset_btn.custom_minimum_size = Vector2(28, 0)
-		reset_btn.pressed.connect(_on_reset_exported_override_pressed.bind(prefab, field_path))
-		header_row.add_child(reset_btn)
-
-	var value_row := HBoxContainer.new()
-	value_row.add_theme_constant_override("separation", 4)
-	block.add_child(value_row)
-
-	var design_value: Variant = null
-	if design:
-		design_value = design.get_field_value(field_path)
-
-	var current_value: Variant = design_value
-	if is_prefab:
-		if prefab and prefab.exported_values.has(field_path):
-			current_value = prefab.exported_values[field_path]
-	else:
-		var node = _current_node
-		if node and node.node_data and node.node_data.exported_overrides.has(field_path):
-			current_value = node.node_data.exported_overrides[field_path]
-		elif prefab and prefab.exported_values.has(field_path):
-			current_value = prefab.exported_values[field_path]
-
-	_build_value_editor(value_row, field_path, current_value, is_prefab, is_override, prefab)
-
-func _humanize_field_path(field_path: String) -> String:
-	var parts: Array = field_path.split(".")
-	if parts.size() <= 1:
-		return field_path
-
-	var out: Array[String] = []
-	for i in parts.size():
-		var p: String = parts[i]
-		if p == "layers":
-			continue
-		if i == 1:
-			var short_id: String = p.substr(0, 6) + "…" if p.length() > 6 else p
-			out.append("Layer %s" % short_id)
-			continue
-		out.append(p)
-
-	return " › ".join(out)
-
-func _build_value_editor(
-	parent: HBoxContainer,
-	field_path: String,
-	value: Variant,
-	is_prefab: bool,
-	is_override: bool,
-	prefab: BayterekPrefab
-) -> void:
-	match typeof(value):
-		TYPE_BOOL:
-			var check := CheckBox.new()
-			check.text = "On"
-			check.button_pressed = value
-			check.size_flags_horizontal = SIZE_EXPAND_FILL
-			check.toggled.connect(func(v: bool):
-				_on_exported_value_changed(field_path, v, is_prefab, prefab)
-			)
-			parent.add_child(check)
-
-		TYPE_INT:
-			var spin := SpinBox.new()
-			spin.size_flags_horizontal = SIZE_EXPAND_FILL
-			spin.min_value = -999999999
-			spin.max_value = 999999999
-			spin.allow_greater = true
-			spin.allow_lesser = true
-			spin.rounded = true
-			spin.value = int(value)
-			spin.value_changed.connect(func(v: float):
-				_on_exported_value_changed(field_path, int(v), is_prefab, prefab)
-			)
-			parent.add_child(spin)
-
-		TYPE_FLOAT:
-			var spin := SpinBox.new()
-			spin.size_flags_horizontal = SIZE_EXPAND_FILL
-			spin.min_value = -999999999.0
-			spin.max_value = 999999999.0
-			spin.step = 0.1
-			spin.allow_greater = true
-			spin.allow_lesser = true
-			spin.value = float(value)
-			spin.value_changed.connect(func(v: float):
-				_on_exported_value_changed(field_path, v, is_prefab, prefab)
-			)
-			parent.add_child(spin)
-
-		TYPE_COLOR:
-			var picker := ColorPickerButton.new()
-			picker.size_flags_horizontal = SIZE_EXPAND_FILL
-			picker.custom_minimum_size = Vector2(0, 22)
-			picker.color = value
-			picker.color_changed.connect(func(c: Color):
-				_on_exported_value_changed(field_path, c, is_prefab, prefab)
-			)
-			parent.add_child(picker)
-
-		TYPE_VECTOR2:
-			var v2: Vector2 = value
-			var sx := SpinBox.new()
-			sx.size_flags_horizontal = SIZE_EXPAND_FILL
-			sx.min_value = -99999
-			sx.max_value = 99999
-			sx.allow_lesser = true
-			sx.allow_greater = true
-			sx.value = v2.x
-			sx.value_changed.connect(func(v: float):
-				v2.x = v
-				_on_exported_value_changed(field_path, v2, is_prefab, prefab)
-			)
-			parent.add_child(sx)
-
-			var sy := SpinBox.new()
-			sy.size_flags_horizontal = SIZE_EXPAND_FILL
-			sy.min_value = -99999
-			sy.max_value = 99999
-			sy.allow_lesser = true
-			sy.allow_greater = true
-			sy.value = v2.y
-			sy.value_changed.connect(func(v: float):
-				v2.y = v
-				_on_exported_value_changed(field_path, v2, is_prefab, prefab)
-			)
-			parent.add_child(sy)
-
-		TYPE_STRING:
-			var edit := LineEdit.new()
-			edit.size_flags_horizontal = SIZE_EXPAND_FILL
-			edit.text = String(value)
-			edit.text_changed.connect(func(t: String):
-				_on_exported_value_changed(field_path, t, is_prefab, prefab)
-			)
-			parent.add_child(edit)
-
-		_:
-			var lbl := Label.new()
-			lbl.text = str(value)
-			lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
-			parent.add_child(lbl)
-
-func _on_exported_value_changed(
-	field_path: String,
-	value: Variant,
-	is_prefab: bool,
-	prefab: BayterekPrefab
-) -> void:
-	if _updating_ui:
-		return
-
-	if is_prefab:
-		if not prefab:
-			return
-		prefab.exported_values[field_path] = value
-		prefab.exported_values_changed.emit(prefab)
-
-		if editor and editor.tree_view and editor.tree_view.prefabs_service:
-			editor.tree_view.prefabs_service.notify_exported_values_changed(prefab)
-	else:
-		if not _current_node or not _current_node.node_data:
-			return
-		_current_node.node_data.set_exported_override(field_path, value)
-		_current_node.rebuild_from_design()
-
-	changed.emit()
-	_notify_editor_dirty()
-
-func _on_reset_exported_override_pressed(_prefab: BayterekPrefab, field_path: String) -> void:
-	if not _current_node or not _current_node.node_data:
-		return
-	_current_node.node_data.clear_exported_override(field_path)
-	_current_node.rebuild_from_design()
-	_rebuild_exported_fields_list()
-	changed.emit()
-	_notify_editor_dirty()
-
-# ============================================================
 # INSPECT PREFAB
 # ============================================================
 
@@ -938,7 +602,6 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 
 	_root_panel.visible = false
 	_transform_panel.visible = false
-	_connections_panel.visible = false
 	_prereq_panel.visible = false
 	_prereq_count_panel.visible = false
 	_prereq_group_panel.visible = false
@@ -955,8 +618,9 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_max_alloc_input.set_value_no_signal(prefab.max_allocations)
 	_updating_ui = false
 
-	_rebuild_exported_fields_list()
-	_rebuild_attributes_list()
+	_exported_fields.refresh()
+	_attributes.refresh()
+	_connections.refresh()
 
 func _on_back_to_node_pressed() -> void:
 	_current_prefab = null
@@ -1053,7 +717,7 @@ func _on_max_alloc_changed(value: float) -> void:
 	if _current_prefab:
 		_current_prefab.set_max_allocations(new_max)
 		_reshape_prefab_attribute_arrays(_current_prefab, new_max)
-		_rebuild_attributes_list()
+		_attributes.refresh()
 		changed.emit()
 		_notify_editor_dirty()
 		return
@@ -1086,7 +750,7 @@ func _on_max_alloc_changed(value: float) -> void:
 				while data.size() > new_max:
 					data.pop_back()
 
-	_rebuild_attributes_list()
+	_attributes.refresh()
 	changed.emit()
 	_notify_editor_dirty()
 
@@ -1197,688 +861,6 @@ func _on_prereq_group_changed(index: int) -> void:
 	_notify_editor_dirty()
 
 # ============================================================
-# ATTRIBUTES
-# ============================================================
-
-func _rebuild_attributes_list() -> void:
-	for child in _attributes_list.get_children():
-		child.queue_free()
-	_attr_checkboxes.clear()
-	_attr_value_inputs.clear()
-
-	if not editor or not editor.tree:
-		_attributes_empty.visible = true
-		return
-
-	var tree_attrs: Dictionary = editor.tree.attributes
-	if tree_attrs.is_empty():
-		_attributes_empty.visible = true
-		return
-
-	_attributes_empty.visible = false
-
-	var multi: bool = editor.tree.multiallocation
-	var ids: Array = tree_attrs.keys()
-	ids.sort()
-
-	if _current_prefab:
-		for attr_id in ids:
-			var attr: BayterekAttribute = tree_attrs[attr_id]
-
-			var block := VBoxContainer.new()
-			block.add_theme_constant_override("separation", 2)
-			_attributes_list.add_child(block)
-
-			var check := CheckBox.new()
-			check.text = "%s (%s)" % [attr.name, attr_id]
-			check.button_pressed = _current_prefab.attributes.has(attr_id)
-			check.toggled.connect(_on_attr_toggled_prefab.bind(attr_id))
-			block.add_child(check)
-
-			_attr_checkboxes[attr_id] = check
-
-			if _current_prefab.attributes.has(attr_id):
-				var raw = _current_prefab.attributes[attr_id]
-				var info := Label.new()
-				info.text = "  (default: %s)" % str(raw)
-				info.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
-				block.add_child(info)
-		return
-
-	for attr_id in ids:
-		var attr: BayterekAttribute = tree_attrs[attr_id]
-
-		var block := VBoxContainer.new()
-		block.add_theme_constant_override("separation", 2)
-		_attributes_list.add_child(block)
-
-		var header_row := HBoxContainer.new()
-		header_row.add_theme_constant_override("separation", 2)
-		block.add_child(header_row)
-
-		var check := CheckBox.new()
-		check.text = "%s (%s)" % [attr.name, attr_id]
-		check.size_flags_horizontal = SIZE_EXPAND_FILL
-		check.button_pressed = _current_node and _current_node.node_data.attributes.has(attr_id)
-		check.toggled.connect(_on_attr_toggled.bind(attr_id))
-		header_row.add_child(check)
-
-		_attr_checkboxes[attr_id] = check
-
-		if _current_node and _current_node.prefab and _current_node.node_data.has_attribute_override(attr_id):
-			var reset_btn := Button.new()
-			reset_btn.text = "↺"
-			reset_btn.tooltip_text = "Reset to prefab default"
-			reset_btn.custom_minimum_size = Vector2(28, 0)
-			reset_btn.pressed.connect(_on_reset_attr_pressed.bind(attr_id))
-			header_row.add_child(reset_btn)
-
-		var has_attr: bool = _current_node and _current_node.node_data.attributes.has(attr_id)
-		var attr_inputs: Dictionary = {}
-
-		if multi and has_attr:
-			var max_alloc: int = _current_node.node_data.max_allocations
-			var raw_data = _current_node.node_data.attributes[attr_id]
-
-			if not raw_data is Array:
-				raw_data = []
-				_current_node.node_data.attributes[attr_id] = raw_data
-			if raw_data.size() > 0 and not raw_data[0] is Array:
-				var single: Array = raw_data.duplicate()
-				var new_data: Array = []
-				for l in max_alloc:
-					new_data.append(single.duplicate())
-				raw_data = new_data
-				_current_node.node_data.attributes[attr_id] = raw_data
-
-			var levels_data: Array = raw_data
-
-			for level in max_alloc:
-				var level_box := VBoxContainer.new()
-				level_box.add_theme_constant_override("separation", 1)
-				block.add_child(level_box)
-
-				var level_label := Label.new()
-				level_label.text = "Level %d" % (level + 1)
-				level_label.add_theme_color_override("font_color", Color(0.8, 0.9, 0.6))
-				level_box.add_child(level_label)
-
-				var inputs: Array = []
-				var level_vals: Array = levels_data[level] if level < levels_data.size() else []
-
-				for i in attr.value_count:
-					var row := HBoxContainer.new()
-					level_box.add_child(row)
-
-					var vlabel := Label.new()
-					vlabel.text = "Value %d" % (i + 1)
-					vlabel.custom_minimum_size = Vector2(70, 0)
-					row.add_child(vlabel)
-
-					var spin := SpinBox.new()
-					spin.size_flags_horizontal = SIZE_EXPAND_FILL
-					spin.min_value = -999999999
-					spin.max_value = 999999999
-					spin.allow_greater = true
-					spin.allow_lesser = true
-					spin.rounded = true
-					spin.step = 1
-
-					if i < level_vals.size():
-						spin.set_value_no_signal(level_vals[i])
-					spin.editable = true
-
-					spin.value_changed.connect(_on_attr_value_changed.bind(attr_id, i, level))
-					row.add_child(spin)
-
-					inputs.append(spin)
-
-				attr_inputs[level] = inputs
-
-		else:
-			var values_row := VBoxContainer.new()
-			values_row.add_theme_constant_override("separation", 1)
-			block.add_child(values_row)
-
-			var inputs: Array = []
-			for i in attr.value_count:
-				var row := HBoxContainer.new()
-				values_row.add_child(row)
-
-				var vlabel := Label.new()
-				vlabel.text = "Value %d" % (i + 1)
-				vlabel.custom_minimum_size = Vector2(70, 0)
-				row.add_child(vlabel)
-
-				var spin := SpinBox.new()
-				spin.size_flags_horizontal = SIZE_EXPAND_FILL
-				spin.min_value = -999999999
-				spin.max_value = 999999999
-				spin.allow_greater = true
-				spin.allow_lesser = true
-				spin.rounded = true
-				spin.step = 1
-
-				if has_attr:
-					var vals = _current_node.node_data.attributes[attr_id]
-					if vals is Array and i < vals.size() and not vals[i] is Array:
-						spin.set_value_no_signal(vals[i])
-					spin.editable = true
-				else:
-					spin.set_value_no_signal(0)
-					spin.editable = false
-
-				spin.value_changed.connect(_on_attr_value_changed.bind(attr_id, i, -1))
-				row.add_child(spin)
-
-				inputs.append(spin)
-
-			attr_inputs[-1] = inputs
-
-		_attr_value_inputs[attr_id] = attr_inputs
-
-func _on_attr_toggled_prefab(pressed: bool, attr_id: String) -> void:
-	if _updating_ui or not _current_prefab:
-		return
-	if not editor or not editor.tree:
-		return
-	if not editor.tree.attributes.has(attr_id):
-		return
-
-	var attr: BayterekAttribute = editor.tree.attributes[attr_id]
-	var multi: bool = editor.tree.multiallocation
-
-	if pressed:
-		var new_values: Variant
-		if multi:
-			var levels: Array = []
-			for level in _current_prefab.max_allocations:
-				var values: Array = []
-				for i in attr.value_count:
-					values.append(0)
-				levels.append(values)
-			new_values = levels
-		else:
-			var values: Array = []
-			for i in attr.value_count:
-				values.append(0)
-			new_values = values
-
-		_current_prefab.set_attribute(attr_id, new_values)
-	else:
-		_current_prefab.remove_attribute(attr_id)
-
-	_rebuild_attributes_list()
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
-	if _updating_ui or not _current_node:
-		return
-	if not editor or not editor.tree:
-		return
-	if not editor.tree.attributes.has(attr_id):
-		return
-
-	var attr: BayterekAttribute = editor.tree.attributes[attr_id]
-	var multi: bool = editor.tree.multiallocation
-
-	var new_values: Variant
-
-	if pressed:
-		if multi:
-			var levels: Array = []
-			for level in _current_node.node_data.max_allocations:
-				var values: Array = []
-				for i in attr.value_count:
-					values.append(0)
-				levels.append(values)
-			new_values = levels
-		else:
-			var values: Array = []
-			for i in attr.value_count:
-				values.append(0)
-			new_values = values
-
-		if _current_node.prefab:
-			_current_node.prefab.set_attribute(attr_id, new_values)
-		else:
-			_current_node.node_data.attributes[attr_id] = new_values
-	else:
-		if _current_node.prefab:
-			_current_node.prefab.remove_attribute(attr_id)
-		else:
-			_current_node.node_data.attributes.erase(attr_id)
-
-	if _attr_value_inputs.has(attr_id):
-		var attr_inputs: Dictionary = _attr_value_inputs[attr_id]
-		for level_key in attr_inputs.keys():
-			var inputs: Array = attr_inputs[level_key]
-			for spin in inputs:
-				if is_instance_valid(spin):
-					spin.editable = pressed
-
-	editor.set_dirty(true)
-	changed.emit()
-
-	if multi:
-		call_deferred("_rebuild_attributes_list")
-
-func _on_attr_value_changed(value: float, attr_id: String, index: int, level: int) -> void:
-	if _updating_ui or not _current_node:
-		return
-	if not _current_node.node_data.attributes.has(attr_id):
-		return
-
-	var v: Variant = value
-	if typeof(value) == TYPE_FLOAT and value == floor(value):
-		v = int(value)
-
-	if level >= 0:
-		var levels = _current_node.node_data.attributes[attr_id]
-		if not levels is Array:
-			return
-		if level >= levels.size():
-			return
-		var level_vals = levels[level]
-		if not level_vals is Array:
-			return
-		if index < 0 or index >= level_vals.size():
-			return
-		level_vals[index] = v
-	else:
-		var vals = _current_node.node_data.attributes[attr_id]
-		if not vals is Array:
-			return
-		if vals.size() > 0 and vals[0] is Array:
-			if index < 0 or index >= vals[0].size():
-				return
-			vals[0][index] = v
-		else:
-			if index < 0 or index >= vals.size():
-				return
-			vals[index] = v
-
-	if _current_node.prefab:
-		_current_node.node_data.mark_attribute_override(attr_id)
-
-	editor.set_dirty(true)
-	changed.emit()
-
-# ============================================================
-# CONNECTIONS
-# ============================================================
-
-func _rebuild_connections_list() -> void:
-	for child in _connections_list.get_children():
-		child.queue_free()
-
-	if not _current_node:
-		_connections_empty.visible = true
-		return
-
-	var out_ids: Array = _current_node.node_data.out_nodes
-	if out_ids.is_empty():
-		_connections_empty.visible = true
-		return
-
-	_connections_empty.visible = false
-
-	for to_id in out_ids:
-		_create_connection_entry(to_id)
-
-func _create_connection_entry(to_id: int) -> void:
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data:
-		line_data = BayterekLineData.new()
-		_current_node.node_data.line_data[to_id] = line_data
-
-	var block := VBoxContainer.new()
-	block.add_theme_constant_override("separation", 2)
-	_connections_list.add_child(block)
-
-	var header_btn := Button.new()
-	header_btn.text = "▶ Node %d" % to_id
-	header_btn.toggle_mode = true
-	header_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	header_btn.custom_minimum_size = Vector2(0, 24)
-	block.add_child(header_btn)
-
-	var content_box := VBoxContainer.new()
-	content_box.visible = false
-	content_box.add_theme_constant_override("separation", 2)
-	block.add_child(content_box)
-
-	var tid_capture: int = to_id
-	var header_capture: Button = header_btn
-	var content_capture: VBoxContainer = content_box
-	header_btn.toggled.connect(func(pressed: bool):
-		content_capture.visible = pressed
-		header_capture.text = ("▼ Node %d" % tid_capture) if pressed else ("▶ Node %d" % tid_capture)
-	)
-
-	var type_row := HBoxContainer.new()
-	content_box.add_child(type_row)
-	var type_label := Label.new()
-	type_label.text = "Line Type"
-	type_label.custom_minimum_size = Vector2(90, 0)
-	type_row.add_child(type_label)
-
-	var type_dropdown := OptionButton.new()
-	type_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
-	type_dropdown.add_item("Straight", 0)
-	type_dropdown.add_item("Bezier", 1)
-	type_dropdown.add_item("Arc", 2)
-	type_dropdown.add_item("Step", 3)
-	type_dropdown.select(int(line_data.line_type))
-	type_dropdown.item_selected.connect(_on_line_type_changed.bind(to_id))
-	type_row.add_child(type_dropdown)
-
-	var style_row := HBoxContainer.new()
-	content_box.add_child(style_row)
-	var style_label := Label.new()
-	style_label.text = "Line Style"
-	style_label.custom_minimum_size = Vector2(90, 0)
-	style_row.add_child(style_label)
-
-	var style_dropdown := OptionButton.new()
-	style_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
-	style_dropdown.add_item("Solid", 0)
-	style_dropdown.add_item("Dashed", 1)
-	style_dropdown.add_item("Dotted", 2)
-	style_dropdown.add_item("Dash-Dot", 3)
-	style_dropdown.select(int(line_data.line_style))
-	style_dropdown.item_selected.connect(_on_line_style_changed.bind(to_id))
-	style_row.add_child(style_dropdown)
-
-	var dash_len_row := HBoxContainer.new()
-	content_box.add_child(dash_len_row)
-	var dash_len_label := Label.new()
-	dash_len_label.text = "Dash Len"
-	dash_len_label.custom_minimum_size = Vector2(90, 0)
-	dash_len_row.add_child(dash_len_label)
-
-	var dash_len_input := SpinBox.new()
-	dash_len_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	dash_len_input.min_value = 1
-	dash_len_input.max_value = 100
-	dash_len_input.step = 1
-	dash_len_input.value = line_data.dash_length
-	dash_len_input.value_changed.connect(_on_dash_length_changed.bind(to_id))
-	dash_len_row.add_child(dash_len_input)
-	dash_len_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
-
-	var dash_gap_row := HBoxContainer.new()
-	content_box.add_child(dash_gap_row)
-	var dash_gap_label := Label.new()
-	dash_gap_label.text = "Dash Gap"
-	dash_gap_label.custom_minimum_size = Vector2(90, 0)
-	dash_gap_row.add_child(dash_gap_label)
-
-	var dash_gap_input := SpinBox.new()
-	dash_gap_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	dash_gap_input.min_value = 1
-	dash_gap_input.max_value = 100
-	dash_gap_input.step = 1
-	dash_gap_input.value = line_data.dash_gap
-	dash_gap_input.value_changed.connect(_on_dash_gap_changed.bind(to_id))
-	dash_gap_row.add_child(dash_gap_input)
-	dash_gap_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
-
-	var curve_row := HBoxContainer.new()
-	content_box.add_child(curve_row)
-	var curve_label := Label.new()
-	curve_label.text = "Curve"
-	curve_label.custom_minimum_size = Vector2(90, 0)
-	curve_row.add_child(curve_label)
-
-	var curve_input := SpinBox.new()
-	curve_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	curve_input.min_value = 0
-	curve_input.max_value = 500
-	curve_input.step = 1
-	curve_input.value = line_data.curve_height
-	curve_input.value_changed.connect(_on_curve_height_changed.bind(to_id))
-	curve_row.add_child(curve_input)
-	curve_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER)
-
-	var step_row := HBoxContainer.new()
-	content_box.add_child(step_row)
-	var step_label := Label.new()
-	step_label.text = "Step"
-	step_label.custom_minimum_size = Vector2(90, 0)
-	step_row.add_child(step_label)
-
-	var step_input := SpinBox.new()
-	step_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	step_input.min_value = 8
-	step_input.max_value = 500
-	step_input.step = 1
-	step_input.value = line_data.step_distance
-	step_input.value_changed.connect(_on_step_distance_changed.bind(to_id))
-	step_row.add_child(step_input)
-	step_row.visible = (line_data.line_type == BayterekLineData.LineType.STEP)
-
-	var seg_row := HBoxContainer.new()
-	content_box.add_child(seg_row)
-	var seg_label := Label.new()
-	seg_label.text = "Segments"
-	seg_label.custom_minimum_size = Vector2(90, 0)
-	seg_row.add_child(seg_label)
-
-	var seg_input := SpinBox.new()
-	seg_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	seg_input.min_value = 2
-	seg_input.max_value = 64
-	seg_input.step = 1
-	seg_input.value = line_data.segments
-	seg_input.value_changed.connect(_on_segments_changed.bind(to_id))
-	seg_row.add_child(seg_input)
-	seg_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
-
-	var rev_row := HBoxContainer.new()
-	content_box.add_child(rev_row)
-	var rev_label := Label.new()
-	rev_label.text = "Reversed"
-	rev_label.custom_minimum_size = Vector2(90, 0)
-	rev_row.add_child(rev_label)
-
-	var rev_check := CheckBox.new()
-	rev_check.text = "On"
-	rev_check.button_pressed = line_data.reversed
-	rev_check.toggled.connect(_on_reversed_changed.bind(to_id))
-	rev_row.add_child(rev_check)
-	rev_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
-
-	var start_arrow_row := HBoxContainer.new()
-	content_box.add_child(start_arrow_row)
-	var start_arrow_label := Label.new()
-	start_arrow_label.text = "Start Arrow"
-	start_arrow_label.custom_minimum_size = Vector2(90, 0)
-	start_arrow_row.add_child(start_arrow_label)
-
-	var start_arrow_dropdown := OptionButton.new()
-	start_arrow_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
-	start_arrow_dropdown.add_item("None", 0)
-	start_arrow_dropdown.add_item("Arrow", 1)
-	start_arrow_dropdown.add_item("T-Bar", 2)
-	start_arrow_dropdown.add_item("Square", 3)
-	start_arrow_dropdown.add_item("Circle", 4)
-	start_arrow_dropdown.add_item("Diamond", 5)
-	start_arrow_dropdown.select(int(line_data.start_arrow))
-	start_arrow_dropdown.item_selected.connect(_on_start_arrow_changed.bind(to_id))
-	start_arrow_row.add_child(start_arrow_dropdown)
-
-	var end_arrow_row := HBoxContainer.new()
-	content_box.add_child(end_arrow_row)
-	var end_arrow_label := Label.new()
-	end_arrow_label.text = "End Arrow"
-	end_arrow_label.custom_minimum_size = Vector2(90, 0)
-	end_arrow_row.add_child(end_arrow_label)
-
-	var end_arrow_dropdown := OptionButton.new()
-	end_arrow_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
-	end_arrow_dropdown.add_item("None", 0)
-	end_arrow_dropdown.add_item("Arrow", 1)
-	end_arrow_dropdown.add_item("T-Bar", 2)
-	end_arrow_dropdown.add_item("Square", 3)
-	end_arrow_dropdown.add_item("Circle", 4)
-	end_arrow_dropdown.add_item("Diamond", 5)
-	end_arrow_dropdown.select(int(line_data.end_arrow))
-	end_arrow_dropdown.item_selected.connect(_on_end_arrow_changed.bind(to_id))
-	end_arrow_row.add_child(end_arrow_dropdown)
-
-	var arrow_size_row := HBoxContainer.new()
-	content_box.add_child(arrow_size_row)
-	var arrow_size_label := Label.new()
-	arrow_size_label.text = "Arrow Size"
-	arrow_size_label.custom_minimum_size = Vector2(90, 0)
-	arrow_size_row.add_child(arrow_size_label)
-
-	var arrow_size_input := SpinBox.new()
-	arrow_size_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	arrow_size_input.min_value = 2
-	arrow_size_input.max_value = 100
-	arrow_size_input.step = 1
-	arrow_size_input.value = line_data.arrow_size
-	arrow_size_input.value_changed.connect(_on_arrow_size_changed.bind(to_id))
-	arrow_size_row.add_child(arrow_size_input)
-	arrow_size_row.visible = (line_data.start_arrow != BayterekLineData.ArrowStyle.NONE or line_data.end_arrow != BayterekLineData.ArrowStyle.NONE)
-
-	var del_row := HBoxContainer.new()
-	content_box.add_child(del_row)
-	var del_spacer := Control.new()
-	del_spacer.size_flags_horizontal = SIZE_EXPAND_FILL
-	del_row.add_child(del_spacer)
-
-	var del_btn := Button.new()
-	del_btn.text = "Delete Connection"
-	del_btn.pressed.connect(_on_delete_connection.bind(to_id))
-	del_row.add_child(del_btn)
-
-func _on_line_type_changed(index: int, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.line_type = index as BayterekLineData.LineType
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	_rebuild_connections_list()
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_line_style_changed(index: int, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.line_style = index as BayterekLineData.LineStyle
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	_rebuild_connections_list()
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_dash_length_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.dash_length = value
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_dash_gap_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.dash_gap = value
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_curve_height_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.curve_height = value
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_step_distance_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.step_distance = value
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_segments_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.segments = int(value)
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_reversed_changed(pressed: bool, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.reversed = pressed
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_start_arrow_changed(index: int, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.start_arrow = index as BayterekLineData.ArrowStyle
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	_rebuild_connections_list()
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_end_arrow_changed(index: int, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.end_arrow = index as BayterekLineData.ArrowStyle
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	_rebuild_connections_list()
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_arrow_size_changed(value: float, to_id: int) -> void:
-	if _updating_ui or not _current_node: return
-	var line_data = _current_node.node_data.line_data.get(to_id, null)
-	if not line_data: return
-	line_data.arrow_size = value
-	if editor and editor.tree_view:
-		editor.tree_view.connections_service.refresh_line(_current_node.id, to_id)
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_delete_connection(to_id: int) -> void:
-	if not _current_node: return
-	if not editor or not editor.tree_view: return
-	editor.tree_view.connections_service.remove_connection(_current_node.id, to_id)
-	_rebuild_connections_list()
-	editor.set_dirty(true)
-	changed.emit()
-
-# ============================================================
 # HELPERS
 # ============================================================
 
@@ -1931,15 +913,5 @@ func _on_reset_all_pressed() -> void:
 		return
 	editor.tree_view.prefabs_service.reset_node_to_prefab_defaults(_current_node)
 	inspect(_current_node)
-	editor.set_dirty(true)
-	changed.emit()
-
-func _on_reset_attr_pressed(attr_id: String) -> void:
-	if not _current_node or not _current_node.prefab:
-		return
-	if not editor or not editor.tree_view or not editor.tree_view.prefabs_service:
-		return
-	editor.tree_view.prefabs_service.reset_attribute_to_prefab_default(_current_node, attr_id)
-	_rebuild_attributes_list()
 	editor.set_dirty(true)
 	changed.emit()
