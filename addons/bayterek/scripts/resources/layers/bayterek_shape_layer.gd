@@ -2,11 +2,11 @@
 class_name BayterekShapeLayer
 extends BayterekLayer
 ## Shape layer — circle, square, triangle, pentagon, hexagon.
-## Supports fill, border (per-edge vector lines) and shadow.
+## Supports fill, border (per-edge vector lines), corner rounding and shadow.
 ##
-## Pixel render mode: coordinates are snapped to integers in the caller,
-## and corner rounding uses fewer segments + snapped arc vertices, giving
-## chunky pixel-art corners.
+## Pixel mode uses a per-pixel "inside shape?" test with pixel centers.
+## Polygons are rescaled so they fill the requested W x H box exactly —
+## triangle / pentagon / hexagon bottoms therefore always draw.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -25,8 +25,6 @@ const EDGE_LEFT := 3
 
 @export_storage var shape_type: ShapeType = ShapeType.CIRCLE
 
-## Corner rounding radius in pixels. 0 = sharp corners.
-## Ignored when `border_corner_gap` is true.
 @export_storage var corner_radius: float = 0.0
 
 # --- Fill ---
@@ -36,14 +34,11 @@ const EDGE_LEFT := 3
 # --- Border ---
 @export_storage var border_enabled: bool = false
 @export_storage var border_width: float = 2.0
-
 @export_storage var border_corner_gap: bool = false
-
 @export_storage var border_top_enabled: bool = true
 @export_storage var border_right_enabled: bool = true
 @export_storage var border_bottom_enabled: bool = true
 @export_storage var border_left_enabled: bool = true
-
 @export_storage var border_configs: Dictionary = {}
 
 # --- Shadow ---
@@ -183,10 +178,9 @@ func ensure_border_config(state: String) -> void:
 # CLAMPED CORNER RADIUS
 # ============================================================
 
-## Returns the effective corner radius. Pixel mode no longer disables it —
-## in pixel mode the radius is still applied, just as a chunky/stepped arc.
-## Only `border_corner_gap` disables it (that's a different feature).
-func get_clamped_corner_radius(effective_size: Vector2, pixel_mode: bool = false) -> float:
+func get_clamped_corner_radius(effective_size: Vector2, _pixel_mode: bool = false) -> float:
+	if shape_type == ShapeType.CIRCLE:
+		return 0.0
 	if border_corner_gap:
 		return 0.0
 	if corner_radius <= 0.0:
@@ -201,7 +195,7 @@ func _corner_radius_limit(effective_size: Vector2) -> float:
 	return smaller_dim * 0.5 * Bayterek.CORNER_RADIUS_CLAMP_FACTOR
 
 # ============================================================
-# VERTEX COMPUTATION
+# VERTEX COMPUTATION (vector mode)
 # ============================================================
 
 func get_polygon_vertices(effective_size: Vector2, pixel_mode: bool = false) -> PackedVector2Array:
@@ -239,7 +233,7 @@ func get_border_vertices(effective_size: Vector2, pixel_mode: bool = false) -> P
 	return get_polygon_vertices(effective_size, pixel_mode)
 
 # ============================================================
-# BORDER SEGMENT COMPUTATION
+# BORDER SEGMENT COMPUTATION (vector mode)
 # ============================================================
 
 func get_border_segments(effective_size: Vector2, pixel_mode: bool = false) -> Array:
@@ -298,12 +292,7 @@ func _make_closed_ring(center_verts: PackedVector2Array) -> PackedVector2Array:
 	ring[center_verts.size()] = center_verts[0]
 	return ring
 
-func _collect_edge_vertices(
-	center_verts: PackedVector2Array,
-	half: Vector2,
-	tol: float,
-	edge: int
-) -> PackedVector2Array:
+func _collect_edge_vertices(center_verts: PackedVector2Array, half: Vector2, tol: float, edge: int) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	for v in center_verts:
 		if _vertex_on_edge(v, half, tol, edge):
@@ -318,11 +307,7 @@ func _vertex_on_edge(p: Vector2, half: Vector2, tol: float, edge: int) -> bool:
 		EDGE_RIGHT:  return absf(p.x - half.x) <= tol
 	return false
 
-func _find_edge_endpoints(
-	center_verts: PackedVector2Array,
-	half: Vector2,
-	tol: float
-) -> Dictionary:
+func _find_edge_endpoints(center_verts: PackedVector2Array, half: Vector2, tol: float) -> Dictionary:
 	var edge_verts: Dictionary = {}
 	for v in center_verts:
 		for edge in [EDGE_TOP, EDGE_RIGHT, EDGE_BOTTOM, EDGE_LEFT]:
@@ -351,7 +336,209 @@ func _find_edge_endpoints(
 	return result
 
 # ============================================================
-# INTERNAL POLYGON BUILDER
+# PIXEL SCANLINE — point-in-shape test
+# ============================================================
+
+func is_axis_aligned() -> bool:
+	if not transform:
+		return true
+	return is_zero_approx(transform.rotation) and is_zero_approx(transform.skew.x) and is_zero_approx(transform.skew.y)
+
+## Returns { "fill": [Rect2i...], "border": [Rect2i...] } in design
+## coordinates (0,0 = shape center). All rects have height 1.
+func get_pixel_spans(effective_size: Vector2) -> Dictionary:
+	var fill_spans: Array = []
+	var border_spans: Array = []
+
+	var W: int = int(round(effective_size.x))
+	var H: int = int(round(effective_size.y))
+	if W <= 0 or H <= 0:
+		return {"fill": fill_spans, "border": border_spans}
+
+	var bw: int = 0
+	if border_enabled and border_width > 0.0:
+		bw = maxi(1, int(round(border_width)))
+
+	var R: int = 0
+	if shape_type != ShapeType.CIRCLE and corner_radius > 0.0 and not border_corner_gap:
+		var limit: int = int(floor(min(W, H) * 0.5 * Bayterek.CORNER_RADIUS_CLAMP_FACTOR))
+		R = clampi(int(round(corner_radius)), 0, limit)
+
+	var inner_W: int = W - 2 * bw
+	var inner_H: int = H - 2 * bw
+	var inner_R: int = maxi(0, R - bw)
+	var has_inner: bool = bw > 0 and inner_W > 0 and inner_H > 0
+
+	var outer_poly: PackedVector2Array = PackedVector2Array()
+	var inner_poly: PackedVector2Array = PackedVector2Array()
+	if shape_type in [ShapeType.TRIANGLE, ShapeType.PENTAGON, ShapeType.HEXAGON]:
+		outer_poly = _shape_pixel_outline(W, H, R)
+		if has_inner:
+			inner_poly = _shape_pixel_outline(inner_W, inner_H, inner_R)
+
+	var x_off: int = -W / 2
+	var y_off: int = -H / 2
+
+	for y in range(H):
+		var row_fill_runs: Array = []
+		var row_border_runs: Array = []
+		var fill_active: bool = false
+		var border_active: bool = false
+		var fill_start: int = 0
+		var border_start: int = 0
+
+		for x in range(W):
+			var ox: float = float(x) + 0.5
+			var oy: float = float(y) + 0.5
+
+			var outer_hit: bool = _pixel_inside(ox, oy, W, H, R, outer_poly)
+
+			var inner_hit: bool = false
+			if outer_hit and has_inner:
+				var ix: float = ox - float(bw)
+				var iy: float = oy - float(bw)
+				inner_hit = _pixel_inside(ix, iy, inner_W, inner_H, inner_R, inner_poly)
+
+			var is_fill: bool = outer_hit and inner_hit
+			var is_border: bool = outer_hit and not inner_hit
+
+			if is_fill and not fill_active:
+				fill_active = true
+				fill_start = x
+			elif not is_fill and fill_active:
+				fill_active = false
+				row_fill_runs.append(Vector2i(fill_start, x))
+
+			if is_border and not border_active:
+				border_active = true
+				border_start = x
+			elif not is_border and border_active:
+				border_active = false
+				row_border_runs.append(Vector2i(border_start, x))
+
+		if fill_active:
+			row_fill_runs.append(Vector2i(fill_start, W))
+		if border_active:
+			row_border_runs.append(Vector2i(border_start, W))
+
+		for r in row_fill_runs:
+			fill_spans.append(Rect2i(r.x + x_off, y + y_off, r.y - r.x, 1))
+		for r in row_border_runs:
+			border_spans.append(Rect2i(r.x + x_off, y + y_off, r.y - r.x, 1))
+
+	return {"fill": fill_spans, "border": border_spans}
+
+## Returns a polygon outline in local pixel coords [0..W, 0..H].
+## The polygon is rescale-normalized so it exactly fills the W x H box
+## on BOTH axes — triangle bottoms therefore always reach y = H.
+func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
+	if shape_type == ShapeType.CIRCLE or shape_type == ShapeType.SQUARE:
+		return PackedVector2Array()
+
+	var sides: int = 3 if shape_type == ShapeType.TRIANGLE else (5 if shape_type == ShapeType.PENTAGON else 6)
+	var half_x: float = float(W) * 0.5
+	var half_y: float = float(H) * 0.5
+
+	# Generate raw polygon in centered space.
+	var base: PackedVector2Array = PackedVector2Array()
+	base.resize(sides)
+	var start_angle: float = -PI * 0.5
+	for i in sides:
+		var angle: float = start_angle + TAU * float(i) / float(sides)
+		base[i] = Vector2(cos(angle) * half_x, sin(angle) * half_y)
+
+	# Normalize vertically so the shape fills [0, H].
+	var y_min: float = INF
+	var y_max: float = -INF
+	for v in base:
+		y_min = minf(y_min, v.y)
+		y_max = maxf(y_max, v.y)
+	var y_range: float = y_max - y_min
+	if y_range > 0.001:
+		var scale_y: float = float(H) / y_range
+		for i in base.size():
+			base[i].y = (base[i].y - y_min) * scale_y
+
+	# Normalize horizontally so the shape fills [0, W].
+	var x_min: float = INF
+	var x_max: float = -INF
+	for v in base:
+		x_min = minf(x_min, v.x)
+		x_max = maxf(x_max, v.x)
+	var x_range: float = x_max - x_min
+	if x_range > 0.001:
+		var scale_x: float = float(W) / x_range
+		for i in base.size():
+			base[i].x = (base[i].x - x_min) * scale_x
+
+	# Optional corner rounding, done in centered coordinates.
+	if R > 0:
+		var center_pt: Vector2 = Vector2(float(W) * 0.5, float(H) * 0.5)
+		for i in base.size():
+			base[i] -= center_pt
+		base = _apply_corner_rounding(base, float(R), false)
+		for i in base.size():
+			base[i] += center_pt
+
+	return base
+
+## True if pixel center (px, py) in local coords [0..W, 0..H] lies inside the shape.
+## Polygon test uses half-open ray casting (y_min inclusive, y_max exclusive).
+func _pixel_inside(px: float, py: float, W: int, H: int, R: int, poly: PackedVector2Array) -> bool:
+	if shape_type == ShapeType.CIRCLE:
+		var cx: float = float(W) * 0.5
+		var cy: float = float(H) * 0.5
+		var r: float = minf(cx, cy)
+		var dx: float = px - cx
+		var dy: float = py - cy
+		return dx * dx + dy * dy <= r * r
+
+	if shape_type == ShapeType.SQUARE:
+		var cx2: float = float(W) * 0.5
+		var cy2: float = float(H) * 0.5
+		var hw: float = float(W) * 0.5
+		var hh: float = float(H) * 0.5
+		var lx: float = px - cx2
+		var ly: float = py - cy2
+		var r2: int = clampi(R, 0, int(minf(hw, hh)))
+		var ax: float = absf(lx)
+		var ay: float = absf(ly)
+		if ax > hw or ay > hh:
+			return false
+		if r2 <= 0:
+			return true
+		if ax <= hw - r2 or ay <= hh - r2:
+			return true
+		var qx: float = ax - (hw - r2)
+		var qy: float = ay - (hh - r2)
+		return qx * qx + qy * qy <= float(r2) * float(r2)
+
+	# Polygon: half-open ray casting.
+	if poly.size() < 3:
+		return false
+	var inside: bool = false
+	var n: int = poly.size()
+	var j: int = n - 1
+	for i in n:
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[j]
+		if absf(a.y - b.y) < 0.0001:
+			j = i
+			continue
+		var y_min: float = minf(a.y, b.y)
+		var y_max: float = maxf(a.y, b.y)
+		if py < y_min or py >= y_max:
+			j = i
+			continue
+		var t: float = (py - a.y) / (b.y - a.y)
+		var x_cross: float = a.x + t * (b.x - a.x)
+		if px < x_cross:
+			inside = not inside
+		j = i
+	return inside
+
+# ============================================================
+# INTERNAL POLYGON BUILDER (vector mode)
 # ============================================================
 
 func _build_polygon(size_vec: Vector2, radius: float, pixel_mode: bool) -> PackedVector2Array:
@@ -386,7 +573,6 @@ func _build_polygon(size_vec: Vector2, radius: float, pixel_mode: bool) -> Packe
 	return base_verts
 
 func _make_circle_vertices(radius: float, segments: int, pixel_mode: bool = false) -> PackedVector2Array:
-	# Pixel mode: reduce segment count so the circle looks chunky.
 	if pixel_mode:
 		segments = clampi(int(round(radius * 1.5)), 8, 32)
 
@@ -403,17 +589,12 @@ func _make_circle_vertices(radius: float, segments: int, pixel_mode: bool = fals
 func _make_regular_polygon(half: Vector2, sides: int, start_angle: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	pts.resize(sides)
-	var radius: float = minf(half.x, half.y)
 	for i in sides:
 		var angle: float = start_angle + TAU * float(i) / float(sides)
-		pts[i] = Vector2(cos(angle), sin(angle)) * radius
+		pts[i] = Vector2(cos(angle) * half.x, sin(angle) * half.y)
 	return pts
 
-func _apply_corner_rounding(
-	verts: PackedVector2Array,
-	radius: float,
-	pixel_mode: bool = false
-) -> PackedVector2Array:
+func _apply_corner_rounding(verts: PackedVector2Array, radius: float, pixel_mode: bool = false) -> PackedVector2Array:
 	if radius <= 0.01 or verts.size() < 3:
 		return verts
 
@@ -427,11 +608,8 @@ func _apply_corner_rounding(
 		signed_area += (a.x * b.y - b.x * a.y)
 	var positive_winding: bool = signed_area > 0.0
 
-	# Segment count per corner arc.
 	var segments: int = Bayterek.CORNER_SEGMENTS
 	if pixel_mode:
-		# Fewer segments → chunky pixel-art corner.
-		# radius 4 → 3, radius 8 → 6, radius 16 → 10 (clamped 3..10).
 		segments = clampi(int(round(radius * 0.75)), 3, 10)
 
 	for i in n:

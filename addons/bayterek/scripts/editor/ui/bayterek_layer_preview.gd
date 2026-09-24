@@ -2,15 +2,15 @@
 class_name BayterekLayerPreview
 extends Control
 ## Live preview of a design's layer stack.
-## Renders the same way BayterekNodeButton does, but scaled to fit.
 ## Supports mouse-wheel zoom and middle-drag pan.
-## Honors VECTOR / PIXEL render modes.
+##
+## In pixel render mode, `preview_scale` is snapped to an integer so the
+## preview grid stays perfectly aligned (Aseprite-style).
 
 signal zoom_changed(zoom: float)
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
-## Render mode ints — mirrors BayterekNodeDesign.RenderMode.
 const RENDER_MODE_VECTOR := 0
 const RENDER_MODE_PIXEL := 1
 
@@ -75,14 +75,16 @@ func _notification(what: int) -> void:
 		_recompute_scale()
 		queue_redraw()
 
-## Preview is a composited editor view; the design's overall mode decides
-## the control-level texture filter. Layers may override per-layer color
-## and geometry, but they can't switch the whole preview's filter.
+func _is_pixel_design() -> bool:
+	if not design:
+		return false
+	return int(design.render_mode) == RENDER_MODE_PIXEL
+
 func _apply_texture_filter() -> void:
 	if not design:
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		return
-	if int(design.render_mode) == RENDER_MODE_PIXEL:
+	if _is_pixel_design():
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	else:
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
@@ -154,7 +156,14 @@ func _recompute_scale() -> void:
 		var sy: float = available.y / bounds.size.y
 		_fit_scale = min(sx, sy)
 
+	if _is_pixel_design():
+		var snapped_fit: int = maxi(1, int(floor(_fit_scale)))
+		_fit_scale = float(snapped_fit)
+
 	preview_scale = _fit_scale * user_zoom
+
+	if _is_pixel_design():
+		preview_scale = maxf(1.0, float(maxi(1, int(floor(preview_scale)))))
 
 	var content_center: Vector2 = bounds.position + bounds.size * 0.5
 	pan_offset = -content_center * preview_scale
@@ -238,19 +247,71 @@ func _draw_layer(layer: BayterekLayer, base_xform: Transform2D) -> void:
 	var layer_matrix: Transform2D = layer.get_matrix(design_size)
 	var effective_size: Vector2 = layer.get_size(design_size)
 
-	# Effective render mode for this layer.
 	var effective_mode: int = layer.get_effective_render_mode(int(design.render_mode))
 	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
 
 	var combined: Transform2D = base_xform * layer_matrix
 
 	if layer is BayterekShapeLayer:
-		_draw_shape(layer, state_key, effective_size, combined, pixel_mode)
+		if pixel_mode and layer.is_axis_aligned():
+			_draw_shape_pixel(layer, state_key, effective_size, combined)
+		else:
+			_draw_shape(layer, state_key, effective_size, combined, pixel_mode)
 	elif layer is BayterekTextureLayer:
 		_draw_texture(layer, state_key, effective_size, combined, pixel_mode)
 
 	if show_pivot_markers and layer.transform:
 		_draw_pivot_marker(layer, combined, effective_size)
+
+## Pixel scanline path — uses `get_pixel_spans()`. Debug dump runs once.
+func _draw_shape_pixel(layer: BayterekShapeLayer, state_key: String, effective_size: Vector2, combined: Transform2D) -> void:
+	# --- DEBUG DUMP (runs once) ---
+	if not get_meta("_dumped", false):
+		set_meta("_dumped", true)
+		var s: Dictionary = layer.get_pixel_spans(effective_size)
+		var fills: Array = s.get("fill", [])
+		var borders: Array = s.get("border", [])
+		print("=== SPANS size=", effective_size, " shape=", layer.shape_type,
+			" bw=", layer.border_width, " R=", layer.corner_radius, " ===")
+		print("FILL count=", fills.size())
+		for i in range(maxi(0, fills.size() - 5), fills.size()):
+			print("  fill[", i, "]=", fills[i])
+		print("BORDER count=", borders.size())
+		for i in range(maxi(0, borders.size() - 8), borders.size()):
+			print("  border[", i, "]=", borders[i])
+	# --- END DEBUG ---
+
+	var spans: Dictionary = layer.get_pixel_spans(effective_size)
+	var fill_spans: Array = spans.get("fill", [])
+	var border_spans: Array = spans.get("border", [])
+
+	# Shadow (integer offset, no blur).
+	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
+		var offset: Vector2 = (layer.shadow_size * preview_scale).floor()
+		var shadow_xform := Transform2D(combined.x, combined.y, combined.origin + offset)
+		for rect_v in fill_spans:
+			var r: Rect2i = rect_v
+			var tl: Vector2 = shadow_xform * Vector2(r.position.x, r.position.y)
+			var br: Vector2 = shadow_xform * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
+			draw_rect(Rect2(tl, br - tl), layer.shadow_color, true)
+
+	if layer.should_draw_fill(state_key):
+		var fill_color: Color = layer.get_fill_color_for_state(state_key)
+		if fill_color.a > 0.0:
+			for rect_v in fill_spans:
+				var r: Rect2i = rect_v
+				var tl: Vector2 = combined * Vector2(r.position.x, r.position.y)
+				var br: Vector2 = combined * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
+				draw_rect(Rect2(tl, br - tl), fill_color, true)
+
+	if layer.should_draw_border(state_key):
+		var border_color: Color = layer.get_border_color_for_state(state_key)
+		if border_color.a > 0.0 and layer.border_width > 0.0:
+			for rect_v in border_spans:
+				var r: Rect2i = rect_v
+				var tl: Vector2 = combined * Vector2(r.position.x, r.position.y)
+				var br: Vector2 = combined * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
+				draw_rect(Rect2(tl, br - tl), border_color, true)
 
 func _draw_pivot_marker(layer: BayterekLayer, combined: Transform2D, effective_size: Vector2) -> void:
 	var t: BayterekLayerTransform = layer.transform
@@ -385,13 +446,23 @@ func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Arr
 		out[i] = v + dir * offset
 	return out
 
-func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_size: Vector2, xform: Transform2D, _pixel_mode: bool) -> void:
+func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_size: Vector2, xform: Transform2D, pixel_mode: bool) -> void:
 	if not layer.should_draw_icon(state_key):
 		return
 	var tex: Texture2D = layer.get_icon_for_state(state_key)
 	if not tex:
 		return
 	var tint: Color = layer.get_tint_for_state(state_key)
+
+	if pixel_mode:
+		var half: Vector2 = effective_size * 0.5
+		var tl: Vector2 = xform * (-half)
+		var br: Vector2 = xform * half
+		var dst_pos: Vector2 = tl.floor()
+		var dst_size: Vector2 = (br - tl).floor()
+		draw_set_transform_matrix(Transform2D.IDENTITY)
+		draw_texture_rect(tex, Rect2(dst_pos, dst_size), false, tint)
+		return
 
 	draw_set_transform_matrix(xform)
 	draw_texture_rect(tex, Rect2(-effective_size * 0.5, effective_size), false, tint)

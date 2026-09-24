@@ -2,12 +2,9 @@
 class_name BayterekNodeButton
 extends BaseButton
 ## On-canvas visual representation of a node.
-## Supports VECTOR and PIXEL render modes.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
-## Render mode ints — mirrors BayterekNode.RENDER_MODE_*.
-## Inlined to avoid cross-class constant resolution issues.
 const RENDER_MODE_VECTOR := 0
 const RENDER_MODE_PIXEL := 1
 
@@ -40,8 +37,6 @@ var _is_dragging: bool = false
 var _press_pos: Vector2 = Vector2.ZERO
 
 var _active_states: Dictionary = {}
-
-## Tracks whether design layers have been applied to this button's node_data.
 var _design_applied: bool = false
 
 var id: int:
@@ -174,8 +169,6 @@ func rebuild_from_design() -> void:
 	_design_applied = false
 	refresh_visuals()
 
-## Node-level texture filter. Set to NEAREST in pixel render mode, else
-## fall back to the tree's texture_filter setting (or LINEAR by default).
 func _apply_texture_filter() -> void:
 	if not node_data:
 		return
@@ -232,7 +225,6 @@ func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transfo
 	var state_key: String = layer.get_visual_state(_active_states)
 	var layer_matrix: Transform2D = layer.get_matrix(design_size)
 
-	# Effective render mode for this layer (design mode + override).
 	var design_mode: int = int(node_data.render_mode) if node_data else RENDER_MODE_VECTOR
 	var effective_mode: int = layer.get_effective_render_mode(design_mode)
 	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
@@ -249,6 +241,69 @@ func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transfo
 # ============================================================
 
 func _draw_shape_layer(
+	layer: BayterekShapeLayer,
+	state_key: String,
+	effective_size: Vector2,
+	layer_matrix: Transform2D,
+	base_xform: Transform2D,
+	pixel_mode: bool
+) -> void:
+	# Pixel-art scanline mode — only when the layer is axis-aligned.
+	if pixel_mode and layer.is_axis_aligned():
+		_draw_shape_pixel_scanline(layer, state_key, effective_size, layer_matrix, base_xform)
+		return
+
+	# Vector / rotated-pixel fallback.
+	_draw_shape_vector(layer, state_key, effective_size, layer_matrix, base_xform, pixel_mode)
+
+## Pixel-perfect scanline render. Fills and border are derived from the
+## same scanline (via `layer.get_pixel_spans()`), so they tile perfectly.
+func _draw_shape_pixel_scanline(
+	layer: BayterekShapeLayer,
+	state_key: String,
+	effective_size: Vector2,
+	layer_matrix: Transform2D,
+	base_xform: Transform2D
+) -> void:
+	var combined: Transform2D = base_xform * layer_matrix
+	var spans: Dictionary = layer.get_pixel_spans(effective_size)
+	var fill_spans: Array = spans.get("fill", [])
+	var border_spans: Array = spans.get("border", [])
+
+	# Shadow — integer-offset, no blur.
+	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
+		var node_s: Vector2 = node_data.scale if node_data else Vector2.ONE
+		var shadow_offset: Vector2 = (layer.shadow_size * node_s).floor()
+		var shadow_xform := Transform2D(combined.x, combined.y, combined.origin + shadow_offset)
+		for rect_v in fill_spans:
+			var r: Rect2i = rect_v
+			var tl: Vector2 = shadow_xform * Vector2(r.position.x, r.position.y)
+			var br: Vector2 = shadow_xform * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
+			draw_rect(Rect2(tl, br - tl), layer.shadow_color, true)
+
+	# Fill.
+	if layer.should_draw_fill(state_key):
+		var fill_color: Color = layer.get_fill_color_for_state(state_key)
+		if fill_color.a > 0.0:
+			for rect_v in fill_spans:
+				var r: Rect2i = rect_v
+				var tl: Vector2 = combined * Vector2(r.position.x, r.position.y)
+				var br: Vector2 = combined * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
+				draw_rect(Rect2(tl, br - tl), fill_color, true)
+
+	# Border.
+	if layer.should_draw_border(state_key):
+		var border_color: Color = layer.get_border_color_for_state(state_key)
+		if border_color.a > 0.0 and layer.border_width > 0.0:
+			for rect_v in border_spans:
+				var r: Rect2i = rect_v
+				var tl: Vector2 = combined * Vector2(r.position.x, r.position.y)
+				var br: Vector2 = combined * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
+				draw_rect(Rect2(tl, br - tl), border_color, true)
+
+## Vector / polygon-based path. Used for VECTOR mode, and for PIXEL mode
+## when the layer is rotated or skewed (scanline is impossible there).
+func _draw_shape_vector(
 	layer: BayterekShapeLayer,
 	state_key: String,
 	effective_size: Vector2,
@@ -340,7 +395,6 @@ func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xf
 	var base_color: Color = layer.shadow_color
 
 	if pixel_mode:
-		# Pixel mode: no blur, hard shadow with integer offset.
 		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + offset.floor())
 		_draw_shape_fill(verts, shadow_xform, base_color, true)
 		return
