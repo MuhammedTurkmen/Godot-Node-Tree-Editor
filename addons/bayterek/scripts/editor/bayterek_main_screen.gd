@@ -100,16 +100,12 @@ func _build_ui() -> void:
 # ============================================================
 
 func _on_design_category_changed() -> void:
-	print("[MainScreen] design_category_changed received — ", _open_editors.size(), " open editors")
 	for path in _open_editors.keys():
 		var editor = _open_editors[path]
 		if not is_instance_valid(editor):
-			print("[MainScreen]   SKIP invalid editor for ", path)
 			continue
 		if not editor.prefabs_bar:
-			print("[MainScreen]   SKIP: editor has no prefabs_bar (", path, ")")
 			continue
-		print("[MainScreen]   refreshing prefabs_bar on ", editor.name)
 		editor.prefabs_bar.refresh_categories()
 
 # ============================================================
@@ -133,28 +129,26 @@ func open_tree(path: String) -> void:
 		tab_container.current_tab = tab_container.get_tab_idx_from_control(existing)
 		return
 
-	print("[BayterekMainScreen] open_tree: loading BayterekEditor...")
-
 	var editor_script = load("res://addons/bayterek/scripts/editor/bayterek_editor.gd")
 	if not editor_script:
-		push_error("[BayterekMainScreen] bayterek_editor.gd failed to load.")
+		push_error("Bayterek: bayterek_editor.gd failed to load.")
 		return
 
 	if not editor_script is GDScript:
-		push_error("[BayterekMainScreen] bayterek_editor.gd is not a GDScript.")
+		push_error("Bayterek: bayterek_editor.gd is not a GDScript.")
 		return
 
 	if not editor_script.can_instantiate():
-		push_error("[BayterekMainScreen] bayterek_editor.gd failed to parse.")
+		push_error("Bayterek: bayterek_editor.gd failed to parse.")
 		return
 
 	var editor: Control = editor_script.new()
 	if not editor:
-		push_error("[BayterekMainScreen] could not instantiate BayterekEditor.")
+		push_error("Bayterek: could not instantiate BayterekEditor.")
 		return
 
 	if not editor is BayterekEditor:
-		push_error("[BayterekMainScreen] instantiated object is not BayterekEditor.")
+		push_error("Bayterek: instantiated object is not BayterekEditor.")
 		return
 
 	editor.name = path.get_file().get_basename()

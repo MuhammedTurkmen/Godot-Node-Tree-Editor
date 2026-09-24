@@ -265,24 +265,6 @@ func _draw_layer(layer: BayterekLayer, base_xform: Transform2D) -> void:
 
 ## Pixel scanline path — uses `get_pixel_spans()`. Debug dump runs once.
 func _draw_shape_pixel(layer: BayterekShapeLayer, state_key: String, effective_size: Vector2, combined: Transform2D) -> void:
-	# --- DEBUG DUMP (runs once) ---
-	if not get_meta("_dump2", false):
-		set_meta("_dump2", true)
-		var s: Dictionary = layer.get_pixel_spans(effective_size)
-		var fills: Array = s.get("fill", [])
-		var borders: Array = s.get("border", [])
-		print("=== SPANS shape=", layer.shape_type,
-			" size=", effective_size,
-			" bw=", layer.border_width,
-			" border_enabled=", layer.border_enabled, " ===")
-		print("  FILL count=", fills.size())
-		for i in range(maxi(0, fills.size() - 6), fills.size()):
-			print("    fill[", i, "]=", fills[i])
-		print("  BORDER count=", borders.size())
-		for i in range(maxi(0, borders.size() - 10), borders.size()):
-			print("    border[", i, "]=", borders[i])
-	# --- END DEBUG ---
-
 	var spans: Dictionary = layer.get_pixel_spans(effective_size)
 	var fill_spans: Array = spans.get("fill", [])
 	var border_spans: Array = spans.get("border", [])

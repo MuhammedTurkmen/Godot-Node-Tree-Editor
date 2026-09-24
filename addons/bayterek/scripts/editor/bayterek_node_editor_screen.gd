@@ -111,5 +111,4 @@ func _on_design_list_collapsed_changed(collapsed: bool) -> void:
 	_main_split.queue_sort()
 
 func _on_design_category_changed() -> void:
-	print("[NodeEditor] design_category_changed relay")
 	design_category_changed.emit()

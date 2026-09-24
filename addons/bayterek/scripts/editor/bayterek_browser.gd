@@ -428,8 +428,6 @@ func _create_group() -> void:
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
 
-	print("Bayterek: Grup oluşturuldu: ", group_name)
-
 # ============================================================
 # TREE MENU
 # ============================================================
@@ -496,8 +494,6 @@ func _create_tree() -> void:
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
-
-	print("Bayterek: Tree oluşturuldu: ", tree_name)
 
 # ============================================================
 # RENAME
@@ -664,8 +660,6 @@ func _rename_group(item: TreeItem, meta: Dictionary, old_name: String, new_name:
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
 
-	print("Bayterek: Grup yeniden adlandırıldı: %s → %s" % [old_name, new_name])
-
 func _rename_tree(item: TreeItem, meta: Dictionary, old_name: String, new_name: String) -> void:
 	var old_path: String = meta["path"]
 	var group_path: String = meta.get("group_path", "")
@@ -734,8 +728,6 @@ func _rename_tree(item: TreeItem, meta: Dictionary, old_name: String, new_name: 
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
-
-	print("Bayterek: Tree yeniden adlandırıldı: %s → %s" % [old_name, new_name])
 
 func _move_uid_sidecar(old_path: String, new_path: String) -> void:
 	var old_uid_file: String = old_path + ".uid"
@@ -896,10 +888,6 @@ func _tree_drop_data(at_position: Vector2, data: Variant) -> void:
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
 
-	print("Bayterek: Tree taşındı: %s → %s (%s → %s)" % [
-		tree_res.name, target_group.name, old_path, new_path
-	])
-
 # ============================================================
 # DUPLICATE
 # ============================================================
@@ -967,8 +955,6 @@ func _duplicate_selected_group() -> void:
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh()
-
-	print("Bayterek: Group duplicated: %s" % new_name)
 
 func _duplicate_selected_tree() -> void:
 	var selected := _tree.get_selected()
@@ -1040,8 +1026,6 @@ func _duplicate_tree_into_group(
 	if saved_tree:
 		saved_tree.resource_path = new_file
 		target_group.trees.append(saved_tree)
-
-	print("Bayterek: Tree duplicated: %s" % new_name)
 
 # ============================================================
 # DELETE
@@ -1168,8 +1152,6 @@ func _do_delete_group(info: Dictionary, delete_files: bool) -> void:
 		if not group.resource_path.is_empty():
 			_delete_with_sidecar(group.resource_path)
 
-	print("Bayterek: Grup silindi: ", info["name"])
-
 func _do_delete_tree(info: Dictionary, delete_file: bool) -> void:
 	var registry: BayterekRegistry = Bayterek.get_editor_registry()
 	var group: BayterekGroup = registry.find_group_by_path(info.get("group_path", ""))
@@ -1191,8 +1173,6 @@ func _do_delete_tree(info: Dictionary, delete_file: bool) -> void:
 
 	if delete_file:
 		_delete_with_sidecar(info["path"])
-
-	print("Bayterek: Tree silindi: ", info["name"])
 
 func _delete_with_sidecar(path: String) -> void:
 	var uid_path: String = path + ".uid"
