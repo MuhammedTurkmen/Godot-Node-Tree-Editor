@@ -19,12 +19,10 @@ extends RefCounted
 static var _active: bool = false
 static var _active_kind: String = ""
 
-
 ## Opens Godot's Quick Open dialog filtered to textures.
 ## `callback` is called with the selected path, or with "" if cancelled.
 static func pick_texture(callback: Callable, kind: String = "texture") -> void:
 	pick(callback, ["Texture2D"], kind)
-
 
 ## Opens Godot's Quick Open dialog with the given asset type filter.
 static func pick(callback: Callable, types: Array, kind: String = "asset") -> void:
@@ -41,3 +39,14 @@ static func pick(callback: Callable, types: Array, kind: String = "asset") -> vo
 		callback.call(path)
 
 	EditorInterface.popup_quick_open(wrapped, types)
+
+## Called by BayterekPlugin._enter_tree() to reset stale state left over
+## from a previous editor session (e.g. a hot reload during a picker call).
+static func reset_state() -> void:
+	_active = false
+	_active_kind = ""
+
+## Called by BayterekPlugin._exit_tree() to release any leaked references.
+static func shutdown() -> void:
+	_active = false
+	_active_kind = ""

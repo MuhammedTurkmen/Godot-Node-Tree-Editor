@@ -29,6 +29,12 @@ enum PositionMode {
 @export var corner_margin: Vector2 = Vector2(20, 20)
 
 ## Offset from the node when position_mode == NEAR_NODE.
+## - X positive → to the right of the node
+## - X negative → to the left
+## - Y positive → below
+## - Y negative → above
+## - Both positive → bottom-right corner
+## - Only one axis set → aligned to that axis, centered on the other
 @export var node_offset: Vector2 = Vector2(20, 0)
 
 ## Reference to the tree view (used for FIXED_CORNER positioning and clamping)
@@ -230,43 +236,60 @@ func _update_position(node: BayterekNodeButton) -> void:
 		PositionMode.FIXED_CORNER:
 			_position_fixed_corner()
 
+## Places the tooltip near the node, respecting the configured offset.
+##
+## Rules (in order of precedence):
+##   1. If both axes of `node_offset` are non-zero → corner placement.
+##   2. If only one axis is non-zero → axis-aligned placement, centered on
+##      the other axis (relative to the node's center).
+##   3. If both axes are zero → default to the right of the node, vertically
+##      centered.
+##
+## After placement, the tooltip is clamped to stay inside the viewport.
 func _position_near_node(node: BayterekNodeButton) -> void:
 	if not node:
 		return
 
 	var node_global: Vector2 = node.get_global_position()
 	var node_size: Vector2 = node.size
-	var node_center: Vector2 = node_global + node_size * 0.5
 	var tooltip_size: Vector2 = size
 
-	var target_pos: Vector2 = Vector2.ZERO
+	var has_h: bool = absf(node_offset.x) > 0.01
+	var has_v: bool = absf(node_offset.y) > 0.01
 
-	var place_horizontal: bool = absf(node_offset.x) > 0.01
-	var place_vertical: bool = absf(node_offset.y) > 0.01
+	var target_pos: Vector2
 
-	if place_horizontal and not place_vertical:
-		target_pos.y = node_center.y - tooltip_size.y * 0.5
+	if has_h and has_v:
+		# Corner placement: choose side based on sign of offset.
 		if node_offset.x > 0:
 			target_pos.x = node_global.x + node_size.x + node_offset.x
 		else:
 			target_pos.x = node_global.x + node_offset.x - tooltip_size.x
 
-	elif place_vertical and not place_horizontal:
-		target_pos.x = node_center.x - tooltip_size.x * 0.5
 		if node_offset.y > 0:
 			target_pos.y = node_global.y + node_size.y + node_offset.y
 		else:
 			target_pos.y = node_global.y + node_offset.y - tooltip_size.y
 
-	elif place_horizontal and place_vertical:
-		target_pos = node_global + node_offset
-		if node_offset.x < 0:
-			target_pos.x = node_global.x + node_offset.x - tooltip_size.x + node_size.x
-		if node_offset.y < 0:
-			target_pos.y = node_global.y + node_offset.y - tooltip_size.y + node_size.y
+	elif has_h and not has_v:
+		# Horizontal-only: align to node vertical center.
+		target_pos.y = node_global.y + node_size.y * 0.5 - tooltip_size.y * 0.5
+		if node_offset.x > 0:
+			target_pos.x = node_global.x + node_size.x + node_offset.x
+		else:
+			target_pos.x = node_global.x + node_offset.x - tooltip_size.x
+
+	elif has_v and not has_h:
+		# Vertical-only: align to node horizontal center.
+		target_pos.x = node_global.x + node_size.x * 0.5 - tooltip_size.x * 0.5
+		if node_offset.y > 0:
+			target_pos.y = node_global.y + node_size.y + node_offset.y
+		else:
+			target_pos.y = node_global.y + node_offset.y - tooltip_size.y
 
 	else:
-		target_pos.y = node_center.y - tooltip_size.y * 0.5
+		# No offset: default to the right of the node, vertically centered.
+		target_pos.y = node_global.y + node_size.y * 0.5 - tooltip_size.y * 0.5
 		target_pos.x = node_global.x + node_size.x + 20
 
 	target_pos = _clamp_to_viewport(target_pos, tooltip_size)

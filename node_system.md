@@ -1,0 +1,1 @@
+- design boyutu en büyük boyulu katmana göre olacak

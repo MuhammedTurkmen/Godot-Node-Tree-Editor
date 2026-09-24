@@ -13,6 +13,13 @@ signal node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 
 var _nodes: Dictionary = {}
 
+# --- Batch refresh queue ---
+# When many nodes need a state refresh at once (e.g. allocation change),
+# coalesce the redraws into a single deferred pass instead of calling
+# `refresh_visuals()` on each node synchronously.
+var _refresh_queue: Dictionary = {}
+var _refresh_scheduled: bool = false
+
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
 
@@ -233,37 +240,37 @@ func update_position(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
 func on_node_allocated(node: BayterekNodeButton) -> void:
 	if not node or _is_decoration(node):
 		return
-	_refresh_node_state(node)
+	_queue_refresh(node)
 	_refresh_neighbors(node)
 
 func on_node_deallocated(node: BayterekNodeButton) -> void:
 	if not node or _is_decoration(node):
 		return
-	_refresh_node_state(node)
+	_queue_refresh(node)
 	_refresh_neighbors(node)
 
 func on_node_preallocated(node: BayterekNodeButton) -> void:
 	if not node or _is_decoration(node):
 		return
-	_refresh_node_state(node)
+	_queue_refresh(node)
 	_refresh_neighbors(node)
 
 func on_node_unpreallocated(node: BayterekNodeButton) -> void:
 	if not node or _is_decoration(node):
 		return
-	_refresh_node_state(node)
+	_queue_refresh(node)
 	_refresh_neighbors(node)
 
 func on_node_refund_added(node: BayterekNodeButton) -> void:
 	if not node or _is_decoration(node):
 		return
-	_refresh_node_state(node)
+	_queue_refresh(node)
 	_refresh_neighbors(node)
 
 func on_node_refund_removed(node: BayterekNodeButton) -> void:
 	if not node or _is_decoration(node):
 		return
-	_refresh_node_state(node)
+	_queue_refresh(node)
 	_refresh_neighbors(node)
 
 func _is_decoration(node: BayterekNodeButton) -> bool:
@@ -274,7 +281,25 @@ func _refresh_neighbors(node: BayterekNodeButton) -> void:
 	for neighbor_id in neighbors:
 		var neighbor: BayterekNodeButton = get_node(neighbor_id)
 		if neighbor:
-			_refresh_node_state(neighbor)
+			_queue_refresh(neighbor)
+
+## Adds a node to the refresh queue and schedules a single deferred flush.
+## This coalesces multiple refresh requests (e.g. an allocation cascade)
+## into a single frame's worth of work.
+func _queue_refresh(node: BayterekNodeButton) -> void:
+	if not is_instance_valid(node):
+		return
+	_refresh_queue[node] = true
+	if not _refresh_scheduled:
+		_refresh_scheduled = true
+		call_deferred("_flush_refresh_queue")
+
+func _flush_refresh_queue() -> void:
+	_refresh_scheduled = false
+	for node in _refresh_queue.keys():
+		if is_instance_valid(node):
+			_refresh_node_state(node)
+	_refresh_queue.clear()
 
 func _refresh_node_state(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data:
@@ -323,7 +348,7 @@ func refresh_allocatable_flags(active_ids: Array) -> void:
 		var now: bool = _compute_allocatable(node, active_ids)
 		node.is_allocatable = now
 		if was != now:
-			node.refresh_visuals()
+			_queue_refresh(node)
 
 func _compute_allocatable(node: BayterekNodeButton, active_ids: Array) -> bool:
 	if not _tree_data or not _tree_data.allocation:

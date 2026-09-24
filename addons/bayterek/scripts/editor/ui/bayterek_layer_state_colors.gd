@@ -66,6 +66,16 @@ func _build_context_menu() -> void:
 	add_child(_context_menu)
 
 # ============================================================
+# STATIC RESET (called by BayterekPlugin)
+# ============================================================
+
+## Clears the static copy/paste clipboard. Called on plugin enter/exit
+## so state doesn't leak between editor sessions.
+static func reset_copy_state() -> void:
+	_has_copied_color = false
+	_copied_color = Color.WHITE
+
+# ============================================================
 # PUBLIC
 # ============================================================
 
@@ -96,9 +106,6 @@ func bind_export(design: BayterekNodeDesign, layer_id: String, sub_key: String, 
 		var fp_enabled: String = "layers.%s.%s.%s.enabled" % [layer_id, sub_key, state]
 		var fp_color: String = "layers.%s.%s.%s.color" % [layer_id, sub_key, state]
 
-		# Enable marker on the row — but we want TWO markers (one per field).
-		# Simplest: attach export for the "enabled" field to the row, and
-		# "color" to the picker.
 		BayterekExportHelper.make_exportable(row, fp_enabled, design, on_changed)
 
 		var picker: ColorPickerButton = _rows[state].get("picker", null)

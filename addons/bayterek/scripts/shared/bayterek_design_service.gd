@@ -121,14 +121,14 @@ static func create_design(base_name: String = "New Design", category: String = "
 
 	design.add_layer(shape)
 
-	var err: Error = ResourceSaver.save(design, file_path)
+	var err: Error = Bayterek.safe_save(design, file_path)
 	if err != OK:
-		push_error("Bayterek: Could not save design (%d): %s" % [err, file_path])
+		BayterekLogger.error("Could not save design (%d): %s" % [err, file_path], "designs")
 		return null
 
 	var saved: BayterekNodeDesign = ResourceLoader.load(file_path, "BayterekNodeDesign", ResourceLoader.CACHE_MODE_IGNORE)
 	if not saved:
-		push_error("Bayterek: Could not reload design after save: %s" % file_path)
+		BayterekLogger.error("Could not reload design after save: %s" % file_path, "designs")
 		return null
 
 	saved.resource_path = file_path
@@ -156,9 +156,9 @@ static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 	copy.id = snake
 	copy.name = unique_name
 
-	var err: Error = ResourceSaver.save(copy, file_path)
+	var err: Error = Bayterek.safe_save(copy, file_path)
 	if err != OK:
-		push_error("Bayterek: Could not save duplicated design (%d): %s" % [err, file_path])
+		BayterekLogger.error("Could not save duplicated design (%d): %s" % [err, file_path], "designs")
 		return null
 
 	var saved: BayterekNodeDesign = ResourceLoader.load(file_path, "BayterekNodeDesign", ResourceLoader.CACHE_MODE_IGNORE)
@@ -183,10 +183,10 @@ static func save_design(design: BayterekNodeDesign) -> Error:
 	if not design:
 		return FAILED
 	if design.resource_path.is_empty():
-		push_error("Bayterek: Cannot save design with empty resource_path.")
+		BayterekLogger.error("Cannot save design with empty resource_path.", "designs")
 		return FAILED
 
-	return ResourceSaver.save(design, design.resource_path)
+	return Bayterek.safe_save(design, design.resource_path)
 
 ## Renames a design — only the visible name changes.
 ## The `id` (and therefore the file on disk) stays the same, so
@@ -205,7 +205,7 @@ static func rename_design(design: BayterekNodeDesign, new_name: String) -> bool:
 
 	var err: Error = save_design(design)
 	if err != OK:
-		push_error("Bayterek: Could not save renamed design (%d)" % err)
+		BayterekLogger.error("Could not save renamed design (%d)" % err, "designs")
 		return false
 
 	Bayterek.save_designs_registry()
@@ -223,12 +223,8 @@ static func delete_design(design: BayterekNodeDesign) -> bool:
 	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
 	reg.remove_design(design)
 
-	if not path.is_empty() and FileAccess.file_exists(path):
-		DirAccess.remove_absolute(path)
-
-	var uid_path: String = path + ".uid"
-	if FileAccess.file_exists(uid_path):
-		DirAccess.remove_absolute(uid_path)
+	if not path.is_empty():
+		Bayterek.delete_resource_with_sidecar(path)
 
 	Bayterek.save_designs_registry()
 	EditorInterface.get_resource_filesystem().scan()

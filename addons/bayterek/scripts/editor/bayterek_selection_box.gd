@@ -46,6 +46,8 @@ func handle_input(event: InputEvent) -> void:
 # ============================================================
 
 func _begin(screen_pos: Vector2) -> void:
+	if not _view:
+		return
 	selecting = true
 	_start_tree = _view.screen_to_tree(screen_pos)
 	_current_tree = _start_tree
@@ -55,6 +57,11 @@ func _begin(screen_pos: Vector2) -> void:
 	visible = true
 
 func _end() -> void:
+	if not _view:
+		selecting = false
+		visible = false
+		return
+
 	selecting = false
 	visible = false
 
@@ -65,6 +72,9 @@ func _end() -> void:
 	selected.emit(rect)
 
 func _update(screen_pos: Vector2) -> void:
+	if not _view:
+		return
+
 	_current_tree = _view.screen_to_tree(screen_pos)
 
 	# Görsel geri bildirim

@@ -8,6 +8,10 @@ signal frame_drag_started(group_id: String)
 signal frame_dragged(group_id: String, delta: Vector2)
 signal frame_drag_ended(group_id: String)
 
+## When true, group frames become draggable at runtime as well. Editor
+## frames are always draggable regardless of this flag.
+@export var runtime_draggable: bool = false
+
 var _frames: Dictionary = {}   # group_id -> BayterekGroupFrame
 
 var _frame_container: Control
@@ -142,9 +146,11 @@ func _collect_members(group_id: String) -> Array:
 # ============================================================
 
 ## Returns the topmost group frame whose TITLE BAR contains `mc_local_pos`.
-## Editor-only — at runtime frames aren't interactive.
+##
+## Editor: always enabled.
+## Runtime: only when `runtime_draggable` is true.
 func hit_test(mc_local_pos: Vector2) -> BayterekGroupFrame:
-	if not Engine.is_editor_hint():
+	if not Engine.is_editor_hint() and not runtime_draggable:
 		return null
 
 	var keys: Array = _frames.keys()

@@ -10,6 +10,11 @@ const DEFAULT_ROOT_PATH := "res://data/bayterek"
 const REGISTRY_FILENAME_SETTING := "addons/bayterek/registry_filename"
 const DEFAULT_REGISTRY_FILENAME := "registry.tres"
 
+## Enables verbose (debug-level) logging across the plugin.
+## Controlled via Project Settings → Addons → Bayterek → Verbose.
+const VERBOSE_SETTING := "addons/bayterek/verbose"
+const DEFAULT_VERBOSE := false
+
 # --- Design system ---
 const DESIGNS_DIR_NAME := "designs"
 const DESIGNS_REGISTRY_FILENAME := "designs_registry.tres"
@@ -166,7 +171,7 @@ static func save_editor_registry() -> Error:
 	if not _editor_registry:
 		return FAILED
 	_purge_dead_references()
-	return ResourceSaver.save(_editor_registry, get_registry_path())
+	return safe_save(_editor_registry, get_registry_path())
 
 static func _purge_dead_references() -> void:
 	if not _editor_registry:
@@ -200,7 +205,7 @@ static func _purge_dead_references() -> void:
 	_editor_registry.groups = valid_groups
 
 	if dropped_groups > 0 or dropped_trees > 0:
-		print("Bayterek: pre-save cleanup → %d group(s), %d tree(s) dropped." % [dropped_groups, dropped_trees])
+		BayterekLogger.info("pre-save cleanup → %d group(s), %d tree(s) dropped." % [dropped_groups, dropped_trees], "registry")
 
 static func _load_editor_registry() -> void:
 	var path: String = get_registry_path()
@@ -211,7 +216,7 @@ static func _load_editor_registry() -> void:
 	var loaded = ResourceLoader.load(path, "BayterekRegistry", ResourceLoader.CACHE_MODE_IGNORE)
 
 	if not loaded or not loaded is BayterekRegistry:
-		push_warning("Bayterek: Registry corrupt, rebuilding from disk...")
+		BayterekLogger.warn("Registry corrupt, rebuilding from disk...", "registry")
 		_editor_registry = _rebuild_registry_from_disk()
 		ResourceSaver.save(_editor_registry, path)
 		return
@@ -219,7 +224,7 @@ static func _load_editor_registry() -> void:
 	_editor_registry = loaded
 
 	if _editor_registry.groups.is_empty() and _has_group_files_on_disk():
-		push_warning("Bayterek: Registry empty but groups exist on disk, rebuilding...")
+		BayterekLogger.warn("Registry empty but groups exist on disk, rebuilding...", "registry")
 		_editor_registry = _rebuild_registry_from_disk()
 		ResourceSaver.save(_editor_registry, path)
 		return
@@ -238,7 +243,7 @@ static func _sanitize_editor_registry() -> void:
 			dirty = true
 			continue
 		if group.resource_path.is_empty() or not FileAccess.file_exists(group.resource_path):
-			push_warning("Bayterek: Dead group reference removed: %s" % group.resource_path)
+			BayterekLogger.warn("Dead group reference removed: %s" % group.resource_path, "registry")
 			dirty = true
 			continue
 
@@ -248,7 +253,7 @@ static func _sanitize_editor_registry() -> void:
 				dirty = true
 				continue
 			if tree.resource_path.is_empty() or not FileAccess.file_exists(tree.resource_path):
-				push_warning("Bayterek: Dead tree reference removed: %s" % tree.resource_path)
+				BayterekLogger.warn("Dead tree reference removed: %s" % tree.resource_path, "registry")
 				dirty = true
 				continue
 			clean_trees.append(tree)
@@ -260,7 +265,7 @@ static func _sanitize_editor_registry() -> void:
 
 	if dirty:
 		ResourceSaver.save(_editor_registry, get_registry_path())
-		print("Bayterek: Registry sanitized and saved.")
+		BayterekLogger.info("Registry sanitized and saved.", "registry")
 
 static func _create_editor_registry() -> void:
 	DirAccess.make_dir_recursive_absolute(get_root_path())
@@ -352,7 +357,7 @@ static func clear_designs_registry() -> void:
 static func save_designs_registry() -> Error:
 	if not _designs_registry:
 		return FAILED
-	return ResourceSaver.save(_designs_registry, get_designs_registry_path())
+	return safe_save(_designs_registry, get_designs_registry_path())
 
 static func _load_designs_registry() -> void:
 	var path: String = get_designs_registry_path()
@@ -363,7 +368,7 @@ static func _load_designs_registry() -> void:
 	var loaded = ResourceLoader.load(path, "BayterekDesignRegistry", ResourceLoader.CACHE_MODE_IGNORE)
 
 	if not loaded or not loaded is BayterekDesignRegistry:
-		push_warning("Bayterek: Design registry corrupt, rebuilding from disk...")
+		BayterekLogger.warn("Design registry corrupt, rebuilding from disk...", "designs")
 		_designs_registry = _rebuild_designs_registry_from_disk()
 		ResourceSaver.save(_designs_registry, path)
 		return
@@ -383,7 +388,7 @@ static func _sanitize_designs_registry() -> void:
 			dirty = true
 			continue
 		if design.resource_path.is_empty() or not FileAccess.file_exists(design.resource_path):
-			push_warning("Bayterek: Dead design reference removed: %s" % design.resource_path)
+			BayterekLogger.warn("Dead design reference removed: %s" % design.resource_path, "designs")
 			dirty = true
 			continue
 		clean.append(design)
@@ -392,7 +397,7 @@ static func _sanitize_designs_registry() -> void:
 
 	if dirty:
 		ResourceSaver.save(_designs_registry, get_designs_registry_path())
-		print("Bayterek: Design registry sanitized and saved.")
+		BayterekLogger.info("Design registry sanitized and saved.", "designs")
 
 static func _create_designs_registry() -> void:
 	DirAccess.make_dir_recursive_absolute(get_designs_dir())
@@ -437,6 +442,99 @@ static func get_designs_dir() -> String:
 
 static func get_designs_registry_path() -> String:
 	return "%s/%s" % [get_designs_dir(), DESIGNS_REGISTRY_FILENAME]
+
+# ============================================================
+# SAFE SAVE HELPERS
+# ============================================================
+
+## Saves a resource atomically: writes to a temp file first, then moves
+## it over the target. Prevents partial writes from corrupting existing
+## files if the editor crashes mid-save.
+##
+## Returns OK on success, or an error code.
+static func safe_save(resource: Resource, path: String) -> Error:
+	if not resource:
+		BayterekLogger.error("safe_save: resource is null", "save")
+		return ERR_INVALID_PARAMETER
+	if path.is_empty():
+		BayterekLogger.error("safe_save: path is empty", "save")
+		return ERR_INVALID_PARAMETER
+
+	var tmp_path: String = path + ".tmp"
+
+	# Write to temp file
+	var err: Error = ResourceSaver.save(resource, tmp_path)
+	if err != OK:
+		BayterekLogger.error("safe_save: temp save failed (%d) for %s" % [err, tmp_path], "save")
+		return err
+
+	# Make sure target dir exists
+	var dir: String = path.get_base_dir()
+	if not DirAccess.dir_exists_absolute(dir):
+		DirAccess.make_dir_recursive_absolute(dir)
+
+	# If target exists, remove it first (rename is atomic on most systems
+	# but Godot's DirAccess.rename_absolute can fail if target exists)
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
+
+	var move_err: Error = DirAccess.rename_absolute(tmp_path, path)
+	if move_err != OK:
+		BayterekLogger.error("safe_save: rename failed (%d) %s → %s" % [move_err, tmp_path, path], "save")
+		# Cleanup temp
+		if FileAccess.file_exists(tmp_path):
+			DirAccess.remove_absolute(tmp_path)
+		return move_err
+
+	return OK
+
+
+## Copies a .uid sidecar from `src_path` to `dst_path`, if it exists.
+## Also removes any stale .uid at dst first.
+static func copy_uid_sidecar(src_path: String, dst_path: String) -> void:
+	var src_uid: String = src_path + ".uid"
+	var dst_uid: String = dst_path + ".uid"
+
+	if not FileAccess.file_exists(src_uid):
+		return
+
+	if FileAccess.file_exists(dst_uid):
+		DirAccess.remove_absolute(dst_uid)
+
+	var src_file := FileAccess.open(src_uid, FileAccess.READ)
+	if not src_file:
+		return
+	var content: String = src_file.get_as_text()
+	src_file.close()
+
+	var dst_file := FileAccess.open(dst_uid, FileAccess.WRITE)
+	if not dst_file:
+		return
+	dst_file.store_string(content)
+	dst_file.close()
+
+
+## Moves a .uid sidecar (alias for rename). Used when a file moves.
+static func move_uid_sidecar(old_path: String, new_path: String) -> void:
+	var old_uid: String = old_path + ".uid"
+	var new_uid: String = new_path + ".uid"
+
+	if not FileAccess.file_exists(old_uid):
+		return
+
+	if FileAccess.file_exists(new_uid):
+		DirAccess.remove_absolute(new_uid)
+
+	DirAccess.rename_absolute(old_uid, new_uid)
+
+
+## Deletes a resource file plus its .uid sidecar.
+static func delete_resource_with_sidecar(path: String) -> void:
+	var uid_path: String = path + ".uid"
+	if FileAccess.file_exists(uid_path):
+		DirAccess.remove_absolute(uid_path)
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
 
 # ============================================================
 # HELPERS

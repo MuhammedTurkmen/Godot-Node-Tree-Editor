@@ -1,12 +1,108 @@
 @tool
-extends RefCounted
-## Phase 1 smoke test.
-## Validates layer creation, state resolution, config helpers,
-## and ResourceSaver / ResourceLoader round-trip.
+extends EditorScript
+## Master test runner + Phase 1 layer tests.
+##
+## Call `run_all()` to execute every Bayterek test suite and see a
+## summary table at the end.
+##
+## Call `run()` for the legacy behaviour (Phase 1 tests only).
 
 const SAVE_PATH := "user://bayterek_phase1_test.tres"
 
+# ============================================================
+# EDITOR SCRIPT ENTRY POINT
+# ============================================================
+
+## Called by the editor when the user runs this script (Ctrl+Shift+X).
+func _run() -> void:
+	run_all()
+
+# ============================================================
+# MASTER RUNNER
+# ============================================================
+
+static func run_all() -> void:
+	print("")
+	print("╔══════════════════════════════════════════════════╗")
+	print("║   Bayterek Test Suite — Full Run                 ║")
+	print("╚══════════════════════════════════════════════════╝")
+	print("")
+
+	var results: Dictionary = {}
+
+	results["Phase 1 (layers)"] = _run_phase1()
+	results["Allocation"] = _run_allocation()
+	results["Serializer"] = _run_serializer()
+	results["Prefab"] = _run_prefab()
+	results["Copy/Paste"] = _run_copy_paste()
+
+	print("")
+	print("╔══════════════════════════════════════════════════╗")
+	print("║   Summary                                        ║")
+	print("╚══════════════════════════════════════════════════╝")
+
+	var all_ok: bool = true
+	for name in results.keys():
+		var ok: bool = results[name]
+		var marker: String = "✓ PASS" if ok else "✗ FAIL"
+		print("  %s  %s" % [marker, name])
+		if not ok:
+			all_ok = false
+
+	if all_ok:
+		print("")
+		print("🎉  ALL TESTS PASSED  🎉")
+	else:
+		push_error("Some tests failed — see above.")
+
+# ============================================================
+# SUB RUNNERS
+# ============================================================
+
+static func _run_phase1() -> bool:
+	return _run_phase1_internal()
+
+static func _run_allocation() -> bool:
+	var Test = load("res://addons/bayterek/scripts/resources/layers/test_allocation.gd")
+	if not Test:
+		push_error("Could not load test_allocation.gd")
+		return false
+	return Test.run() as bool
+
+static func _run_serializer() -> bool:
+	var Test = load("res://addons/bayterek/scripts/runtime/test_serializer.gd")
+	if not Test:
+		push_error("Could not load test_serializer.gd")
+		return false
+	return Test.run() as bool
+
+static func _run_prefab() -> bool:
+	var Test = load("res://addons/bayterek/scripts/shared/test_prefab.gd")
+	if not Test:
+		push_error("Could not load test_prefab.gd")
+		return false
+	return Test.run() as bool
+
+static func _run_copy_paste() -> bool:
+	var Test = load("res://addons/bayterek/scripts/editor/test_copy_paste.gd")
+	if not Test:
+		push_error("Could not load test_copy_paste.gd")
+		return false
+	return Test.run() as bool
+
+# ============================================================
+# LEGACY ENTRY POINT
+# ============================================================
+
+## Old entry point — runs the master suite.
 static func run() -> void:
+	run_all()
+
+# ============================================================
+# PHASE 1 (layer tests) — returns overall pass/fail
+# ============================================================
+
+static func _run_phase1_internal() -> bool:
 	print("=== Bayterek Phase 1 Test ===")
 	var ok: bool = true
 
@@ -21,6 +117,8 @@ static func run() -> void:
 		print("=== ALL TESTS PASSED ===")
 	else:
 		push_error("=== SOME TESTS FAILED ===")
+
+	return ok
 
 # ============================================================
 # TRANSFORM
@@ -71,33 +169,31 @@ static func _test_shape_layer() -> bool:
 		"allocateable": false, "not_allocateable": false,
 	}
 
-	# Only "normal" is configured -> always returns normal.
 	var key: String = layer.get_visual_state(node_states)
 	assert(key == "normal")
 	var c: Color = layer.get_fill_color_for_state(key)
 	assert(c.a > 0.0)
 
-	# Add a hover config; node hovered -> should pick hover.
 	layer.set_fill_config("hover", true, Color.RED)
 	node_states["hover"] = true
 	key = layer.get_visual_state(node_states)
 	assert(key == "hover")
 	assert(layer.get_fill_color_for_state(key) == Color.RED)
 
-	# Vertices: circle should yield 32 points.
+	# Circle polygon: segment count comes from Bayterek.CIRCLE_SEGMENTS.
 	var verts: PackedVector2Array = layer.get_polygon_vertices(Vector2(100, 100))
-	assert(verts.size() == 32)
+	assert(verts.size() == Bayterek.CIRCLE_SEGMENTS)
 
-	# Square: 4 verts.
+	# Square: exactly 4 corners (no corner radius by default).
 	layer.shape_type = BayterekShapeLayer.ShapeType.SQUARE
+	layer.corner_radius = 0.0
 	verts = layer.get_polygon_vertices(Vector2(100, 100))
 	assert(verts.size() == 4)
 
-	# Duplicate.
+	# Duplicate deep-copies fill_configs.
 	var copy = layer.duplicate_layer()
 	assert(copy is BayterekShapeLayer)
 	assert(copy.fill_configs.has("hover"))
-	# deep copy: mutating one doesn't touch the other.
 	copy.fill_configs["hover"]["color"] = Color.BLUE
 	assert(layer.fill_configs["hover"]["color"] == Color.RED)
 
@@ -114,10 +210,8 @@ static func _test_texture_layer() -> bool:
 	assert(layer.icon_enabled)
 	assert(layer.icon_configs.has("normal"))
 
-	# No texture -> should not draw.
 	assert(not layer.should_draw_icon("normal"))
 
-	# Assign a 1x1 white texture.
 	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
 	img.fill(Color.WHITE)
 	var tex := ImageTexture.create_from_image(img)
@@ -125,12 +219,10 @@ static func _test_texture_layer() -> bool:
 	assert(layer.should_draw_icon("normal"))
 	assert(layer.get_icon_for_state("normal") == tex)
 
-	# Tint.
 	layer.tint_enabled = true
 	layer.set_tint_config("normal", true, Color.RED)
 	assert(layer.get_tint_for_state("normal") == Color.RED)
 
-	# Duplicate.
 	var copy = layer.duplicate_layer()
 	assert(copy is BayterekTextureLayer)
 	assert(copy.icon_configs["normal"]["texture"] == tex)
@@ -149,7 +241,6 @@ static func _test_node_layers() -> bool:
 	assert(node.scale == Vector2.ONE)
 	assert(node.get_layer_count() == 0)
 
-	# Add up to 6 layers.
 	for i in 6:
 		var s := BayterekShapeLayer.new()
 		s.layer_name = "L%d" % i
@@ -157,20 +248,16 @@ static func _test_node_layers() -> bool:
 	assert(node.get_layer_count() == 6)
 	assert(not node.can_add_layer())
 
-	# 7th should fail.
 	var extra := BayterekShapeLayer.new()
 	assert(not node.add_layer(extra))
 
-	# Remove.
 	var removed = node.remove_layer(0)
 	assert(removed != null)
 	assert(node.get_layer_count() == 5)
 
-	# Move.
 	assert(node.move_layer(0, 4))
 	assert(node.get_layer(4).layer_name == "L1")
 
-	# Active state resolution.
 	var flags := {
 		"is_hovered": true,
 		"allocated": false,
@@ -203,6 +290,9 @@ static func _test_node_layers() -> bool:
 # ============================================================
 # PREFAB LAYERS
 # ============================================================
+# NOTE: BayterekPrefab does NOT emit `layers_changed` — that signal
+# lives on BayterekNodeDesign. This test verifies the prefab's
+# attribute side effects instead.
 
 static func _test_prefab_layers() -> bool:
 	print("--- Prefab Layers ---")
@@ -210,26 +300,26 @@ static func _test_prefab_layers() -> bool:
 	prefab.node_name = "Test Prefab"
 
 	var received: Array = []
-	var handler := func(_p: BayterekPrefab, change_type: String) -> void:
-		received.append(change_type)
-	prefab.layers_changed.connect(handler)
+	var handler := func(_p: BayterekPrefab, attribute_id: String, removed: bool) -> void:
+		received.append({"id": attribute_id, "removed": removed})
+	prefab.attribute_changed.connect(handler)
 
-	var s1 := BayterekShapeLayer.new()
-	prefab.add_layer(s1)
-	assert(received.back() == "add")
+	prefab.set_attribute("strength", [10, 20])
+	assert(received.size() == 1)
+	assert(received.back()["id"] == "strength")
+	assert(received.back()["removed"] == false)
 
-	prefab.add_layer(BayterekTextureLayer.new())
-	assert(received.back() == "add")
+	prefab.set_attribute("agility", [5, 10])
+	assert(received.size() == 2)
 
-	prefab.move_layer(0, 1)
-	assert(received.back() == "reorder")
+	prefab.remove_attribute("strength")
+	assert(received.size() == 3)
+	assert(received.back()["removed"] == true)
+	assert(not prefab.attributes.has("strength"))
+	assert(prefab.attributes.has("agility"))
 
-	prefab.remove_layer(0)
-	assert(received.back() == "remove")
-
-	prefab.copy_layers_from([s1, BayterekTextureLayer.new()])
-	assert(received.back() == "reset")
-	assert(prefab.get_layer_count() == 2)
+	prefab.attributes["agility"] = [7, 14]
+	assert(prefab.attributes["agility"] == [7, 14])
 
 	print("  prefab layers OK")
 	return true

@@ -57,7 +57,7 @@ func init() -> void:
 	_build_ui()
 	_connect_signals()
 	_refresh()
-	print("Bayterek: Browser hazır.")
+	BayterekLogger.info("Browser ready.", "browser")
 
 func _build_ui() -> void:
 	if _tree:
@@ -406,16 +406,16 @@ func _create_group() -> void:
 
 	var mk_err: Error = DirAccess.make_dir_recursive_absolute(group_dir)
 	if mk_err != OK:
-		push_error("Bayterek: Grup klasörü oluşturulamadı (%d)" % mk_err)
+		BayterekLogger.error("Grup klasörü oluşturulamadı (%d)" % mk_err, "browser")
 		return
 
 	var group := BayterekGroup.new()
 	group.name = group_name
 	group.trees = []
 
-	var save_err: Error = ResourceSaver.save(group, group_file)
+	var save_err: Error = Bayterek.safe_save(group, group_file)
 	if save_err != OK:
-		push_error("Bayterek: Grup kaydedilemedi (%d)" % save_err)
+		BayterekLogger.error("Grup kaydedilemedi (%d)" % save_err, "browser")
 		return
 
 	var saved: BayterekGroup = ResourceLoader.load(group_file, "BayterekGroup", ResourceLoader.CACHE_MODE_IGNORE) as BayterekGroup
@@ -423,7 +423,7 @@ func _create_group() -> void:
 		saved.resource_path = group_file
 		registry.groups.append(saved)
 
-	ResourceSaver.save(registry, Bayterek.get_registry_path())
+	Bayterek.save_editor_registry()
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
@@ -455,7 +455,7 @@ func _create_tree() -> void:
 	var registry: BayterekRegistry = Bayterek.get_editor_registry()
 	var group: BayterekGroup = registry.find_group_by_path(group_path)
 	if not group:
-		push_error("Bayterek: Grup bulunamadı: %s" % group_path)
+		BayterekLogger.error("Grup bulunamadı: %s" % group_path, "browser")
 		return
 
 	var base_dir: String = group_path.get_base_dir()
@@ -476,9 +476,9 @@ func _create_tree() -> void:
 	tree.name = tree_name
 	tree.tree_state = BayterekTreeState.new()
 
-	var save_err: Error = ResourceSaver.save(tree, tree_file)
+	var save_err: Error = Bayterek.safe_save(tree, tree_file)
 	if save_err != OK:
-		push_error("Bayterek: Tree kaydedilemedi (%d)" % save_err)
+		BayterekLogger.error("Tree kaydedilemedi (%d)" % save_err, "browser")
 		return
 
 	var saved: BayterekTree = ResourceLoader.load(tree_file, "BayterekTree", ResourceLoader.CACHE_MODE_IGNORE) as BayterekTree
@@ -486,11 +486,11 @@ func _create_tree() -> void:
 		saved.resource_path = tree_file
 		group.trees.append(saved)
 
-	var group_save_err: Error = ResourceSaver.save(group, group.resource_path)
+	var group_save_err: Error = Bayterek.safe_save(group, group.resource_path)
 	if group_save_err != OK:
-		push_error("Bayterek: Grup güncellenemedi (%d)" % group_save_err)
+		BayterekLogger.error("Grup güncellenemedi (%d)" % group_save_err, "browser")
 
-	ResourceSaver.save(registry, Bayterek.get_registry_path())
+	Bayterek.save_editor_registry()
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
@@ -592,14 +592,14 @@ func _rename_group(item: TreeItem, meta: Dictionary, old_name: String, new_name:
 		if g == old_group:
 			continue
 		if g.name == new_name:
-			push_warning("Bayterek: Grup zaten var: %s" % new_name)
+			BayterekLogger.warn("Grup zaten var: %s" % new_name, "browser")
 			_refresh_ui_only()
 			return
 
 	if main_screen:
 		for t: BayterekTree in old_group.trees:
 			if main_screen.has_open_tree(t.resource_path):
-				push_warning("Bayterek: Açık tree'ler varken grup ismi değiştirilemez: %s" % t.name)
+				BayterekLogger.warn("Açık tree'ler varken grup ismi değiştirilemez: %s" % t.name, "browser")
 				_refresh_ui_only()
 				return
 
@@ -609,7 +609,7 @@ func _rename_group(item: TreeItem, meta: Dictionary, old_name: String, new_name:
 	var new_file: String = "%s/%s.tres" % [new_dir, new_snake]
 
 	if DirAccess.dir_exists_absolute(new_dir) or FileAccess.file_exists(new_file):
-		push_warning("Bayterek: Hedef klasör/dosya zaten var: %s" % new_dir)
+		BayterekLogger.warn("Hedef klasör/dosya zaten var: %s" % new_dir, "browser")
 		_refresh_ui_only()
 		return
 
@@ -617,7 +617,7 @@ func _rename_group(item: TreeItem, meta: Dictionary, old_name: String, new_name:
 
 	var rename_dir_err: Error = DirAccess.rename_absolute(old_dir, new_dir)
 	if rename_dir_err != OK:
-		push_error("Bayterek: Grup klasörü taşınamadı (%d)" % rename_dir_err)
+		BayterekLogger.error("Grup klasörü taşınamadı (%d)" % rename_dir_err, "browser")
 		_refresh_ui_only()
 		return
 
@@ -628,13 +628,13 @@ func _rename_group(item: TreeItem, meta: Dictionary, old_name: String, new_name:
 	if old_file_name != new_file_name:
 		var inner_rename_err: Error = DirAccess.rename_absolute(moved_file_path, new_file)
 		if inner_rename_err != OK:
-			push_error("Bayterek: Grup dosyası yeniden adlandırılamadı (%d)" % inner_rename_err)
+			BayterekLogger.error("Grup dosyası yeniden adlandırılamadı (%d)" % inner_rename_err, "browser")
 			DirAccess.rename_absolute(new_dir, old_dir)
 			_refresh_ui_only()
 			return
 		moved_file_path = new_file
 
-	_move_uid_sidecar(old_path, moved_file_path)
+	Bayterek.move_uid_sidecar(old_path, moved_file_path)
 
 	for i in range(old_group.trees.size()):
 		var t: BayterekTree = old_group.trees[i]
@@ -644,18 +644,18 @@ func _rename_group(item: TreeItem, meta: Dictionary, old_name: String, new_name:
 		var tree_file_name: String = old_tree_path.get_file()
 		var new_tree_path: String = "%s/%s" % [new_dir, tree_file_name]
 		t.resource_path = new_tree_path
-		_move_uid_sidecar(old_tree_path, new_tree_path)
+		Bayterek.move_uid_sidecar(old_tree_path, new_tree_path)
 
 	old_group.name = new_name
 	old_group.resource_path = moved_file_path
 
-	var save_err: Error = ResourceSaver.save(old_group, moved_file_path, ResourceSaver.FLAG_CHANGE_PATH)
+	var save_err: Error = Bayterek.safe_save(old_group, moved_file_path)
 	if save_err != OK:
-		push_error("Bayterek: Grup kaydedilemedi (%d)" % save_err)
+		BayterekLogger.error("Grup kaydedilemedi (%d)" % save_err, "browser")
 		_refresh_ui_only()
 		return
 
-	ResourceSaver.save(registry, Bayterek.get_registry_path())
+	Bayterek.save_editor_registry()
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
@@ -673,7 +673,7 @@ func _rename_tree(item: TreeItem, meta: Dictionary, old_name: String, new_name: 
 		return
 
 	if main_screen and main_screen.has_open_tree(old_path):
-		push_warning("Bayterek: Açık tree'ler varken ismi değiştirilemez.")
+		BayterekLogger.warn("Açık tree'ler varken ismi değiştirilemez.", "browser")
 		_refresh_ui_only()
 		return
 
@@ -691,7 +691,7 @@ func _rename_tree(item: TreeItem, meta: Dictionary, old_name: String, new_name: 
 		if t == tree_res:
 			continue
 		if t.name == new_name:
-			push_warning("Bayterek: Bu grupta aynı isimde tree var: %s" % new_name)
+			BayterekLogger.warn("Bu grupta aynı isimde tree var: %s" % new_name, "browser")
 			_refresh_ui_only()
 			return
 
@@ -700,42 +700,34 @@ func _rename_tree(item: TreeItem, meta: Dictionary, old_name: String, new_name: 
 	var new_file: String = "%s/%s.tres" % [base_dir, new_snake]
 
 	if FileAccess.file_exists(new_file) and new_file != old_path:
-		push_warning("Bayterek: Hedef dosya zaten var: %s" % new_file)
+		BayterekLogger.warn("Hedef dosya zaten var: %s" % new_file, "browser")
 		_refresh_ui_only()
 		return
 
 	if new_file != old_path:
 		var rename_err: Error = DirAccess.rename_absolute(old_path, new_file)
 		if rename_err != OK:
-			push_error("Bayterek: Tree dosyası taşınamadı (%d)" % rename_err)
+			BayterekLogger.error("Tree dosyası taşınamadı (%d)" % rename_err, "browser")
 			_refresh_ui_only()
 			return
 
-	_move_uid_sidecar(old_path, new_file)
+	Bayterek.move_uid_sidecar(old_path, new_file)
 
 	tree_res.name = new_name
 	tree_res.id = new_snake
 	tree_res.resource_path = new_file
 
-	var save_err: Error = ResourceSaver.save(tree_res, new_file, ResourceSaver.FLAG_CHANGE_PATH)
+	var save_err: Error = Bayterek.safe_save(tree_res, new_file)
 	if save_err != OK:
-		push_error("Bayterek: Tree kaydedilemedi (%d)" % save_err)
+		BayterekLogger.error("Tree kaydedilemedi (%d)" % save_err, "browser")
 		_refresh_ui_only()
 		return
 
-	ResourceSaver.save(group, group.resource_path)
-	ResourceSaver.save(registry, Bayterek.get_registry_path())
+	Bayterek.safe_save(group, group.resource_path)
+	Bayterek.save_editor_registry()
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
-
-func _move_uid_sidecar(old_path: String, new_path: String) -> void:
-	var old_uid_file: String = old_path + ".uid"
-	var new_uid_file: String = new_path + ".uid"
-	if FileAccess.file_exists(old_uid_file):
-		if FileAccess.file_exists(new_uid_file):
-			DirAccess.remove_absolute(new_uid_file)
-		DirAccess.rename_absolute(old_uid_file, new_uid_file)
 
 # ============================================================
 # DRAG & DROP — Move trees between groups
@@ -849,7 +841,7 @@ func _tree_drop_data(at_position: Vector2, data: Variant) -> void:
 			tree_res = t
 			break
 	if not tree_res:
-		push_warning("Bayterek: Drag-drop — tree bulunamadı: %s" % old_path)
+		BayterekLogger.warn("Drag-drop — tree bulunamadı: %s" % old_path, "browser")
 		return
 
 	# Compute new path inside the target group's folder
@@ -868,22 +860,22 @@ func _tree_drop_data(at_position: Vector2, data: Variant) -> void:
 	# Physical move: file + .uid sidecar
 	var rename_err: Error = DirAccess.rename_absolute(old_path, new_path)
 	if rename_err != OK:
-		push_error("Bayterek: Tree taşınamadı (%d)" % rename_err)
+		BayterekLogger.error("Tree taşınamadı (%d)" % rename_err, "browser")
 		return
 
-	_move_uid_sidecar(old_path, new_path)
+	Bayterek.move_uid_sidecar(old_path, new_path)
 
 	# Update resource_path and re-save the tree at the new location
 	tree_res.resource_path = new_path
-	ResourceSaver.save(tree_res, new_path, ResourceSaver.FLAG_CHANGE_PATH)
+	Bayterek.safe_save(tree_res, new_path)
 
 	# Move the tree between the group arrays
 	source_group.trees.erase(tree_res)
 	target_group.trees.append(tree_res)
 
-	ResourceSaver.save(source_group, source_group.resource_path)
-	ResourceSaver.save(target_group, target_group.resource_path)
-	ResourceSaver.save(registry, Bayterek.get_registry_path())
+	Bayterek.safe_save(source_group, source_group.resource_path)
+	Bayterek.safe_save(target_group, target_group.resource_path)
+	Bayterek.save_editor_registry()
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh_ui_only()
@@ -904,7 +896,7 @@ func _duplicate_selected_group() -> void:
 	var source_group_path: String = meta["path"]
 	var source_group: BayterekGroup = ResourceLoader.load(source_group_path)
 	if not source_group:
-		push_error("Bayterek: Duplicate group could not be loaded: %s" % source_group_path)
+		BayterekLogger.error("Duplicate group could not be loaded: %s" % source_group_path, "browser")
 		return
 
 	var registry: BayterekRegistry = Bayterek.get_editor_registry()
@@ -929,16 +921,16 @@ func _duplicate_selected_group() -> void:
 
 	var mk_err: Error = DirAccess.make_dir_recursive_absolute(new_dir)
 	if mk_err != OK:
-		push_error("Bayterek: Could not create duplicate group folder (%d)" % mk_err)
+		BayterekLogger.error("Could not create duplicate group folder (%d)" % mk_err, "browser")
 		return
 
 	var new_group := BayterekGroup.new()
 	new_group.name = new_name
 	new_group.trees = []
 
-	var save_err: Error = ResourceSaver.save(new_group, new_file)
+	var save_err: Error = Bayterek.safe_save(new_group, new_file)
 	if save_err != OK:
-		push_error("Bayterek: Could not save duplicate group (%d)" % save_err)
+		BayterekLogger.error("Could not save duplicate group (%d)" % save_err, "browser")
 		return
 
 	var saved_group: BayterekGroup = ResourceLoader.load(new_file, "BayterekGroup", ResourceLoader.CACHE_MODE_IGNORE)
@@ -948,10 +940,10 @@ func _duplicate_selected_group() -> void:
 	for tree_data: BayterekTree in source_group.trees:
 		_duplicate_tree_into_group(tree_data, saved_group, new_dir)
 
-	ResourceSaver.save(saved_group, new_file)
+	Bayterek.safe_save(saved_group, new_file)
 
 	registry.groups.append(saved_group)
-	ResourceSaver.save(registry, Bayterek.get_registry_path())
+	Bayterek.save_editor_registry()
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh()
@@ -983,8 +975,8 @@ func _duplicate_selected_tree() -> void:
 		return
 
 	_duplicate_tree_into_group(source_tree, group, group.resource_path.get_base_dir(), source_tree.name + " Copy")
-	ResourceSaver.save(group, group.resource_path)
-	ResourceSaver.save(registry, Bayterek.get_registry_path())
+	Bayterek.safe_save(group, group.resource_path)
+	Bayterek.save_editor_registry()
 
 	EditorInterface.get_resource_filesystem().scan()
 	_refresh()
@@ -1011,16 +1003,20 @@ func _duplicate_tree_into_group(
 
 	var duplicate: BayterekTree = source_tree.duplicate(true) as BayterekTree
 	if not duplicate:
-		push_error("Bayterek: Tree duplicate failed for %s" % source_tree.name)
+		BayterekLogger.error("Tree duplicate failed for %s" % source_tree.name, "browser")
 		return
 
 	duplicate.name = new_name
 	duplicate.id = snake
 
-	var save_err: Error = ResourceSaver.save(duplicate, new_file)
+	var save_err: Error = Bayterek.safe_save(duplicate, new_file)
 	if save_err != OK:
-		push_error("Bayterek: Could not save duplicate tree (%d)" % save_err)
+		BayterekLogger.error("Could not save duplicate tree (%d)" % save_err, "browser")
 		return
+
+	# NOTE: We deliberately do NOT copy the source .uid sidecar. Two files
+	# sharing a UID would corrupt the editor's resource cache. Godot will
+	# generate a fresh .uid on the next filesystem scan.
 
 	var saved_tree: BayterekTree = ResourceLoader.load(new_file, "BayterekTree", ResourceLoader.CACHE_MODE_IGNORE)
 	if saved_tree:
@@ -1143,14 +1139,14 @@ func _do_delete_group(info: Dictionary, delete_files: bool) -> void:
 		return
 
 	registry.groups.erase(group)
-	ResourceSaver.save(registry, Bayterek.get_registry_path())
+	Bayterek.save_editor_registry()
 
 	if delete_files:
 		for tree: BayterekTree in group.trees:
 			if not tree.resource_path.is_empty():
-				_delete_with_sidecar(tree.resource_path)
+				Bayterek.delete_resource_with_sidecar(tree.resource_path)
 		if not group.resource_path.is_empty():
-			_delete_with_sidecar(group.resource_path)
+			Bayterek.delete_resource_with_sidecar(group.resource_path)
 
 func _do_delete_tree(info: Dictionary, delete_file: bool) -> void:
 	var registry: BayterekRegistry = Bayterek.get_editor_registry()
@@ -1168,18 +1164,11 @@ func _do_delete_tree(info: Dictionary, delete_file: bool) -> void:
 		return
 
 	group.trees.erase(target)
-	ResourceSaver.save(group, group.resource_path)
-	ResourceSaver.save(registry, Bayterek.get_registry_path())
+	Bayterek.safe_save(group, group.resource_path)
+	Bayterek.save_editor_registry()
 
 	if delete_file:
-		_delete_with_sidecar(info["path"])
-
-func _delete_with_sidecar(path: String) -> void:
-	var uid_path: String = path + ".uid"
-	if FileAccess.file_exists(uid_path):
-		DirAccess.remove_absolute(uid_path)
-	if FileAccess.file_exists(path):
-		DirAccess.remove_absolute(path)
+		Bayterek.delete_resource_with_sidecar(info["path"])
 
 # ============================================================
 # ARAMA / DOCS

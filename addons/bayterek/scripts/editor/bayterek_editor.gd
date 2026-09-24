@@ -14,23 +14,6 @@ const RIGHT_PANEL_WIDTH := 320.0
 const MENU_HEIGHT := 28.0
 const SAFETY_MARGIN := 40.0
 
-# Context menu IDs
-const CM_SAVE_PREFAB := 100
-const CM_MAKE_UNIQUE := 102
-const CM_DELETE := 103
-const CM_MAKE_ROOT := 150
-const CM_DUPLICATE := 151
-const CM_ASSIGN_GROUP := 160
-const CM_CLEANUP_ORPHANS := 200
-
-# Group submenu IDs
-const GROUP_SUBMENU_REMOVE := 200
-const GROUP_SUBMENU_CREATE := 201
-const GROUP_SUBMENU_BASE := 1000
-
-# Design submenu IDs
-const DESIGN_SUBMENU_BASE := 5000
-
 var tree: BayterekTree
 var tree_path: String
 var dirty: bool = false
@@ -49,15 +32,14 @@ var settings_editor: BayterekSettingsEditor
 var attributes_editor: BayterekAttributesEditor
 var prefabs_bar: BayterekPrefabsBar
 
-var context_menu: PopupMenu
+## Dedicated BayterekEditorContext instance (was inline PopupMenu).
+var context_menu: BayterekEditorContext
+
 var validator: BayterekValidator
 var rename_dialog: BayterekRenameDialog
 var group_dialog: BayterekGroupDialog
 
 var _tooltip_menu: PopupMenu
-var _new_node_submenu: PopupMenu
-
-var _design_menu_id_to_design_id: Dictionary = {}
 
 var delete_confirmation: ConfirmationDialog
 var delete_option: OptionButton
@@ -121,7 +103,7 @@ func load_tree(path: String) -> void:
 	tree = Bayterek.get_editor_registry().get_tree_by_path(path)
 
 	if not tree:
-		push_error("Bayterek: Tree load failed: %s" % path)
+		BayterekLogger.error("Tree load failed: %s" % path, "editor")
 		return
 
 	if not tree.tree_state:
@@ -817,7 +799,6 @@ func _on_prefab_created(prefab: BayterekPrefab) -> void:
 	if not prefab.exported_values_changed.is_connected(_on_prefab_exported_values_changed):
 		prefab.exported_values_changed.connect(_on_prefab_exported_values_changed)
 
-	# Prefab bar'ı yenile (yeni kart eklenmeli)
 	if prefabs_bar:
 		prefabs_bar.refresh()
 
@@ -947,37 +928,19 @@ func _show_prefab_rename_dialog(prefab: BayterekPrefab) -> void:
 # ============================================================
 
 func _create_context_menu() -> void:
-	context_menu = PopupMenu.new()
-	context_menu.name = "BayterekContextMenu"
+	context_menu = BayterekEditorContext.new()
+	context_menu.setup(self)
 
-	_new_node_submenu = PopupMenu.new()
-	_new_node_submenu.name = "NewNodeSubmenu"
-	_new_node_submenu.id_pressed.connect(_on_new_node_design_selected)
-	_new_node_submenu.about_to_popup.connect(_rebuild_new_node_submenu)
-
-	context_menu.add_child(_new_node_submenu)
-	context_menu.add_submenu_node_item("New Node", _new_node_submenu, 0)
-
-	context_menu.add_separator()
-	context_menu.add_item("Make Root", CM_MAKE_ROOT)
-	context_menu.add_item("Duplicate", CM_DUPLICATE)
-	context_menu.add_separator()
-
-	var group_submenu := PopupMenu.new()
-	group_submenu.name = "GroupSubmenu"
-	group_submenu.id_pressed.connect(_on_group_submenu_pressed)
-	context_menu.add_child(group_submenu)
-	context_menu.add_submenu_node_item("Assign to Group", group_submenu, CM_ASSIGN_GROUP)
-
-	context_menu.add_separator()
-	context_menu.add_item("Save as Prefab", CM_SAVE_PREFAB)
-	context_menu.add_item("Make Unique", CM_MAKE_UNIQUE)
-	context_menu.add_separator()
-	context_menu.add_item("Delete", CM_DELETE)
-	context_menu.add_separator()
-	context_menu.add_item("Cleanup Orphan Prefabs", CM_CLEANUP_ORPHANS)
-
-	context_menu.id_pressed.connect(_on_context_menu_pressed)
+	context_menu.new_node_requested.connect(_on_new_node_from_context)
+	context_menu.make_root_requested.connect(_make_selected_root)
+	context_menu.duplicate_requested.connect(duplicate_selected_nodes)
+	context_menu.save_as_prefab_requested.connect(_save_selected_as_prefab)
+	context_menu.make_unique_requested.connect(_make_selected_unique)
+	context_menu.assign_group_requested.connect(assign_selected_to_group)
+	context_menu.remove_group_requested.connect(func(): assign_selected_to_group(""))
+	context_menu.create_group_requested.connect(open_group_create_dialog)
+	context_menu.delete_requested.connect(_delete_selected)
+	context_menu.cleanup_orphans_requested.connect(_cleanup_orphan_prefabs)
 
 	var root: Window = get_tree().root
 	if root:
@@ -985,49 +948,25 @@ func _create_context_menu() -> void:
 	else:
 		add_child(context_menu)
 
-func _rebuild_new_node_submenu() -> void:
-	if not _new_node_submenu:
+func _on_new_node_from_context(design_id: String, tree_pos: Vector2) -> void:
+	var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(design_id)
+	if not design:
+		BayterekToast.error(tree_view, "Design not found: %s" % design_id)
+		return
+	if not tree_view or not tree_view.nodes_service:
 		return
 
-	_new_node_submenu.clear()
-	_design_menu_id_to_design_id.clear()
-
-	for child in _new_node_submenu.get_children():
-		if child is PopupMenu:
-			child.queue_free()
-
-	var grouped: Dictionary = BayterekDesignService.get_designs_grouped_by_category()
-
-	if grouped.is_empty():
-		_new_node_submenu.add_item("No designs available...", DESIGN_SUBMENU_BASE)
-		return
-
-	var next_id: int = DESIGN_SUBMENU_BASE
-
-	for category in grouped.keys():
-		var designs: Array = grouped[category]
-		designs.sort_custom(func(a, b): return a.name.naturalnocasecmp_to(b.name) < 0)
-
-		var cat_menu := PopupMenu.new()
-		cat_menu.name = "Cat_%s" % category
-		cat_menu.id_pressed.connect(_on_new_node_design_selected)
-
-		var cat_first_id: int = next_id
-		for design in designs:
-			var d: BayterekNodeDesign = design
-			cat_menu.add_item(d.name, next_id)
-			_design_menu_id_to_design_id[next_id] = d.id
-			next_id += 1
-
-		_new_node_submenu.add_child(cat_menu)
-		_new_node_submenu.add_submenu_node_item(category, cat_menu, cat_first_id)
+	undo_redo.create_action("Create Node")
+	undo_redo.add_do_method(_do_create_node_from_design.bind(design, tree_pos))
+	undo_redo.add_undo_method(_undo_create_node)
+	undo_redo.commit_action()
 
 # ============================================================
 # INPUT
 # ============================================================
 
 func _on_node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
-	if not node or not node.node_data:
+	if not node or not node.node_data or not context_menu:
 		return
 
 	if not tree_view.selected_nodes.has(node):
@@ -1035,142 +974,20 @@ func _on_node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> vo
 			tree_view.select_node(node)
 
 	_last_click_pos = tree_view.screen_to_tree(screen_pos)
-	_update_context_menu_state()
-
-	context_menu.position = Vector2i(screen_pos)
-	context_menu.popup()
+	context_menu.open_at(screen_pos, _last_click_pos)
 
 func _on_tree_view_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			if not context_menu:
+				return
 			var global_pos: Vector2 = tree_view.get_global_transform() * event.position
-			_last_click_pos = event.position
-			_update_context_menu_state()
-			context_menu.position = Vector2i(global_pos)
-			context_menu.popup()
-
-func _update_context_menu_state() -> void:
-	if not context_menu:
-		return
-	var has_selection: bool = not tree_view.selected_nodes.is_empty()
-
-	_set_item_disabled_by_id(CM_SAVE_PREFAB, not has_selection)
-	_set_item_disabled_by_id(CM_MAKE_UNIQUE, not has_selection)
-	_set_item_disabled_by_id(CM_DELETE, not has_selection)
-	_set_item_disabled_by_id(CM_DUPLICATE, not has_selection)
-	_set_item_disabled_by_id(CM_ASSIGN_GROUP, not has_selection)
-
-	if has_selection:
-		var any_prefab: bool = false
-		var any_not_root: bool = false
-		for n in tree_view.selected_nodes:
-			if not is_instance_valid(n):
-				continue
-			if n.prefab:
-				any_prefab = true
-			if n.node_data and not n.node_data.is_root:
-				any_not_root = true
-		_set_item_disabled_by_id(CM_MAKE_UNIQUE, not any_prefab)
-		_set_item_disabled_by_id(CM_MAKE_ROOT, not any_not_root)
-	else:
-		_set_item_disabled_by_id(CM_MAKE_ROOT, true)
-
-	_rebuild_group_submenu()
-
-func _set_item_disabled_by_id(item_id: int, disabled: bool) -> void:
-	var idx: int = context_menu.get_item_index(item_id)
-	if idx >= 0:
-		context_menu.set_item_disabled(idx, disabled)
-
-func _on_context_menu_pressed(id: int) -> void:
-	match id:
-		CM_SAVE_PREFAB: _save_selected_as_prefab()
-		CM_MAKE_UNIQUE: _make_selected_unique()
-		CM_DELETE: _delete_selected()
-		CM_MAKE_ROOT: _make_selected_root()
-		CM_DUPLICATE: duplicate_selected_nodes()
-		CM_CLEANUP_ORPHANS: _cleanup_orphan_prefabs()
-
-# ============================================================
-# GROUP SUBMENU
-# ============================================================
-
-func _rebuild_group_submenu() -> void:
-	var submenu_node: Node = context_menu.get_node_or_null("GroupSubmenu")
-	if not submenu_node is PopupMenu:
-		return
-	var submenu: PopupMenu = submenu_node
-
-	submenu.clear()
-
-	var has_selection: bool = not tree_view.selected_nodes.is_empty()
-	if not has_selection:
-		return
-
-	var groups: Array = tree.node_groups if tree else []
-	for i in groups.size():
-		var group = groups[i]
-		if group:
-			submenu.add_item(group.name, GROUP_SUBMENU_BASE + i)
-			var idx: int = submenu.item_count - 1
-			submenu.set_item_icon(idx, _make_color_icon(group.color))
-
-	submenu.add_separator()
-	submenu.add_item("New Group...", GROUP_SUBMENU_CREATE)
-	submenu.add_separator()
-	submenu.add_item("Remove from Group", GROUP_SUBMENU_REMOVE)
-
-func _make_color_icon(c: Color) -> Texture2D:
-	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
-	img.fill(c)
-	var border := Color(0, 0, 0, 0.6)
-	for x in 16:
-		img.set_pixel(x, 0, border)
-		img.set_pixel(x, 15, border)
-	for y in 16:
-		img.set_pixel(0, y, border)
-		img.set_pixel(15, y, border)
-	return ImageTexture.create_from_image(img)
-
-func _on_group_submenu_pressed(id: int) -> void:
-	if id == GROUP_SUBMENU_REMOVE:
-		assign_selected_to_group("")
-		return
-	if id == GROUP_SUBMENU_CREATE:
-		open_group_create_dialog()
-		return
-	if id >= GROUP_SUBMENU_BASE:
-		var groups: Array = tree.node_groups if tree else []
-		var idx: int = id - GROUP_SUBMENU_BASE
-		if idx >= 0 and idx < groups.size():
-			var group: BayterekNodeGroup = groups[idx]
-			if group:
-				assign_selected_to_group(group.id)
+			_last_click_pos = tree_view.screen_to_tree(event.position)
+			context_menu.open_at(global_pos, _last_click_pos)
 
 # ============================================================
 # NODE CREATION (design-based)
 # ============================================================
-
-func _on_new_node_design_selected(id: int) -> void:
-	if not _design_menu_id_to_design_id.has(id):
-		_show_no_designs_dialog()
-		return
-
-	var design_id: String = _design_menu_id_to_design_id[id]
-	var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(design_id)
-	if not design:
-		BayterekToast.error(tree_view, "Design not found: %s" % design_id)
-		return
-
-	var pos_in_tree: Vector2 = tree_view.screen_to_tree(_last_click_pos)
-
-	if not tree_view.nodes_service:
-		return
-
-	undo_redo.create_action("Create Node")
-	undo_redo.add_do_method(_do_create_node_from_design.bind(design, pos_in_tree))
-	undo_redo.add_undo_method(_undo_create_node)
-	undo_redo.commit_action()
 
 func _show_no_designs_dialog() -> void:
 	var dialog := ConfirmationDialog.new()
@@ -1211,7 +1028,7 @@ func _cleanup_orphan_prefabs() -> void:
 	if count > 0:
 		set_dirty(true)
 		BayterekToast.success(tree_view, "Cleaned up %d orphan prefab%s" % [count, "s" if count > 1 else ""])
-		print("Bayterek: %d orphan prefab cleaned up." % count)
+		BayterekLogger.info("%d orphan prefab cleaned up." % count, "prefabs")
 	else:
 		BayterekToast.info(tree_view, "No orphan prefabs found")
 
@@ -2121,9 +1938,10 @@ func _perform_save() -> void:
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
 	tree.tree_state.version = tree.version
-	var err: Error = ResourceSaver.save(tree, tree_path)
+
+	var err: Error = Bayterek.safe_save(tree, tree_path)
 	if err != OK:
-		push_error("Bayterek: Tree save failed (%d)" % err)
+		BayterekLogger.error("Tree save failed (%d): %s" % [err, tree_path], "editor")
 		if tree_view:
 			BayterekToast.error(tree_view, "Save failed (err %d)" % err)
 		return
@@ -2131,7 +1949,7 @@ func _perform_save() -> void:
 	set_dirty(false)
 	if tree_view:
 		BayterekToast.success(tree_view, "Tree saved")
-	print("Bayterek: Tree saved: ", tree_path)
+	BayterekLogger.info("Tree saved: %s" % tree_path, "editor")
 
 func set_dirty(is_dirty: bool) -> void:
 	if dirty != is_dirty:
