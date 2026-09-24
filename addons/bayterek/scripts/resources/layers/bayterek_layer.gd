@@ -76,10 +76,10 @@ func get_size(design_size: Vector2) -> Vector2:
 		return design_size
 	return transform.get_effective_size(design_size)
 
-func get_matrix(design_size: Vector2) -> Transform2D:
+func get_matrix(design_size: Vector2, pixel_mode: bool = false) -> Transform2D:
 	if not transform:
 		return Transform2D.IDENTITY
-	return transform.get_matrix(design_size)
+	return transform.get_matrix(design_size, pixel_mode)
 
 ## Resolves the effective render mode for this layer.
 ## `design_mode` is an int (0 = Vector, 1 = Pixel), same values as

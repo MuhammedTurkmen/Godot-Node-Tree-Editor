@@ -223,11 +223,13 @@ func _draw() -> void:
 
 func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transform2D) -> void:
 	var state_key: String = layer.get_visual_state(_active_states)
-	var layer_matrix: Transform2D = layer.get_matrix(design_size)
 
 	var design_mode: int = int(node_data.render_mode) if node_data else RENDER_MODE_VECTOR
 	var effective_mode: int = layer.get_effective_render_mode(design_mode)
 	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
+	# Snap the pivot to the integer pixel grid in pixel mode.
+	var layer_matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
 
 	var effective_size: Vector2 = layer.get_size(design_size)
 

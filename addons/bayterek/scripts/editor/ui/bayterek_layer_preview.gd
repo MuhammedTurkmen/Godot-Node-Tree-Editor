@@ -109,11 +109,14 @@ func _compute_content_bounds() -> Rect2:
 		if not layer or not layer.visible:
 			continue
 
+		var effective_mode: int = layer.get_effective_render_mode(int(design.render_mode))
+		var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
 		var effective_size: Vector2 = layer.get_size(design_size)
 		if effective_size.x <= 0.0 or effective_size.y <= 0.0:
 			continue
 
-		var matrix: Transform2D = layer.get_matrix(design_size)
+		var matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
 		var half: Vector2 = effective_size * 0.5
 
 		var corners: Array[Vector2] = [
@@ -244,11 +247,12 @@ func _draw_layer(layer: BayterekLayer, base_xform: Transform2D) -> void:
 	var simulated := _get_simulated_states()
 	var state_key: String = layer.get_visual_state(simulated)
 	var design_size: Vector2 = design.design_size
-	var layer_matrix: Transform2D = layer.get_matrix(design_size)
-	var effective_size: Vector2 = layer.get_size(design_size)
 
 	var effective_mode: int = layer.get_effective_render_mode(int(design.render_mode))
 	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
+	var layer_matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
+	var effective_size: Vector2 = layer.get_size(design_size)
 
 	var combined: Transform2D = base_xform * layer_matrix
 
@@ -261,15 +265,13 @@ func _draw_layer(layer: BayterekLayer, base_xform: Transform2D) -> void:
 		_draw_texture(layer, state_key, effective_size, combined, pixel_mode)
 
 	if show_pivot_markers and layer.transform:
-		_draw_pivot_marker(layer, combined, effective_size)
+		_draw_pivot_marker(layer, combined, effective_size, pixel_mode)
 
-## Pixel scanline path — uses `get_pixel_spans()`. Debug dump runs once.
 func _draw_shape_pixel(layer: BayterekShapeLayer, state_key: String, effective_size: Vector2, combined: Transform2D) -> void:
 	var spans: Dictionary = layer.get_pixel_spans(effective_size)
 	var fill_spans: Array = spans.get("fill", [])
 	var border_spans: Array = spans.get("border", [])
 
-	# Shadow (integer offset, no blur).
 	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
 		var offset: Vector2 = (layer.shadow_size * preview_scale).floor()
 		var shadow_xform := Transform2D(combined.x, combined.y, combined.origin + offset)
@@ -297,12 +299,12 @@ func _draw_shape_pixel(layer: BayterekShapeLayer, state_key: String, effective_s
 				var br: Vector2 = combined * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
 				draw_rect(Rect2(tl, br - tl), border_color, true)
 
-func _draw_pivot_marker(layer: BayterekLayer, combined: Transform2D, effective_size: Vector2) -> void:
+func _draw_pivot_marker(layer: BayterekLayer, combined: Transform2D, effective_size: Vector2, pixel_mode: bool) -> void:
 	var t: BayterekLayerTransform = layer.transform
 	if not t:
 		return
 
-	var pivot_local: Vector2 = t.get_pivot_local(effective_size)
+	var pivot_local: Vector2 = t.get_pivot_local(effective_size, pixel_mode)
 	var pivot_screen: Vector2 = combined * pivot_local
 
 	var cross_color := Color(1.0, 0.2, 0.2, 0.9)
