@@ -3,6 +3,10 @@ class_name BayterekShapeLayer
 extends BayterekLayer
 ## Shape layer — circle, square, triangle, pentagon, hexagon.
 ## Supports fill, border (per-edge vector lines) and shadow.
+##
+## Pixel render mode: coordinates are snapped to integers in the caller,
+## and corner rounding uses fewer segments + snapped arc vertices, giving
+## chunky pixel-art corners.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -14,7 +18,6 @@ enum ShapeType {
 	HEXAGON,
 }
 
-## Edge indices — used by `is_edge_enabled()`.
 const EDGE_TOP := 0
 const EDGE_RIGHT := 1
 const EDGE_BOTTOM := 2
@@ -23,31 +26,24 @@ const EDGE_LEFT := 3
 @export_storage var shape_type: ShapeType = ShapeType.CIRCLE
 
 ## Corner rounding radius in pixels. 0 = sharp corners.
-## Ignored when `border_corner_gap` is true (pixel-art frame mode).
+## Ignored when `border_corner_gap` is true.
 @export_storage var corner_radius: float = 0.0
 
 # --- Fill ---
 @export_storage var fill_enabled: bool = true
-## state -> {"enabled": bool, "color": Color}
 @export_storage var fill_configs: Dictionary = {}
 
 # --- Border ---
 @export_storage var border_enabled: bool = false
 @export_storage var border_width: float = 2.0
 
-## When true, each straight edge is trimmed by `border_width / 2` at both
-## ends so the corners stay empty (each corner shows a border_width ×
-## border_width square gap). Corner radius is ignored in this mode, since
-## pixel-art frames and rounded corners don't mix.
 @export_storage var border_corner_gap: bool = false
 
-## Which edges are drawn. Ignored for CIRCLE (always draws a full ring).
 @export_storage var border_top_enabled: bool = true
 @export_storage var border_right_enabled: bool = true
 @export_storage var border_bottom_enabled: bool = true
 @export_storage var border_left_enabled: bool = true
 
-## state -> {"enabled": bool, "color": Color}
 @export_storage var border_configs: Dictionary = {}
 
 # --- Shadow ---
@@ -187,9 +183,10 @@ func ensure_border_config(state: String) -> void:
 # CLAMPED CORNER RADIUS
 # ============================================================
 
-func get_clamped_corner_radius(effective_size: Vector2) -> float:
-	# Corner gap aktifken corner radius yok sayılır — pixel art frame ile
-	# yuvarlak köşe bir arada kullanılmaz, ikisi birlikte bozuluyor.
+## Returns the effective corner radius. Pixel mode no longer disables it —
+## in pixel mode the radius is still applied, just as a chunky/stepped arc.
+## Only `border_corner_gap` disables it (that's a different feature).
+func get_clamped_corner_radius(effective_size: Vector2, pixel_mode: bool = false) -> float:
 	if border_corner_gap:
 		return 0.0
 	if corner_radius <= 0.0:
@@ -207,78 +204,61 @@ func _corner_radius_limit(effective_size: Vector2) -> float:
 # VERTEX COMPUTATION
 # ============================================================
 
-func get_polygon_vertices(effective_size: Vector2) -> PackedVector2Array:
-	return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
+func get_polygon_vertices(effective_size: Vector2, pixel_mode: bool = false) -> PackedVector2Array:
+	return _build_polygon(effective_size, get_clamped_corner_radius(effective_size, pixel_mode), pixel_mode)
 
-func get_fill_vertices(effective_size: Vector2) -> PackedVector2Array:
+func get_fill_vertices(effective_size: Vector2, pixel_mode: bool = false) -> PackedVector2Array:
 	if not border_enabled or border_width <= 0.0:
-		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
+		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size, pixel_mode), pixel_mode)
 
-	# Fill, border'ın iç kenarından bir miktar içeride kalır.
 	var inset: float = border_width
 	var inner_size: Vector2 = effective_size - Vector2(inset, inset) * 2.0
 	if inner_size.x <= 0.5 or inner_size.y <= 0.5:
 		return PackedVector2Array()
 
-	var cr: float = get_clamped_corner_radius(effective_size)
+	var cr: float = get_clamped_corner_radius(effective_size, pixel_mode)
 	var inner_radius: float = maxf(0.0, cr - inset)
 
-	return _build_polygon(inner_size, inner_radius)
+	return _build_polygon(inner_size, inner_radius, pixel_mode)
 
-func get_border_centerline_vertices(effective_size: Vector2) -> PackedVector2Array:
+func get_border_centerline_vertices(effective_size: Vector2, pixel_mode: bool = false) -> PackedVector2Array:
 	if border_width <= 0.0:
-		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size))
+		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size, pixel_mode), pixel_mode)
 
 	var inset: float = border_width * 0.5
 	var center_size: Vector2 = effective_size - Vector2(inset, inset) * 2.0
 	if center_size.x <= 0.5 or center_size.y <= 0.5:
 		return PackedVector2Array()
 
-	var cr: float = get_clamped_corner_radius(effective_size)
+	var cr: float = get_clamped_corner_radius(effective_size, pixel_mode)
 	var center_radius: float = maxf(0.0, cr - inset)
 
-	return _build_polygon(center_size, center_radius)
+	return _build_polygon(center_size, center_radius, pixel_mode)
 
-func get_border_vertices(effective_size: Vector2) -> PackedVector2Array:
-	return get_polygon_vertices(effective_size)
+func get_border_vertices(effective_size: Vector2, pixel_mode: bool = false) -> PackedVector2Array:
+	return get_polygon_vertices(effective_size, pixel_mode)
 
 # ============================================================
 # BORDER SEGMENT COMPUTATION
 # ============================================================
 
-## Returns an Array of PackedVector2Array polylines to draw as border.
-##
-## Rules:
-##   CIRCLE  → single closed ring (edge masks & corner gap ignored).
-##   Others, corner_gap = false (normal mode):
-##     4 edges on  → single closed ring (guarantees closed corners).
-##     1-3 edges   → one polyline per enabled edge.
-##   Others, corner_gap = true (pixel-art frame):
-##     Each enabled edge is a straight 2-point line, trimmed by
-##     `border_width / 2` at each end. Corners show a border_width ×
-##     border_width square gap. Corner radius is ignored in this mode.
-func get_border_segments(effective_size: Vector2) -> Array:
-	var center_verts: PackedVector2Array = get_border_centerline_vertices(effective_size)
+func get_border_segments(effective_size: Vector2, pixel_mode: bool = false) -> Array:
+	var center_verts: PackedVector2Array = get_border_centerline_vertices(effective_size, pixel_mode)
 	if center_verts.size() < 2:
 		return []
 
-	# Circle: always a full closed ring.
 	if shape_type == ShapeType.CIRCLE:
 		return [_make_closed_ring(center_verts)]
 
-	# Normal mode + all 4 edges on → single closed ring.
 	if not border_corner_gap and enabled_edge_count() >= 4:
 		return [_make_closed_ring(center_verts)]
 
 	var half: Vector2 = effective_size * 0.5
-	var tol: float = maxf(border_width * 0.5 + 0.5, 1.0) + get_clamped_corner_radius(effective_size)
+	var tol: float = maxf(border_width * 0.5 + 0.5, 1.0) + get_clamped_corner_radius(effective_size, pixel_mode)
 
 	var result: Array = []
 
 	if border_corner_gap:
-		# --- Corner gap mode: each edge is a straight 2-point line. ---
-		# Her uçtan border_width / 2 kırpılır → köşede toplam border_width
-		# kadar (yani border_width × border_width kare) boşluk kalır.
 		var gap: float = maxf(border_width, 1.0) * 0.5
 		var endpoints: Dictionary = _find_edge_endpoints(center_verts, half, tol)
 
@@ -301,7 +281,6 @@ func get_border_segments(effective_size: Vector2) -> Array:
 
 			result.append(PackedVector2Array([a_trim, b_trim]))
 	else:
-		# --- Normal mode with 1-3 edges: per-edge polylines. ---
 		for edge in [EDGE_TOP, EDGE_RIGHT, EDGE_BOTTOM, EDGE_LEFT]:
 			if not is_edge_enabled(edge):
 				continue
@@ -339,12 +318,6 @@ func _vertex_on_edge(p: Vector2, half: Vector2, tol: float, edge: int) -> bool:
 		EDGE_RIGHT:  return absf(p.x - half.x) <= tol
 	return false
 
-## Finds, for each edge, the pair of vertices on that edge that are
-## farthest apart. These act as the edge's endpoints when corner gap is on.
-## For sharp-cornered polygons this is exactly the two corner vertices.
-## For rounded corners this ignores the arc and gives the arc's two ends
-## (but corner radius is disabled when corner gap is on, so this is only
-## relevant when the shape is drawn rounded for other reasons).
 func _find_edge_endpoints(
 	center_verts: PackedVector2Array,
 	half: Vector2,
@@ -381,7 +354,7 @@ func _find_edge_endpoints(
 # INTERNAL POLYGON BUILDER
 # ============================================================
 
-func _build_polygon(size_vec: Vector2, radius: float) -> PackedVector2Array:
+func _build_polygon(size_vec: Vector2, radius: float, pixel_mode: bool) -> PackedVector2Array:
 	var half: Vector2 = size_vec * 0.5
 	if half.x <= 0.0 or half.y <= 0.0:
 		return PackedVector2Array()
@@ -391,7 +364,7 @@ func _build_polygon(size_vec: Vector2, radius: float) -> PackedVector2Array:
 	match shape_type:
 		ShapeType.CIRCLE:
 			var r: float = minf(half.x, half.y)
-			return _make_circle_vertices(r, Bayterek.CIRCLE_SEGMENTS)
+			return _make_circle_vertices(r, Bayterek.CIRCLE_SEGMENTS, pixel_mode)
 		ShapeType.SQUARE:
 			base_verts = PackedVector2Array([
 				Vector2(-half.x, -half.y),
@@ -409,15 +382,22 @@ func _build_polygon(size_vec: Vector2, radius: float) -> PackedVector2Array:
 			return PackedVector2Array()
 
 	if radius > 0.0:
-		return _apply_corner_rounding(base_verts, radius)
+		return _apply_corner_rounding(base_verts, radius, pixel_mode)
 	return base_verts
 
-func _make_circle_vertices(radius: float, segments: int) -> PackedVector2Array:
+func _make_circle_vertices(radius: float, segments: int, pixel_mode: bool = false) -> PackedVector2Array:
+	# Pixel mode: reduce segment count so the circle looks chunky.
+	if pixel_mode:
+		segments = clampi(int(round(radius * 1.5)), 8, 32)
+
 	var pts := PackedVector2Array()
 	pts.resize(segments)
 	for i in segments:
 		var angle: float = TAU * float(i) / float(segments)
-		pts[i] = Vector2(cos(angle), sin(angle)) * radius
+		var p := Vector2(cos(angle), sin(angle)) * radius
+		if pixel_mode:
+			p = p.snapped(Vector2(1.0, 1.0))
+		pts[i] = p
 	return pts
 
 func _make_regular_polygon(half: Vector2, sides: int, start_angle: float) -> PackedVector2Array:
@@ -429,7 +409,11 @@ func _make_regular_polygon(half: Vector2, sides: int, start_angle: float) -> Pac
 		pts[i] = Vector2(cos(angle), sin(angle)) * radius
 	return pts
 
-func _apply_corner_rounding(verts: PackedVector2Array, radius: float) -> PackedVector2Array:
+func _apply_corner_rounding(
+	verts: PackedVector2Array,
+	radius: float,
+	pixel_mode: bool = false
+) -> PackedVector2Array:
 	if radius <= 0.01 or verts.size() < 3:
 		return verts
 
@@ -442,6 +426,13 @@ func _apply_corner_rounding(verts: PackedVector2Array, radius: float) -> PackedV
 		var b: Vector2 = verts[(i + 1) % n]
 		signed_area += (a.x * b.y - b.x * a.y)
 	var positive_winding: bool = signed_area > 0.0
+
+	# Segment count per corner arc.
+	var segments: int = Bayterek.CORNER_SEGMENTS
+	if pixel_mode:
+		# Fewer segments → chunky pixel-art corner.
+		# radius 4 → 3, radius 8 → 6, radius 16 → 10 (clamped 3..10).
+		segments = clampi(int(round(radius * 0.75)), 3, 10)
 
 	for i in n:
 		var prev_v: Vector2 = verts[(i - 1 + n) % n]
@@ -503,11 +494,13 @@ func _apply_corner_rounding(verts: PackedVector2Array, radius: float) -> PackedV
 			while delta < -TAU:
 				delta += TAU
 
-		var segments: int = Bayterek.CORNER_SEGMENTS
 		for s in range(segments + 1):
 			var t: float = float(s) / float(segments)
 			var ang: float = a_start + delta * t
-			result.append(arc_center + Vector2(cos(ang), sin(ang)) * r_eff)
+			var p: Vector2 = arc_center + Vector2(cos(ang), sin(ang)) * r_eff
+			if pixel_mode:
+				p = p.snapped(Vector2(1.0, 1.0))
+			result.append(p)
 
 	return result
 

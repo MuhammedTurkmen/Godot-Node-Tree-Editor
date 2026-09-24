@@ -2,8 +2,14 @@
 class_name BayterekNodeButton
 extends BaseButton
 ## On-canvas visual representation of a node.
+## Supports VECTOR and PIXEL render modes.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
+
+## Render mode ints — mirrors BayterekNode.RENDER_MODE_*.
+## Inlined to avoid cross-class constant resolution issues.
+const RENDER_MODE_VECTOR := 0
+const RENDER_MODE_PIXEL := 1
 
 signal node_hovered(node: BayterekNodeButton, is_hovered: bool)
 signal drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2)
@@ -154,6 +160,7 @@ func refresh_visuals() -> void:
 
 	_sync_size_with_design()
 	_recompute_active_states()
+	_apply_texture_filter()
 
 	if _crown_label:
 		_crown_label.visible = node_data.is_root
@@ -166,6 +173,19 @@ func refresh_visuals() -> void:
 func rebuild_from_design() -> void:
 	_design_applied = false
 	refresh_visuals()
+
+## Node-level texture filter. Set to NEAREST in pixel render mode, else
+## fall back to the tree's texture_filter setting (or LINEAR by default).
+func _apply_texture_filter() -> void:
+	if not node_data:
+		return
+	var is_pixel: bool = int(node_data.render_mode) == RENDER_MODE_PIXEL
+	if is_pixel:
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	elif tree_data:
+		texture_filter = tree_data.get_godot_texture_filter()
+	else:
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 func _sync_size_with_design() -> void:
 	var target: Vector2 = node_data.design_size * node_data.scale
@@ -211,12 +231,18 @@ func _draw() -> void:
 func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transform2D) -> void:
 	var state_key: String = layer.get_visual_state(_active_states)
 	var layer_matrix: Transform2D = layer.get_matrix(design_size)
+
+	# Effective render mode for this layer (design mode + override).
+	var design_mode: int = int(node_data.render_mode) if node_data else RENDER_MODE_VECTOR
+	var effective_mode: int = layer.get_effective_render_mode(design_mode)
+	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
 	var effective_size: Vector2 = layer.get_size(design_size)
 
 	if layer is BayterekShapeLayer:
-		_draw_shape_layer(layer, state_key, effective_size, layer_matrix, base_xform)
+		_draw_shape_layer(layer, state_key, effective_size, layer_matrix, base_xform, pixel_mode)
 	elif layer is BayterekTextureLayer:
-		_draw_texture_layer(layer, state_key, effective_size, layer_matrix, base_xform)
+		_draw_texture_layer(layer, state_key, effective_size, layer_matrix, base_xform, pixel_mode)
 
 # ============================================================
 # SHAPE DRAWING
@@ -227,14 +253,15 @@ func _draw_shape_layer(
 	state_key: String,
 	effective_size: Vector2,
 	layer_matrix: Transform2D,
-	base_xform: Transform2D
+	base_xform: Transform2D,
+	pixel_mode: bool
 ) -> void:
 	var combined: Transform2D = base_xform * layer_matrix
 
 	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
-		var full_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
+		var full_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size, pixel_mode)
 		if not full_verts.is_empty():
-			_draw_shape_shadow(layer, full_verts, combined)
+			_draw_shape_shadow(layer, full_verts, combined, pixel_mode)
 
 	var draw_border: bool = layer.should_draw_border(state_key)
 	var draw_fill: bool = layer.should_draw_fill(state_key)
@@ -242,25 +269,29 @@ func _draw_shape_layer(
 	if draw_fill:
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
-			var fill_verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
+			var fill_verts: PackedVector2Array = layer.get_fill_vertices(effective_size, pixel_mode)
 			if fill_verts.is_empty():
-				fill_verts = layer.get_polygon_vertices(effective_size)
+				fill_verts = layer.get_polygon_vertices(effective_size, pixel_mode)
 			if not fill_verts.is_empty():
-				_draw_shape_fill(fill_verts, combined, fill_color)
+				_draw_shape_fill(fill_verts, combined, fill_color, pixel_mode)
 
 	if draw_border:
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
-			# Node scale × layer transform scale.
 			var node_s: Vector2 = node_data.scale if node_data else Vector2.ONE
 			var node_avg: float = (absf(node_s.x) + absf(node_s.y)) * 0.5
 			var layer_avg: float = 1.0
 			if layer.transform:
 				layer_avg = layer.transform.get_avg_scale()
-			var scaled_width: float = layer.border_width * node_avg * layer_avg
-			var use_caps: bool = not layer.border_corner_gap
 
-			var segments: Array = layer.get_border_segments(effective_size)
+			var scaled_width: float = layer.border_width * node_avg * layer_avg
+			if pixel_mode:
+				scaled_width = maxf(1.0, round(scaled_width))
+
+			var use_caps: bool = not layer.border_corner_gap
+			var antialiased: bool = not pixel_mode
+
+			var segments: Array = layer.get_border_segments(effective_size, pixel_mode)
 			for seg in segments:
 				if not (seg is PackedVector2Array):
 					continue
@@ -271,15 +302,18 @@ func _draw_shape_layer(
 				var transformed := PackedVector2Array()
 				transformed.resize(pts.size())
 				for i in pts.size():
-					transformed[i] = combined * pts[i]
+					var p: Vector2 = combined * pts[i]
+					if pixel_mode:
+						p = p.floor()
+					transformed[i] = p
 
 				if transformed.size() == 2:
-					draw_line(transformed[0], transformed[1], border_color, scaled_width, true)
+					draw_line(transformed[0], transformed[1], border_color, scaled_width, antialiased)
 					if use_caps:
 						_draw_cap(transformed[0], border_color, scaled_width)
 						_draw_cap(transformed[1], border_color, scaled_width)
 				else:
-					draw_polyline(transformed, border_color, scaled_width, true)
+					draw_polyline(transformed, border_color, scaled_width, antialiased)
 					if use_caps:
 						_draw_cap(transformed[0], border_color, scaled_width)
 						_draw_cap(transformed[transformed.size() - 1], border_color, scaled_width)
@@ -290,21 +324,30 @@ func _draw_cap(pos: Vector2, color: Color, width: float) -> void:
 		return
 	draw_circle(pos, radius, color)
 
-func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Color) -> void:
+func _draw_shape_fill(verts: PackedVector2Array, xform: Transform2D, color: Color, pixel_mode: bool) -> void:
 	var transformed := PackedVector2Array()
 	transformed.resize(verts.size())
 	for i in verts.size():
-		transformed[i] = xform * verts[i]
+		var p: Vector2 = xform * verts[i]
+		if pixel_mode:
+			p = p.floor()
+		transformed[i] = p
 	draw_colored_polygon(transformed, color)
 
-func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
+func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D, pixel_mode: bool) -> void:
 	var offset: Vector2 = layer.shadow_size
 	var blur: float = layer.shadow_blur
 	var base_color: Color = layer.shadow_color
 
+	if pixel_mode:
+		# Pixel mode: no blur, hard shadow with integer offset.
+		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + offset.floor())
+		_draw_shape_fill(verts, shadow_xform, base_color, true)
+		return
+
 	if blur <= 0.01:
-		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + offset)
-		_draw_shape_fill(verts, shadow_xform, base_color)
+		var shadow_xform2 := Transform2D(xform.x, xform.y, xform.origin + offset)
+		_draw_shape_fill(verts, shadow_xform2, base_color, false)
 		return
 
 	var passes: int = 4
@@ -322,8 +365,8 @@ func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xf
 		var pass_offset: Vector2 = offset - dir * spread * 0.5
 		var expanded: PackedVector2Array = _expand_verts(verts, spread)
 
-		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + pass_offset)
-		_draw_shape_fill(expanded, shadow_xform, color_per_pass)
+		var shadow_xform3 := Transform2D(xform.x, xform.y, xform.origin + pass_offset)
+		_draw_shape_fill(expanded, shadow_xform3, color_per_pass, false)
 
 func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Array:
 	var out := PackedVector2Array()
@@ -345,7 +388,8 @@ func _draw_texture_layer(
 	state_key: String,
 	effective_size: Vector2,
 	layer_matrix: Transform2D,
-	base_xform: Transform2D
+	base_xform: Transform2D,
+	pixel_mode: bool
 ) -> void:
 	if not layer.should_draw_icon(state_key):
 		return
@@ -357,8 +401,19 @@ func _draw_texture_layer(
 	var tint: Color = layer.get_tint_for_state(state_key)
 	var combined: Transform2D = base_xform * layer_matrix
 
+	var half: Vector2 = effective_size * 0.5
+
+	if pixel_mode:
+		var tl_world: Vector2 = combined * (-half)
+		var br_world: Vector2 = combined * half
+		var dst_pos: Vector2 = tl_world.floor()
+		var dst_size: Vector2 = (br_world - tl_world).floor()
+		draw_set_transform_matrix(Transform2D.IDENTITY)
+		draw_texture_rect(tex, Rect2(dst_pos, dst_size), false, tint)
+		return
+
 	draw_set_transform_matrix(combined)
-	draw_texture_rect(tex, Rect2(-effective_size * 0.5, effective_size), false, tint)
+	draw_texture_rect(tex, Rect2(-half, effective_size), false, tint)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
 # ============================================================

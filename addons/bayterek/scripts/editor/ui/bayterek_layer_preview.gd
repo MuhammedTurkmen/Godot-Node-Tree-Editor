@@ -4,10 +4,15 @@ extends Control
 ## Live preview of a design's layer stack.
 ## Renders the same way BayterekNodeButton does, but scaled to fit.
 ## Supports mouse-wheel zoom and middle-drag pan.
+## Honors VECTOR / PIXEL render modes.
 
 signal zoom_changed(zoom: float)
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
+
+## Render mode ints — mirrors BayterekNodeDesign.RenderMode.
+const RENDER_MODE_VECTOR := 0
+const RENDER_MODE_PIXEL := 1
 
 var design: BayterekNodeDesign = null
 
@@ -37,6 +42,7 @@ func set_design(d: BayterekNodeDesign) -> void:
 	design = d
 	_reset_view()
 	_recompute_scale()
+	_apply_texture_filter()
 	queue_redraw()
 
 func _reset_view() -> void:
@@ -69,16 +75,22 @@ func _notification(what: int) -> void:
 		_recompute_scale()
 		queue_redraw()
 
+## Preview is a composited editor view; the design's overall mode decides
+## the control-level texture filter. Layers may override per-layer color
+## and geometry, but they can't switch the whole preview's filter.
+func _apply_texture_filter() -> void:
+	if not design:
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		return
+	if int(design.render_mode) == RENDER_MODE_PIXEL:
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	else:
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+
 # ============================================================
 # FIT SCALE + PAN
 # ============================================================
 
-## Computes the union bounding box of all visible layer transforms, in
-## design-space coordinates. Used by `_recompute_scale()` to fit EVERYTHING
-## (not just design_size) on screen.
-##
-## If a layer's effective size is bigger than design_size (or it's offset
-## outside the design bounds), this still captures it.
 func _compute_content_bounds() -> Rect2:
 	if not design:
 		return Rect2()
@@ -102,9 +114,6 @@ func _compute_content_bounds() -> Rect2:
 		var matrix: Transform2D = layer.get_matrix(design_size)
 		var half: Vector2 = effective_size * 0.5
 
-		# All shape vertices are generated centered at origin, so the
-		# layer's local bounding box is [-half, +half]. Transform the four
-		# corners by the layer matrix to get world-space corners.
 		var corners: Array[Vector2] = [
 			Vector2(-half.x, -half.y),
 			Vector2( half.x, -half.y),
@@ -132,14 +141,11 @@ func _recompute_scale() -> void:
 		pan_offset = Vector2.ZERO
 		return
 
-	# 1) Union bounds of all visible layers.
 	var bounds: Rect2 = _compute_content_bounds()
 
-	# 2) Fallback to design_size if there are no valid layers yet.
 	if bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
 		bounds = Rect2(-design.design_size * 0.5, design.design_size)
 
-	# 3) Fit scale from available space (with margin).
 	var available: Vector2 = size - Vector2(Bayterek.PREVIEW_MARGIN, Bayterek.PREVIEW_MARGIN) * 2.0
 	if available.x <= 0.0 or available.y <= 0.0:
 		_fit_scale = 1.0
@@ -150,9 +156,6 @@ func _recompute_scale() -> void:
 
 	preview_scale = _fit_scale * user_zoom
 
-	# 4) Pan so the content center lands at the preview center.
-	#    In `_draw()`, screen position = size*0.5 + pan_offset + world * scale.
-	#    We want content_center → size*0.5, so pan_offset = -content_center * scale.
 	var content_center: Vector2 = bounds.position + bounds.size * 0.5
 	pan_offset = -content_center * preview_scale
 
@@ -235,12 +238,16 @@ func _draw_layer(layer: BayterekLayer, base_xform: Transform2D) -> void:
 	var layer_matrix: Transform2D = layer.get_matrix(design_size)
 	var effective_size: Vector2 = layer.get_size(design_size)
 
+	# Effective render mode for this layer.
+	var effective_mode: int = layer.get_effective_render_mode(int(design.render_mode))
+	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
 	var combined: Transform2D = base_xform * layer_matrix
 
 	if layer is BayterekShapeLayer:
-		_draw_shape(layer, state_key, effective_size, combined)
+		_draw_shape(layer, state_key, effective_size, combined, pixel_mode)
 	elif layer is BayterekTextureLayer:
-		_draw_texture(layer, state_key, effective_size, combined)
+		_draw_texture(layer, state_key, effective_size, combined, pixel_mode)
 
 	if show_pivot_markers and layer.transform:
 		_draw_pivot_marker(layer, combined, effective_size)
@@ -274,11 +281,11 @@ func _get_simulated_states() -> Dictionary:
 		"not_allocateable": false,
 	}
 
-func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: Vector2, xform: Transform2D) -> void:
+func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: Vector2, xform: Transform2D, pixel_mode: bool) -> void:
 	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
-		var full_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size)
+		var full_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size, pixel_mode)
 		if not full_verts.is_empty():
-			_draw_shape_shadow(layer, full_verts, xform)
+			_draw_shape_shadow(layer, full_verts, xform, pixel_mode)
 
 	var draw_border: bool = layer.should_draw_border(state_key)
 	var draw_fill: bool = layer.should_draw_fill(state_key)
@@ -286,9 +293,9 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 	if draw_fill:
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
-			var fill_verts: PackedVector2Array = layer.get_fill_vertices(effective_size)
+			var fill_verts: PackedVector2Array = layer.get_fill_vertices(effective_size, pixel_mode)
 			if fill_verts.is_empty():
-				fill_verts = layer.get_polygon_vertices(effective_size)
+				fill_verts = layer.get_polygon_vertices(effective_size, pixel_mode)
 			if not fill_verts.is_empty():
 				_draw_fill(fill_verts, xform, fill_color)
 
@@ -300,8 +307,9 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 				layer_avg = layer.transform.get_avg_scale()
 			var scaled_width: float = layer.border_width * preview_scale * layer_avg
 			var use_caps: bool = not layer.border_corner_gap
+			var antialiased: bool = not pixel_mode
 
-			var segments: Array = layer.get_border_segments(effective_size)
+			var segments: Array = layer.get_border_segments(effective_size, pixel_mode)
 			for seg in segments:
 				if not (seg is PackedVector2Array):
 					continue
@@ -315,12 +323,12 @@ func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: V
 					transformed[i] = xform * pts[i]
 
 				if transformed.size() == 2:
-					draw_line(transformed[0], transformed[1], border_color, scaled_width, true)
+					draw_line(transformed[0], transformed[1], border_color, scaled_width, antialiased)
 					if use_caps:
 						_draw_cap(transformed[0], border_color, scaled_width)
 						_draw_cap(transformed[1], border_color, scaled_width)
 				else:
-					draw_polyline(transformed, border_color, scaled_width, true)
+					draw_polyline(transformed, border_color, scaled_width, antialiased)
 					if use_caps:
 						_draw_cap(transformed[0], border_color, scaled_width)
 						_draw_cap(transformed[transformed.size() - 1], border_color, scaled_width)
@@ -331,12 +339,12 @@ func _draw_cap(pos: Vector2, color: Color, width: float) -> void:
 		return
 	draw_circle(pos, radius, color)
 
-func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D) -> void:
+func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D, pixel_mode: bool) -> void:
 	var offset: Vector2 = layer.shadow_size * preview_scale
 	var blur: float = layer.shadow_blur * preview_scale
 	var base_color: Color = layer.shadow_color
 
-	if blur <= 0.01:
+	if pixel_mode or blur <= 0.01:
 		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + offset)
 		_draw_fill(verts, shadow_xform, base_color)
 		return
@@ -377,7 +385,7 @@ func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Arr
 		out[i] = v + dir * offset
 	return out
 
-func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_size: Vector2, xform: Transform2D) -> void:
+func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_size: Vector2, xform: Transform2D, _pixel_mode: bool) -> void:
 	if not layer.should_draw_icon(state_key):
 		return
 	var tex: Texture2D = layer.get_icon_for_state(state_key)

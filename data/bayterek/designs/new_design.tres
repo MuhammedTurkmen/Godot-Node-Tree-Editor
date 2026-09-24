@@ -12,6 +12,7 @@ size = Vector2(5, 5)
 [sub_resource type="Resource" id="Resource_3ujw7"]
 script = ExtResource("2_3ujw7")
 shape_type = 1
+corner_radius = 5.0
 fill_configs = {
 "allocateable": {
 "color": Color(0.5568628, 0.9607843, 0.5568628, 1),
@@ -93,6 +94,7 @@ border_configs = {
 layer_id = "c6030a7a-b50e-4766-8053-2bbe06b3f54d"
 layer_name = "Background"
 transform = SubResource("Resource_a6nu6")
+render_mode_override = 2
 
 [resource]
 script = ExtResource("4_u1mso")
