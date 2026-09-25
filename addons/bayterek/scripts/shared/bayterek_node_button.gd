@@ -170,21 +170,12 @@ func rebuild_from_design() -> void:
 	refresh_visuals()
 
 func _apply_texture_filter() -> void:
+	# Per-layer filter artık _draw_texture_layer() içinde çizim anında
+	# uygulanıyor. Burada sadece node'un DEFAULT filter'ını set ediyoruz;
+	# INHERIT olan layer'lar ve shape layer'lar bunu kullanır.
 	if not node_data:
 		return
 
-	# Look for the first layer with an explicit filter override.
-	for layer in node_data.layers:
-		if not layer:
-			continue
-		if layer.texture_filter_override == BayterekLayer.TextureFilterOverride.NEAREST:
-			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			return
-		elif layer.texture_filter_override == BayterekLayer.TextureFilterOverride.LINEAR:
-			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-			return
-
-	# Fallback to tree-level default.
 	if tree_data:
 		texture_filter = tree_data.get_godot_texture_filter()
 	else:
@@ -458,6 +449,14 @@ func _draw_texture_layer(
 	base_xform: Transform2D,
 	pixel_mode: bool
 ) -> void:
+
+	print("[DRAW-TEX] name=%s override=%d effective=%d saved_filter=%d" % [
+		layer.layer_name,
+		layer.texture_filter_override,
+		layer.get_effective_texture_filter(),
+		texture_filter
+	])
+
 	if not layer.should_draw_icon(state_key):
 		return
 
@@ -470,6 +469,18 @@ func _draw_texture_layer(
 
 	var half: Vector2 = effective_size * 0.5
 
+	# --- Per-layer texture filter override ---
+	# CanvasItem.texture_filter is per-node, not per-draw. To render a
+	# single layer with a different filter we temporarily swap it,
+	# draw, and restore.
+	var saved_filter: int = texture_filter
+	if layer.texture_filter_override != BayterekLayer.TextureFilterOverride.INHERIT:
+		var eff: int = layer.get_effective_texture_filter()
+		texture_filter = (
+			CanvasItem.TEXTURE_FILTER_NEAREST if eff == 1
+			else CanvasItem.TEXTURE_FILTER_LINEAR
+		)
+
 	if pixel_mode and layer.is_axis_aligned():
 		var tl_world: Vector2 = combined * (-half)
 		var br_world: Vector2 = combined * half
@@ -477,11 +488,14 @@ func _draw_texture_layer(
 		var dst_size: Vector2 = (br_world - tl_world).floor()
 		draw_set_transform_matrix(Transform2D.IDENTITY)
 		draw_texture_rect(tex, Rect2(dst_pos, dst_size), false, tint)
+		texture_filter = saved_filter
 		return
 
 	draw_set_transform_matrix(combined)
 	_draw_texture_in_box(tex, Rect2(-half, effective_size), tint, layer)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+	texture_filter = saved_filter
 
 func _draw_texture_in_box(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
 	if not tex:

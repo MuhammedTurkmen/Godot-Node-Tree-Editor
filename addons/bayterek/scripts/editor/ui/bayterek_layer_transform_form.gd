@@ -38,6 +38,7 @@ var _rotation_row: HBoxContainer
 # --- Skew ---
 var _skew_x: SpinBox
 var _skew_y: SpinBox
+var _skew_row: HBoxContainer
 
 # --- Pivot ---
 var _pivot_buttons: Array[Button] = []
@@ -132,6 +133,7 @@ func _build_ui() -> void:
 	# --- Skew ---
 	var skew_row_data := _make_pair_row_container("Skew", "X", "Y",
 		-89.0, 89.0, 1.0, true, 0.0, "°")
+	_skew_row = skew_row_data["row"]
 	_skew_x = skew_row_data["a"]
 	_skew_y = skew_row_data["b"]
 	_skew_x.value_changed.connect(_on_skew_changed)
@@ -300,6 +302,8 @@ func _bind_exports() -> void:
 		"layers.%s.transform.flip_x" % _layer_id, _design, _on_export_changed)
 	BayterekExportHelper.make_exportable(_rotation_row,
 		"layers.%s.transform.rotation" % _layer_id, _design, _on_export_changed)
+	BayterekExportHelper.make_exportable(_skew_row,
+		"layers.%s.transform.skew" % _layer_id, _design, _on_export_changed)
 	BayterekExportHelper.make_exportable(_scale_from_pivot_row,
 		"layers.%s.transform.scale_from_pivot" % _layer_id, _design, _on_export_changed)
 

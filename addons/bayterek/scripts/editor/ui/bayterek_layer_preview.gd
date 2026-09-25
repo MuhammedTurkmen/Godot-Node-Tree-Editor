@@ -3,6 +3,12 @@ class_name BayterekLayerPreview
 extends Control
 ## Live preview of a design's layer stack.
 ## Supports mouse-wheel zoom and middle-drag pan.
+##
+## Each texture layer is rendered by its own child TextureRect so that
+## per-layer texture_filter overrides work correctly (Godot's
+## CanvasItem.texture_filter is fixed for the duration of a _draw()
+## call, so mixing filters inside one canvas item is impossible).
+## Shape layers are still drawn on this control's own _draw().
 
 signal zoom_changed(zoom: float)
 
@@ -28,6 +34,13 @@ var bg_color: Color = Color(0.08, 0.08, 0.10, 1.0) : set = set_bg_color
 
 var show_nine_patch_guides: bool = false
 
+## Container that holds the per-texture-layer TextureRects.
+## Created in _ready().
+var _texture_layer_root: Control
+
+## One TextureRect per BayterekTextureLayer, keyed by layer_id.
+var _texture_rects: Dictionary = {}   # layer_id -> TextureRect
+
 func set_bg_color(c: Color) -> void:
 	bg_color = c
 	queue_redraw()
@@ -37,6 +50,12 @@ func _ready() -> void:
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
+	_texture_layer_root = Control.new()
+	_texture_layer_root.name = "TextureLayerRoot"
+	_texture_layer_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_texture_layer_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_texture_layer_root)
+
 func set_design(d: BayterekNodeDesign) -> void:
 	if design and design.layers_changed.is_connected(_on_design_changed):
 		design.layers_changed.disconnect(_on_design_changed)
@@ -44,7 +63,7 @@ func set_design(d: BayterekNodeDesign) -> void:
 	design = d
 	_reset_view()
 	_recompute_scale()
-	_apply_texture_filter()
+	_rebuild_texture_rects()
 
 	if design:
 		design.layers_changed.connect(_on_design_changed)
@@ -52,8 +71,8 @@ func set_design(d: BayterekNodeDesign) -> void:
 	queue_redraw()
 
 func _on_design_changed(_d: BayterekNodeDesign, _change_type: String) -> void:
-	_apply_texture_filter()
 	_recompute_scale()
+	_rebuild_texture_rects()
 	queue_redraw()
 
 func _reset_view() -> void:
@@ -63,6 +82,7 @@ func _reset_view() -> void:
 func reset_view() -> void:
 	_reset_view()
 	_recompute_scale()
+	_rebuild_texture_rects()
 	queue_redraw()
 	zoom_changed.emit(user_zoom)
 
@@ -78,30 +98,15 @@ func _set_user_zoom(z: float) -> void:
 		return
 	user_zoom = clamped
 	_recompute_scale()
+	_rebuild_texture_rects()
 	queue_redraw()
 	zoom_changed.emit(user_zoom)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		_recompute_scale()
+		_rebuild_texture_rects()
 		queue_redraw()
-
-func _apply_texture_filter() -> void:
-	if not design:
-		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-		return
-
-	for layer in design.layers:
-		if not layer or not (layer is BayterekTextureLayer):
-			continue
-		if layer.texture_filter_override == BayterekLayer.TextureFilterOverride.NEAREST:
-			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			return
-		elif layer.texture_filter_override == BayterekLayer.TextureFilterOverride.LINEAR:
-			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-			return
-
-	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 # ============================================================
 # FIT SCALE + PAN
@@ -158,11 +163,112 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 	elif event is InputEventMouseMotion and _panning:
 		pan_offset = _pan_start_offset + (event.position - _pan_start_mouse)
+		_rebuild_texture_rects()
 		queue_redraw()
 		accept_event()
 
 # ============================================================
-# DRAW
+# TEXTURE RECT BUILDING (per-layer filter support)
+# ============================================================
+
+## Clears and rebuilds the per-texture-layer TextureRect children.
+## Called whenever the design, zoom, or pan changes.
+func _rebuild_texture_rects() -> void:
+	if not _texture_layer_root:
+		return
+
+	# Remove any TextureRects for layers that no longer exist.
+	var valid_ids: Dictionary = {}
+	if design:
+		for layer in design.layers:
+			if layer is BayterekTextureLayer:
+				valid_ids[layer.layer_id] = true
+
+	for layer_id in _texture_rects.keys():
+		if not valid_ids.has(layer_id):
+			var tr: TextureRect = _texture_rects[layer_id]
+			if is_instance_valid(tr):
+				tr.queue_free()
+			_texture_rects.erase(layer_id)
+
+	# Build/update.
+	if not design:
+		return
+
+	var states := _get_simulated_states()
+
+	for layer in design.layers:
+		if not layer or not layer.visible:
+			continue
+		if not (layer is BayterekTextureLayer):
+			continue
+		_update_texture_rect(layer, states)
+
+func _update_texture_rect(layer: BayterekTextureLayer, states: Dictionary) -> void:
+	var state_key: String = layer.get_visual_state(states)
+
+	var tr: TextureRect = _texture_rects.get(layer.layer_id, null)
+	if not tr or not is_instance_valid(tr):
+		tr = TextureRect.new()
+		tr.name = "TexLayer_%s" % layer.layer_id
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_SCALE
+		_texture_layer_root.add_child(tr)
+		_texture_rects[layer.layer_id] = tr
+
+	# --- Per-layer filter ---
+	var eff: int = layer.get_effective_texture_filter()
+	# eff: 0 = LINEAR, 1 = NEAREST
+	tr.texture_filter = (
+		CanvasItem.TEXTURE_FILTER_NEAREST if eff == 1
+		else CanvasItem.TEXTURE_FILTER_LINEAR
+	)
+
+	# --- Texture + tint ---
+	var tex: Texture2D = null
+	var tint: Color = Color.WHITE
+	if layer.should_draw_icon(state_key):
+		tex = layer.get_icon_for_state(state_key)
+		tint = layer.get_tint_for_state(state_key)
+
+	tr.texture = tex
+	tr.modulate = tint
+
+	if not tex:
+		tr.visible = false
+		return
+
+	tr.visible = true
+
+	# --- Compute layout (matches what the old _draw() did) ---
+	var design_size: Vector2 = design.design_size
+	var effective_mode: int = layer.get_effective_render_mode()
+	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
+	var layer_matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
+	var effective_size: Vector2 = layer.get_size(design_size)
+
+	var center: Vector2 = size * 0.5 + pan_offset
+	var base_xform := Transform2D(
+		Vector2(preview_scale, 0),
+		Vector2(0, preview_scale),
+		center
+	)
+	var combined: Transform2D = base_xform * layer_matrix
+
+	var half: Vector2 = effective_size * 0.5
+
+	# Compute top-left / size in this control's coordinate space.
+	var tl: Vector2 = combined * (-half)
+	var br: Vector2 = combined * half
+	tr.position = tl
+	tr.size = br - tl
+	tr.pivot_offset = Vector2.ZERO
+	tr.rotation = 0.0
+
+# ============================================================
+# DRAW (shapes only — textures live in child TextureRects)
 # ============================================================
 
 func _draw() -> void:
@@ -182,10 +288,14 @@ func _draw() -> void:
 
 	_draw_design_center_marker(center)
 
+	var states := _get_simulated_states()
+
 	for layer in design.layers:
 		if not layer or not layer.visible:
 			continue
-		_draw_layer(layer, base_xform)
+		if not (layer is BayterekShapeLayer):
+			continue
+		_draw_shape_layer(layer, states, base_xform)
 
 	if show_nine_patch_guides:
 		for layer in design.layers:
@@ -249,12 +359,11 @@ func _draw_background_grid() -> void:
 		py += primary_step
 
 # ============================================================
-# DESIGN CONTENT
+# SHAPE DRAWING
 # ============================================================
 
-func _draw_layer(layer: BayterekLayer, base_xform: Transform2D) -> void:
-	var simulated := _get_simulated_states()
-	var state_key: String = layer.get_visual_state(simulated)
+func _draw_shape_layer(layer: BayterekShapeLayer, states: Dictionary, base_xform: Transform2D) -> void:
+	var state_key: String = layer.get_visual_state(states)
 	var design_size: Vector2 = design.design_size
 
 	var effective_mode: int = layer.get_effective_render_mode()
@@ -265,13 +374,10 @@ func _draw_layer(layer: BayterekLayer, base_xform: Transform2D) -> void:
 
 	var combined: Transform2D = base_xform * layer_matrix
 
-	if layer is BayterekShapeLayer:
-		if pixel_mode and layer.is_axis_aligned():
-			_draw_shape_pixel(layer, state_key, effective_size, combined)
-		else:
-			_draw_shape(layer, state_key, effective_size, combined, pixel_mode)
-	elif layer is BayterekTextureLayer:
-		_draw_texture(layer, state_key, effective_size, combined, pixel_mode)
+	if pixel_mode and layer.is_axis_aligned():
+		_draw_shape_pixel(layer, state_key, effective_size, combined)
+	else:
+		_draw_shape(layer, state_key, effective_size, combined, pixel_mode)
 
 	if show_pivot_markers and layer.transform:
 		_draw_pivot_marker(layer, combined, effective_size, pixel_mode)
@@ -440,120 +546,6 @@ func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Arr
 			dir = dir.normalized()
 		out[i] = v + dir * offset
 	return out
-
-# ============================================================
-# TEXTURE DRAWING
-# ============================================================
-
-func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_size: Vector2, xform: Transform2D, pixel_mode: bool) -> void:
-	if not layer.should_draw_icon(state_key):
-		return
-	var tex: Texture2D = layer.get_icon_for_state(state_key)
-	if not tex:
-		return
-	var tint: Color = layer.get_tint_for_state(state_key)
-
-	if pixel_mode:
-		var half: Vector2 = effective_size * 0.5
-		var tl: Vector2 = xform * (-half)
-		var br: Vector2 = xform * half
-		var dst_pos: Vector2 = tl.floor()
-		var dst_size: Vector2 = (br - tl).floor()
-		draw_set_transform_matrix(Transform2D.IDENTITY)
-		draw_texture_rect(tex, Rect2(dst_pos, dst_size), false, tint)
-		return
-
-	draw_set_transform_matrix(xform)
-	_draw_texture_in_box(tex, Rect2(-effective_size * 0.5, effective_size), tint, layer)
-	draw_set_transform_matrix(Transform2D.IDENTITY)
-
-func _draw_texture_in_box(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
-	if not tex:
-		return
-
-	match layer.stretch_mode:
-		BayterekTextureLayer.StretchMode.NINE_PATCH:
-			_draw_nine_patch(tex, target, tint, layer)
-		BayterekTextureLayer.StretchMode.TILE:
-			draw_texture_rect(tex, target, true, tint)
-		BayterekTextureLayer.StretchMode.KEEP_ASPECT:
-			_draw_keep_aspect(tex, target, tint)
-		_:
-			draw_texture_rect(tex, target, false, tint)
-
-func _draw_nine_patch(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
-	var tex_size: Vector2 = tex.get_size()
-	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
-		return
-
-	var l: float = float(layer.nine_patch_margin_left)
-	var t: float = float(layer.nine_patch_margin_top)
-	var r: float = float(layer.nine_patch_margin_right)
-	var b: float = float(layer.nine_patch_margin_bottom)
-
-	if l + r > tex_size.x:
-		var sx: float = tex_size.x / (l + r)
-		l *= sx
-		r *= sx
-	if t + b > tex_size.y:
-		var sy: float = tex_size.y / (t + b)
-		t *= sy
-		b *= sy
-
-	var target_l: float = target.position.x
-	var target_t: float = target.position.y
-	var target_r: float = target.position.x + target.size.x
-	var target_b: float = target.position.y + target.size.y
-
-	var mid_x0: float = target_l + l
-	var mid_x1: float = target_r - r
-	var mid_y0: float = target_t + t
-	var mid_y1: float = target_b - b
-
-	var src_mid_x0: float = l
-	var src_mid_x1: float = tex_size.x - r
-	var src_mid_y0: float = t
-	var src_mid_y1: float = tex_size.y - b
-
-	_draw_patch(tex, Rect2(target_l, target_t, mid_x0 - target_l, mid_y0 - target_t),
-		Rect2(0, 0, src_mid_x0, src_mid_y0), tint)
-	_draw_patch(tex, Rect2(mid_x0, target_t, mid_x1 - mid_x0, mid_y0 - target_t),
-		Rect2(src_mid_x0, 0, src_mid_x1 - src_mid_x0, src_mid_y0), tint)
-	_draw_patch(tex, Rect2(mid_x1, target_t, target_r - mid_x1, mid_y0 - target_t),
-		Rect2(src_mid_x1, 0, tex_size.x - src_mid_x1, src_mid_y0), tint)
-
-	_draw_patch(tex, Rect2(target_l, mid_y0, mid_x0 - target_l, mid_y1 - mid_y0),
-		Rect2(0, src_mid_y0, src_mid_x0, src_mid_y1 - src_mid_y0), tint)
-	if layer.nine_patch_draw_center:
-		_draw_patch(tex, Rect2(mid_x0, mid_y0, mid_x1 - mid_x0, mid_y1 - mid_y0),
-			Rect2(src_mid_x0, src_mid_y0, src_mid_x1 - src_mid_x0, src_mid_y1 - src_mid_y0), tint)
-	_draw_patch(tex, Rect2(mid_x1, mid_y0, target_r - mid_x1, mid_y1 - mid_y0),
-		Rect2(src_mid_x1, src_mid_y0, tex_size.x - src_mid_x1, src_mid_y1 - src_mid_y0), tint)
-
-	_draw_patch(tex, Rect2(target_l, mid_y1, mid_x0 - target_l, target_b - mid_y1),
-		Rect2(0, src_mid_y1, src_mid_x0, tex_size.y - src_mid_y1), tint)
-	_draw_patch(tex, Rect2(mid_x0, mid_y1, mid_x1 - mid_x0, target_b - mid_y1),
-		Rect2(src_mid_x0, src_mid_y1, src_mid_x1 - src_mid_x0, tex_size.y - src_mid_y1), tint)
-	_draw_patch(tex, Rect2(mid_x1, mid_y1, target_r - mid_x1, target_b - mid_y1),
-		Rect2(src_mid_x1, src_mid_y1, tex_size.x - src_mid_x1, tex_size.y - src_mid_y1), tint)
-
-func _draw_patch(tex: Texture2D, target: Rect2, src: Rect2, tint: Color) -> void:
-	if target.size.x <= 0.0 or target.size.y <= 0.0:
-		return
-	if src.size.x <= 0.0 or src.size.y <= 0.0:
-		return
-	draw_texture_rect_region(tex, target, src, tint)
-
-func _draw_keep_aspect(tex: Texture2D, target: Rect2, tint: Color) -> void:
-	var tex_size: Vector2 = tex.get_size()
-	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
-		return
-	var scale_x: float = target.size.x / tex_size.x
-	var scale_y: float = target.size.y / tex_size.y
-	var s: float = minf(scale_x, scale_y)
-	var draw_size: Vector2 = tex_size * s
-	var draw_pos: Vector2 = target.position + (target.size - draw_size) * 0.5
-	draw_texture_rect(tex, Rect2(draw_pos, draw_size), false, tint)
 
 # ============================================================
 # NINE PATCH GUIDES
