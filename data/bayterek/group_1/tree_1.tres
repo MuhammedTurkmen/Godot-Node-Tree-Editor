@@ -79,4 +79,4 @@ id = "tree_1"
 name = "Tree 1"
 id_counter = 1
 nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_5lgyx")])
-hierarchy_split_offset = -430
+hierarchy_split_offset = -387

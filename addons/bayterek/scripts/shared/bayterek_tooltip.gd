@@ -2,15 +2,6 @@
 class_name BayterekTooltip
 extends PanelContainer
 ## Tooltip panel shown when hovering a node.
-##
-## Layout:
-##   ┌───────────────────────────┐
-##   │  Header   (name)          │  ← tooltip_header_align
-##   ├───────────────────────────┤
-##   │  Body     (attrs + desc)  │  ← tooltip_body_align
-##   ├───────────────────────────┤
-##   │  Footer   (level)         │  ← tooltip_footer_align
-##   └───────────────────────────┘
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -19,30 +10,12 @@ enum PositionMode {
 	FIXED_CORNER,
 }
 
-## Where to place the tooltip
 @export var position_mode: PositionMode = PositionMode.NEAR_NODE
-
-## Which corner to anchor to when position_mode == FIXED_CORNER
 @export var corner: int = Bayterek.TooltipCorner.BOTTOM_RIGHT
-
-## Margin from the corner (in pixels)
 @export var corner_margin: Vector2 = Vector2(20, 20)
-
-## Offset from the node when position_mode == NEAR_NODE.
-## - X positive → to the right of the node
-## - X negative → to the left
-## - Y positive → below
-## - Y negative → above
-## - Both positive → bottom-right corner
-## - Only one axis set → aligned to that axis, centered on the other
 @export var node_offset: Vector2 = Vector2(20, 0)
 
-## Reference to the tree view (used for FIXED_CORNER positioning and clamping)
 var tree_view: Control = null
-
-# ============================================================
-# SUB-CONTROLS
-# ============================================================
 
 var _vbox: VBoxContainer
 var _header_label: RichTextLabel
@@ -51,26 +24,19 @@ var _body_label: RichTextLabel
 var _footer_sep: HSeparator
 var _footer_label: RichTextLabel
 
-# Alignment (0 = left, 1 = center, 2 = right)
 var _header_align: int = 0
 var _body_align: int = 0
 var _footer_align: int = 1
 
-# ============================================================
-# READY
-# ============================================================
-
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-
 	_build_ui()
 
 func _build_ui() -> void:
 	if _vbox:
 		return
 
-	# Remove any pre-existing children (in case a .tscn set them up)
 	for child in get_children():
 		child.queue_free()
 
@@ -80,7 +46,6 @@ func _build_ui() -> void:
 	_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_vbox)
 
-	# --- Header ---
 	_header_label = RichTextLabel.new()
 	_header_label.name = "Header"
 	_header_label.bbcode_enabled = true
@@ -92,12 +57,10 @@ func _build_ui() -> void:
 	_header_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_vbox.add_child(_header_label)
 
-	# --- Header separator ---
 	_header_sep = HSeparator.new()
 	_header_sep.name = "HeaderSep"
 	_vbox.add_child(_header_sep)
 
-	# --- Body ---
 	_body_label = RichTextLabel.new()
 	_body_label.name = "Body"
 	_body_label.bbcode_enabled = true
@@ -109,12 +72,10 @@ func _build_ui() -> void:
 	_body_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_vbox.add_child(_body_label)
 
-	# --- Footer separator ---
 	_footer_sep = HSeparator.new()
 	_footer_sep.name = "FooterSep"
 	_vbox.add_child(_footer_sep)
 
-	# --- Footer ---
 	_footer_label = RichTextLabel.new()
 	_footer_label.name = "Footer"
 	_footer_label.bbcode_enabled = true
@@ -145,35 +106,40 @@ func _set_label_align(label: RichTextLabel, align: int) -> void:
 # PUBLIC API
 # ============================================================
 
-## Fills the tooltip from a node and shows it.
 func inspect(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data:
 		reset()
 		return
 
-	# Read alignment from the tree (if available)
 	if node.tree_data:
 		_header_align = node.tree_data.tooltip_header_align
 		_body_align = node.tree_data.tooltip_body_align
 		_footer_align = node.tree_data.tooltip_footer_align
 		_apply_alignments()
 
-	# Ask the node for its formatted sections
 	var sections: Dictionary = node.format_tooltip_sections()
-	_header_label.text = sections.get("header", "")
-	_body_label.text = sections.get("body", "")
-	_footer_label.text = sections.get("footer", "")
+	header_label_set_text(sections.get("header", ""))
+	body_label_set_text(sections.get("body", ""))
+	footer_label_set_text(sections.get("footer", ""))
 
-	# Hide separators if a section is empty
 	_header_sep.visible = not _body_label.text.is_empty() and not _header_label.text.is_empty()
 	_footer_sep.visible = not _footer_label.text.is_empty() and (not _body_label.text.is_empty() or not _header_label.text.is_empty())
 
-	# Reset size, then show
 	reset_size()
 	visible = true
 	_update_position(node)
 
-## Hides and clears the tooltip.
+## Wrappers — `RichTextLabel.text` in BBCode mode needs to be set this way
+## so a deferred re-layout happens before `reset_size()`.
+func header_label_set_text(t: String) -> void:
+	_header_label.text = t
+
+func body_label_set_text(t: String) -> void:
+	_body_label.text = t
+
+func footer_label_set_text(t: String) -> void:
+	_footer_label.text = t
+
 func reset() -> void:
 	visible = false
 	if _header_label:
@@ -183,7 +149,6 @@ func reset() -> void:
 	if _footer_label:
 		_footer_label.text = ""
 
-## Re-positions the tooltip if it's already visible.
 func update_position_for(node: BayterekNodeButton) -> void:
 	if not visible or not node:
 		return
@@ -236,22 +201,17 @@ func _update_position(node: BayterekNodeButton) -> void:
 		PositionMode.FIXED_CORNER:
 			_position_fixed_corner()
 
-## Places the tooltip near the node, respecting the configured offset.
+## Places the tooltip near the node using the node's on-screen rect.
 ##
-## Rules (in order of precedence):
-##   1. If both axes of `node_offset` are non-zero → corner placement.
-##   2. If only one axis is non-zero → axis-aligned placement, centered on
-##      the other axis (relative to the node's center).
-##   3. If both axes are zero → default to the right of the node, vertically
-##      centered.
-##
-## After placement, the tooltip is clamped to stay inside the viewport.
+## The node's `size` is the visible bounds (largest layer), so we use
+## it directly to compute the node's screen edges. The tooltip is
+## placed OUTSIDE these edges.
 func _position_near_node(node: BayterekNodeButton) -> void:
 	if not node:
 		return
 
-	var node_global: Vector2 = node.get_global_position()
-	var node_size: Vector2 = node.size
+	# Get the node's rect in SCREEN coordinates.
+	var node_rect: Rect2 = node.get_global_rect()
 	var tooltip_size: Vector2 = size
 
 	var has_h: bool = absf(node_offset.x) > 0.01
@@ -262,35 +222,35 @@ func _position_near_node(node: BayterekNodeButton) -> void:
 	if has_h and has_v:
 		# Corner placement: choose side based on sign of offset.
 		if node_offset.x > 0:
-			target_pos.x = node_global.x + node_size.x + node_offset.x
+			target_pos.x = node_rect.position.x + node_rect.size.x + node_offset.x
 		else:
-			target_pos.x = node_global.x + node_offset.x - tooltip_size.x
+			target_pos.x = node_rect.position.x + node_offset.x - tooltip_size.x
 
 		if node_offset.y > 0:
-			target_pos.y = node_global.y + node_size.y + node_offset.y
+			target_pos.y = node_rect.position.y + node_rect.size.y + node_offset.y
 		else:
-			target_pos.y = node_global.y + node_offset.y - tooltip_size.y
+			target_pos.y = node_rect.position.y + node_offset.y - tooltip_size.y
 
 	elif has_h and not has_v:
-		# Horizontal-only: align to node vertical center.
-		target_pos.y = node_global.y + node_size.y * 0.5 - tooltip_size.y * 0.5
+		# Horizontal-only: align to node vertical center, place OUTSIDE.
+		target_pos.y = node_rect.position.y + node_rect.size.y * 0.5 - tooltip_size.y * 0.5
 		if node_offset.x > 0:
-			target_pos.x = node_global.x + node_size.x + node_offset.x
+			target_pos.x = node_rect.position.x + node_rect.size.x + node_offset.x
 		else:
-			target_pos.x = node_global.x + node_offset.x - tooltip_size.x
+			target_pos.x = node_rect.position.x + node_offset.x - tooltip_size.x
 
 	elif has_v and not has_h:
-		# Vertical-only: align to node horizontal center.
-		target_pos.x = node_global.x + node_size.x * 0.5 - tooltip_size.x * 0.5
+		# Vertical-only: align to node horizontal center, place OUTSIDE.
+		target_pos.x = node_rect.position.x + node_rect.size.x * 0.5 - tooltip_size.x * 0.5
 		if node_offset.y > 0:
-			target_pos.y = node_global.y + node_size.y + node_offset.y
+			target_pos.y = node_rect.position.y + node_rect.size.y + node_offset.y
 		else:
-			target_pos.y = node_global.y + node_offset.y - tooltip_size.y
+			target_pos.y = node_rect.position.y + node_offset.y - tooltip_size.y
 
 	else:
 		# No offset: default to the right of the node, vertically centered.
-		target_pos.y = node_global.y + node_size.y * 0.5 - tooltip_size.y * 0.5
-		target_pos.x = node_global.x + node_size.x + 20
+		target_pos.y = node_rect.position.y + node_rect.size.y * 0.5 - tooltip_size.y * 0.5
+		target_pos.x = node_rect.position.x + node_rect.size.x + 20
 
 	target_pos = _clamp_to_viewport(target_pos, tooltip_size)
 	global_position = target_pos
