@@ -447,11 +447,10 @@ static func get_designs_registry_path() -> String:
 # SAFE SAVE HELPERS
 # ============================================================
 
-## Saves a resource atomically: writes to a temp file first, then moves
-## it over the target. Prevents partial writes from corrupting existing
-## files if the editor crashes mid-save.
-##
-## Returns OK on success, or an error code.
+## Saves a resource. In the editor, delegates directly to ResourceSaver
+## (atomic save isn't needed because the editor handles the file lifecycle).
+## At runtime, uses a temp-file + rename to avoid corrupting existing
+## saves if the process crashes mid-write.
 static func safe_save(resource: Resource, path: String) -> Error:
 	if not resource:
 		BayterekLogger.error("safe_save: resource is null", "save")
@@ -460,28 +459,37 @@ static func safe_save(resource: Resource, path: String) -> Error:
 		BayterekLogger.error("safe_save: path is empty", "save")
 		return ERR_INVALID_PARAMETER
 
-	var tmp_path: String = path + ".tmp"
+	# Ensure target directory exists.
+	var dir: String = path.get_base_dir()
+	if not dir.is_empty() and not DirAccess.dir_exists_absolute(dir):
+		DirAccess.make_dir_recursive_absolute(dir)
 
-	# Write to temp file
+	# In the editor, just write directly. The editor owns the resource
+	# pipeline and will re-scan the file when we're done. Attempting a
+	# temp-file dance inside the editor is unreliable — Godot treats
+	# `.tmp` files as non-resources and blocks writes to them.
+	if Engine.is_editor_hint():
+		var direct_err: Error = ResourceSaver.save(resource, path)
+		if direct_err != OK:
+			BayterekLogger.error("safe_save (editor): save failed (%d) for %s" % [direct_err, path], "save")
+		return direct_err
+
+	# Runtime: atomic save via temp file + rename.
+	var base: String = path.get_basename()
+	var ext: String = path.get_extension()
+	var tmp_path: String = "%s.safe_tmp.%s" % [base, ext]
+
 	var err: Error = ResourceSaver.save(resource, tmp_path)
 	if err != OK:
 		BayterekLogger.error("safe_save: temp save failed (%d) for %s" % [err, tmp_path], "save")
 		return err
 
-	# Make sure target dir exists
-	var dir: String = path.get_base_dir()
-	if not DirAccess.dir_exists_absolute(dir):
-		DirAccess.make_dir_recursive_absolute(dir)
-
-	# If target exists, remove it first (rename is atomic on most systems
-	# but Godot's DirAccess.rename_absolute can fail if target exists)
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
 
 	var move_err: Error = DirAccess.rename_absolute(tmp_path, path)
 	if move_err != OK:
 		BayterekLogger.error("safe_save: rename failed (%d) %s → %s" % [move_err, tmp_path, path], "save")
-		# Cleanup temp
 		if FileAccess.file_exists(tmp_path):
 			DirAccess.remove_absolute(tmp_path)
 		return move_err

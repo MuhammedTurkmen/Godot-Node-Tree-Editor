@@ -10,6 +10,13 @@ enum RenderModeOverride {
 	PIXEL,
 }
 
+## Per-layer texture filter override. INHERIT uses the design's filter.
+enum TextureFilterOverride {
+	INHERIT,
+	LINEAR,
+	NEAREST,
+}
+
 ## Render mode int values, matching BayterekNodeDesign.RenderMode.
 ## Duplicated here to avoid a cyclic dependency between
 ## BayterekLayer and BayterekNodeDesign.
@@ -51,6 +58,9 @@ const STATE_PRIORITY: Array[String] = [
 
 ## Per-layer render mode override. INHERIT uses the design's mode.
 @export_storage var render_mode_override: RenderModeOverride = RenderModeOverride.INHERIT
+
+## Per-layer texture filter override. INHERIT uses the design's filter.
+@export_storage var texture_filter_override: TextureFilterOverride = TextureFilterOverride.INHERIT
 
 func _init() -> void:
 	if layer_id.is_empty():
@@ -94,6 +104,19 @@ func get_effective_render_mode(design_mode: int) -> int:
 		_:
 			return design_mode
 
+## Resolves the effective texture filter for this layer.
+## `design_filter` is an int (0 = Linear, 1 = Nearest), matching
+## BayterekNodeDesign.TextureFilter. Returns the effective int filter.
+## Does NOT reference BayterekNodeDesign to avoid a cyclic dependency.
+func get_effective_texture_filter(design_filter: int) -> int:
+	match texture_filter_override:
+		TextureFilterOverride.LINEAR:
+			return 0   # TEXTURE_FILTER_LINEAR
+		TextureFilterOverride.NEAREST:
+			return 1   # TEXTURE_FILTER_NEAREST
+		_:
+			return design_filter
+
 ## Duplicate ederken layer_id KORUNUR. Yeni bir ID istiyorsanız
 ## caller tarafından atanmalı (örn. Layer Editor'ün "Duplicate" butonu).
 func duplicate_layer() -> BayterekLayer:
@@ -109,6 +132,7 @@ func _copy_base_to(target: BayterekLayer) -> void:
 	target.animation_id = animation_id
 	target.animated = animated
 	target.render_mode_override = render_mode_override
+	target.texture_filter_override = texture_filter_override
 
 func _to_string() -> String:
 	return "%s(id=%s, name='%s', visible=%s)" % [

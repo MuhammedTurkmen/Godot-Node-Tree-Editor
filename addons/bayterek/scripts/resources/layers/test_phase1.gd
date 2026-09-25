@@ -55,6 +55,43 @@ static func run_all() -> void:
 	else:
 		push_error("Some tests failed — see above.")
 
+	# Clean up test artifacts so the editor's resource cache doesn't
+	# trip over a missing file on the next idle frame.
+	_cleanup_test_files()
+
+# ============================================================
+# CLEANUP
+# ============================================================
+
+## Removes temporary files created by the test suite and asks the
+## editor to re-scan so its resource cache evicts stale entries.
+static func _cleanup_test_files() -> void:
+	# Phase 1 round-trip file.
+	if FileAccess.file_exists(SAVE_PATH):
+		DirAccess.remove_absolute(SAVE_PATH)
+
+	# UID sidecar if it was created.
+	var uid_path: String = SAVE_PATH + ".uid"
+	if FileAccess.file_exists(uid_path):
+		DirAccess.remove_absolute(uid_path)
+
+	# Serializer test fixture (created by test_serializer.gd).
+	var serializer_tree := "res://addons/bayterek/test_fixtures/serializer_test_tree.tres"
+	if FileAccess.file_exists(serializer_tree):
+		DirAccess.remove_absolute(serializer_tree)
+	var serializer_uid: String = serializer_tree + ".uid"
+	if FileAccess.file_exists(serializer_uid):
+		DirAccess.remove_absolute(serializer_uid)
+
+	# Serializer save file.
+	var serializer_save := "user://bayterek_serializer_test.tree"
+	if FileAccess.file_exists(serializer_save):
+		DirAccess.remove_absolute(serializer_save)
+
+	# Ask the editor to re-scan so its cache forgets the deleted .tres.
+	if Engine.is_editor_hint():
+		EditorInterface.get_resource_filesystem().scan()
+
 # ============================================================
 # SUB RUNNERS
 # ============================================================

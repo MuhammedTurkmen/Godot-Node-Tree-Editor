@@ -35,6 +35,9 @@ var prefabs_bar: BayterekPrefabsBar
 var context_menu: BayterekEditorContext
 var _shortcuts: BayterekShortcuts
 
+## Quick node search popup (Ctrl+P / Ctrl+F).
+var _node_search: BayterekNodeSearch
+
 var validator: BayterekValidator
 var rename_dialog: BayterekRenameDialog
 var group_dialog: BayterekGroupDialog
@@ -81,6 +84,9 @@ func _exit_tree() -> void:
 	if context_menu and is_instance_valid(context_menu):
 		context_menu.queue_free()
 		context_menu = null
+	if _node_search and is_instance_valid(_node_search):
+		_node_search.queue_free()
+		_node_search = null
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
@@ -134,6 +140,7 @@ func load_tree(path: String) -> void:
 	_build_ui()
 	_create_tree_view()
 	_create_context_menu()
+	_create_node_search()
 	_create_delete_dialog()
 	_create_rename_dialog()
 	_create_group_dialog()
@@ -501,7 +508,6 @@ func _on_delete_confirmed() -> void:
 	var prefab_to_delete = _pending_delete_prefab
 	_pending_delete_prefab = null
 
-	# Snapshot affected nodes for undo.
 	var affected_nodes: Array = prefab_to_delete.get_nodes().duplicate()
 
 	var do_callable := func():
@@ -528,7 +534,6 @@ func _restore_prefab_snapshot(prefab: BayterekPrefab, affected_nodes: Array) -> 
 	if not tree_view.prefabs_service._ref_id_to_prefab.has(prefab.reference_id):
 		tree_view.prefabs_service._ref_id_to_prefab[prefab.reference_id] = prefab
 
-	# Restore node bindings.
 	for node in affected_nodes:
 		if not is_instance_valid(node):
 			continue
@@ -579,7 +584,6 @@ func _on_rename_applied(new_name: String, new_description: String) -> void:
 		BayterekToast.warning(tree_view, "Node is locked. Unlock it first.")
 		return
 
-	# Snapshot old values for undo.
 	var old_name: String = node.node_data.name
 	var old_desc: String = node.node_data.description
 	var target_prefab: BayterekPrefab = node.prefab
@@ -819,7 +823,6 @@ func _delete_group_undoable(group_id: String, delete_nodes: bool) -> void:
 	if not group:
 		return
 
-	# Snapshot for undo
 	var group_snapshot := group.duplicate() as BayterekNodeGroup
 	var node_snapshots: Array = []
 	var node_indices: Array = []
@@ -894,8 +897,6 @@ func _do_undo_group_delete(group_snapshot: BayterekNodeGroup, member_nodes: Arra
 # ============================================================
 
 func _assign_node_to_group(node: BayterekNodeButton, group_id: String) -> void:
-	# Raw version without undo. Used internally by undoable helpers and
-	# by the group creation flow.
 	if not node or not node.node_data or not tree:
 		return
 
@@ -919,12 +920,10 @@ func _assign_node_to_group(node: BayterekNodeButton, group_id: String) -> void:
 		if not group_id.is_empty():
 			tree_view.group_frames_service.refresh_group(group_id)
 
-## Undoable group assignment. `group_id` of "" means unassign.
 func assign_selected_to_group(group_id: String) -> void:
 	if not tree_view:
 		return
 
-	# Build old/new id maps for each affected node.
 	var node_ids: Array = []
 	var old_ids: Array = []
 	for node in tree_view.selected_nodes:
@@ -965,7 +964,6 @@ func _do_assign_nodes_to_group(node_ids: Array, group_ids: Array) -> void:
 		tree_view.group_frames_service.refresh_all()
 	set_dirty(true)
 
-## Undoable ungroup of all selected nodes.
 func ungroup_selected() -> void:
 	if not tree_view:
 		return
@@ -1186,7 +1184,6 @@ func _on_prefab_card_duplicate(prefab: BayterekPrefab) -> void:
 	if not copy:
 		return
 
-	# Undo: remove the copy from the tree.
 	var do_callable := func():
 		set_dirty(true)
 		BayterekToast.success(tree_view, "Prefab duplicated: %s" % copy.node_name)
@@ -1282,6 +1279,33 @@ func _create_context_menu() -> void:
 		root.call_deferred("add_child", context_menu)
 	else:
 		add_child(context_menu)
+
+# ============================================================
+# NODE SEARCH
+# ============================================================
+
+func _create_node_search() -> void:
+	_node_search = BayterekNodeSearch.new()
+	_node_search.node_chosen.connect(_on_node_search_chosen)
+
+	var root: Window = get_tree().root
+	if root:
+		root.call_deferred("add_child", _node_search)
+	else:
+		add_child(_node_search)
+
+func open_node_search() -> void:
+	if not _node_search or not tree_view:
+		return
+	_node_search.open_for(tree_view)
+
+func _on_node_search_chosen(node: BayterekNodeButton) -> void:
+	if not is_instance_valid(node) or not tree_view:
+		return
+	tree_view.clear_selection()
+	tree_view.select_node(node)
+	if node.node_data and tree_view.camera:
+		tree_view.camera.focus_on(node.node_data.position, tree_view.camera.get_zoom())
 
 func _on_new_node_from_context(design_id: String, tree_pos: Vector2) -> void:
 	var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(design_id)

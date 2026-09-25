@@ -26,6 +26,10 @@ func handle_input(event: InputEvent) -> bool:
 		if key == KEY_S:
 			editor.save_tree()
 			return true
+		if key == KEY_P or key == KEY_F:
+			if editor and editor.has_method("open_node_search"):
+				editor.open_node_search()
+				return true
 		if key == KEY_A and shift:
 			_deselect_all()
 			return true

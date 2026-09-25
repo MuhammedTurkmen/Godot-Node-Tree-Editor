@@ -15,6 +15,13 @@ enum RenderMode {
 	PIXEL,
 }
 
+## Design-level texture filter. Layers can override via `texture_filter_override`.
+## 0 = Linear (smooth), 1 = Nearest (pixel art).
+enum TextureFilter {
+	LINEAR,
+	NEAREST,
+}
+
 @export_storage var id: String = ""
 @export_storage var name: String = "New Design"
 @export_storage var description: String = ""
@@ -22,6 +29,9 @@ enum RenderMode {
 
 ## Default render mode for this design's layers. Layers may override it.
 @export_storage var render_mode: RenderMode = RenderMode.VECTOR
+
+## Default texture filter for this design's layers. Layers may override it.
+@export_storage var texture_filter: TextureFilter = TextureFilter.LINEAR
 
 @export_storage var design_size: Vector2 = Vector2(100, 100)
 @export_storage var scale: Vector2 = Vector2.ONE
@@ -40,6 +50,16 @@ func set_render_mode(mode: RenderMode) -> void:
 	render_mode = mode
 	render_mode_changed.emit(self)
 	layers_changed.emit(self, "render_mode")
+
+# ============================================================
+# TEXTURE FILTER
+# ============================================================
+
+func set_texture_filter(new_filter: TextureFilter) -> void:
+	if texture_filter == new_filter:
+		return
+	texture_filter = new_filter
+	layers_changed.emit(self, "texture_filter")
 
 # ============================================================
 # EXPORTED FIELDS
@@ -65,7 +85,7 @@ func clear_all_exported_fields() -> void:
 
 ## Parses a field path into structured components.
 ## Returns a Dictionary with keys:
-##   - "root": "design_size" | "scale" | "render_mode" | "layer"
+##   - "root": "design_size" | "scale" | "render_mode" | "texture_filter" | "layer"
 ##   - "layer_id": String (only if root == "layer")
 ##   - "segments": Array[String] — remaining segments after layer_id
 func parse_field_path(path: String) -> Dictionary:
@@ -78,7 +98,7 @@ func parse_field_path(path: String) -> Dictionary:
 
 	var root: String = parts[0]
 
-	if root == "design_size" or root == "scale" or root == "render_mode":
+	if root == "design_size" or root == "scale" or root == "render_mode" or root == "texture_filter":
 		return {"root": root, "segments": []}
 
 	if root == "layers":
@@ -107,6 +127,8 @@ func get_field_value(field_path: String) -> Variant:
 			return scale
 		"render_mode":
 			return int(render_mode)
+		"texture_filter":
+			return int(texture_filter)
 		"layer":
 			var layer_id: String = parsed.get("layer_id", "")
 			var layer: BayterekLayer = get_layer_by_id(layer_id)
@@ -132,6 +154,8 @@ func set_field_value(field_path: String, value: Variant) -> void:
 			scale = value
 		"render_mode":
 			set_render_mode(value as RenderMode)
+		"texture_filter":
+			set_texture_filter(value as TextureFilter)
 		"layer":
 			var layer_id: String = parsed.get("layer_id", "")
 			var layer: BayterekLayer = get_layer_by_id(layer_id)
@@ -149,7 +173,7 @@ func is_field_exportable(field_path: String) -> bool:
 
 	var root: String = parsed.get("root", "")
 
-	if root == "design_size" or root == "scale" or root == "render_mode":
+	if root == "design_size" or root == "scale" or root == "render_mode" or root == "texture_filter":
 		return true
 
 	if root == "layer":
@@ -345,6 +369,7 @@ func duplicate_design() -> BayterekNodeDesign:
 	copy.description = description
 	copy.category = category
 	copy.render_mode = render_mode
+	copy.texture_filter = texture_filter
 	copy.design_size = design_size
 	copy.scale = scale
 	copy.copy_layers_from(layers)
@@ -352,6 +377,6 @@ func duplicate_design() -> BayterekNodeDesign:
 	return copy
 
 func _to_string() -> String:
-	return "BayterekNodeDesign(id='%s', name='%s', mode=%s, layers=%d)" % [
-		id, name, RenderMode.keys()[render_mode], layers.size()
+	return "BayterekNodeDesign(id='%s', name='%s', mode=%s, filter=%s, layers=%d)" % [
+		id, name, RenderMode.keys()[render_mode], TextureFilter.keys()[texture_filter], layers.size()
 	]

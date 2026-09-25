@@ -1,7 +1,15 @@
 @tool
 class_name BayterekTextureLayer
 extends BayterekLayer
-## Texture (icon) layer. State-driven texture + tint.
+## Texture (icon) layer. State-driven texture + tint + nine-patch support.
+
+## How the texture is drawn inside the layer's bounding box.
+enum StretchMode {
+	STRETCH,        ## Scale texture to fill the box (distorts aspect).
+	KEEP_ASPECT,    ## Fit inside the box, preserve aspect (letterbox).
+	TILE,           ## Tile the texture at native size.
+	NINE_PATCH,     ## 9-slice using texture_margin_* values.
+}
 
 # --- Icon ---
 @export_storage var icon_enabled: bool = true
@@ -12,6 +20,20 @@ extends BayterekLayer
 @export_storage var tint_enabled: bool = false
 ## state -> {"enabled": bool, "color": Color}
 @export_storage var tint_configs: Dictionary = {}
+
+# --- Stretch / Nine-Patch ---
+## How the texture is placed inside the layer's box.
+@export_storage var stretch_mode: StretchMode = StretchMode.STRETCH
+
+## Nine-patch margins (left, top, right, bottom) in texture pixels.
+## Only used when stretch_mode == NINE_PATCH.
+@export_storage var nine_patch_margin_left: int = 8
+@export_storage var nine_patch_margin_top: int = 8
+@export_storage var nine_patch_margin_right: int = 8
+@export_storage var nine_patch_margin_bottom: int = 8
+
+## Skip drawing the center region of the nine-patch (transparent center).
+@export_storage var nine_patch_draw_center: bool = true
 
 func _init() -> void:
 	super._init()
@@ -89,6 +111,32 @@ func should_draw_icon(state_key: String) -> bool:
 	return false
 
 # ============================================================
+# NINE PATCH HELPERS
+# ============================================================
+
+## Returns the nine-patch margins as a Vector4 for the given texture.
+## (left, top, right, bottom) in texture pixels.
+func get_nine_patch_margins() -> Vector4:
+	return Vector4(
+		float(nine_patch_margin_left),
+		float(nine_patch_margin_top),
+		float(nine_patch_margin_right),
+		float(nine_patch_margin_bottom)
+	)
+
+## Whether the layer should use nine-patch rendering.
+func uses_nine_patch() -> bool:
+	return stretch_mode == StretchMode.NINE_PATCH
+
+## Whether the layer should tile the texture.
+func uses_tile() -> bool:
+	return stretch_mode == StretchMode.TILE
+
+## Whether the layer should preserve aspect ratio.
+func keeps_aspect() -> bool:
+	return stretch_mode == StretchMode.KEEP_ASPECT
+
+# ============================================================
 # CONFIG SETTERS
 # ============================================================
 
@@ -117,7 +165,13 @@ func duplicate_layer() -> BayterekLayer:
 	copy.icon_configs = icon_configs.duplicate(true)
 	copy.tint_enabled = tint_enabled
 	copy.tint_configs = tint_configs.duplicate(true)
+	copy.stretch_mode = stretch_mode
+	copy.nine_patch_margin_left = nine_patch_margin_left
+	copy.nine_patch_margin_top = nine_patch_margin_top
+	copy.nine_patch_margin_right = nine_patch_margin_right
+	copy.nine_patch_margin_bottom = nine_patch_margin_bottom
+	copy.nine_patch_draw_center = nine_patch_draw_center
 	return copy
 
 func _to_string() -> String:
-	return "BayterekTextureLayer(name='%s')" % layer_name
+	return "BayterekTextureLayer(name='%s', stretch=%s)" % [layer_name, StretchMode.keys()[stretch_mode]]

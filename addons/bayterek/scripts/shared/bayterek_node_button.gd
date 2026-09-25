@@ -228,9 +228,7 @@ func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transfo
 	var effective_mode: int = layer.get_effective_render_mode(design_mode)
 	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
 
-	# Snap the pivot to the integer pixel grid in pixel mode.
 	var layer_matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
-
 	var effective_size: Vector2 = layer.get_size(design_size)
 
 	if layer is BayterekShapeLayer:
@@ -250,16 +248,12 @@ func _draw_shape_layer(
 	base_xform: Transform2D,
 	pixel_mode: bool
 ) -> void:
-	# Pixel-art scanline mode — only when the layer is axis-aligned.
 	if pixel_mode and layer.is_axis_aligned():
 		_draw_shape_pixel_scanline(layer, state_key, effective_size, layer_matrix, base_xform)
 		return
 
-	# Vector / rotated-pixel fallback.
 	_draw_shape_vector(layer, state_key, effective_size, layer_matrix, base_xform, pixel_mode)
 
-## Pixel-perfect scanline render. Fills and border are derived from the
-## same scanline (via `layer.get_pixel_spans()`), so they tile perfectly.
 func _draw_shape_pixel_scanline(
 	layer: BayterekShapeLayer,
 	state_key: String,
@@ -272,7 +266,6 @@ func _draw_shape_pixel_scanline(
 	var fill_spans: Array = spans.get("fill", [])
 	var border_spans: Array = spans.get("border", [])
 
-	# Shadow — integer-offset, no blur.
 	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
 		var node_s: Vector2 = node_data.scale if node_data else Vector2.ONE
 		var shadow_offset: Vector2 = (layer.shadow_size * node_s).floor()
@@ -283,7 +276,6 @@ func _draw_shape_pixel_scanline(
 			var br: Vector2 = shadow_xform * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
 			draw_rect(Rect2(tl, br - tl), layer.shadow_color, true)
 
-	# Fill.
 	if layer.should_draw_fill(state_key):
 		var fill_color: Color = layer.get_fill_color_for_state(state_key)
 		if fill_color.a > 0.0:
@@ -293,7 +285,6 @@ func _draw_shape_pixel_scanline(
 				var br: Vector2 = combined * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
 				draw_rect(Rect2(tl, br - tl), fill_color, true)
 
-	# Border.
 	if layer.should_draw_border(state_key):
 		var border_color: Color = layer.get_border_color_for_state(state_key)
 		if border_color.a > 0.0 and layer.border_width > 0.0:
@@ -303,8 +294,6 @@ func _draw_shape_pixel_scanline(
 				var br: Vector2 = combined * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
 				draw_rect(Rect2(tl, br - tl), border_color, true)
 
-## Vector / polygon-based path. Used for VECTOR mode, and for PIXEL mode
-## when the layer is rotated or skewed (scanline is impossible there).
 func _draw_shape_vector(
 	layer: BayterekShapeLayer,
 	state_key: String,
@@ -459,7 +448,8 @@ func _draw_texture_layer(
 
 	var half: Vector2 = effective_size * 0.5
 
-	if pixel_mode:
+	# Pixel-aligned fast path (axis-aligned pixel mode only).
+	if pixel_mode and layer.is_axis_aligned():
 		var tl_world: Vector2 = combined * (-half)
 		var br_world: Vector2 = combined * half
 		var dst_pos: Vector2 = tl_world.floor()
@@ -469,8 +459,98 @@ func _draw_texture_layer(
 		return
 
 	draw_set_transform_matrix(combined)
-	draw_texture_rect(tex, Rect2(-half, effective_size), false, tint)
+	_draw_texture_in_box(tex, Rect2(-half, effective_size), tint, layer)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+## Draws a texture into a target rect, honoring stretch_mode and
+## nine-patch margins. Vector mode only.
+func _draw_texture_in_box(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
+	if not tex:
+		return
+
+	match layer.stretch_mode:
+		BayterekTextureLayer.StretchMode.NINE_PATCH:
+			_draw_nine_patch(tex, target, tint, layer)
+		BayterekTextureLayer.StretchMode.TILE:
+			draw_texture_rect(tex, target, true, tint)
+		BayterekTextureLayer.StretchMode.KEEP_ASPECT:
+			_draw_texture_keep_aspect(tex, target, tint)
+		_:
+			draw_texture_rect(tex, target, false, tint)
+
+func _draw_nine_patch(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
+	var tex_size: Vector2 = tex.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+
+	var l: float = float(layer.nine_patch_margin_left)
+	var t: float = float(layer.nine_patch_margin_top)
+	var r: float = float(layer.nine_patch_margin_right)
+	var b: float = float(layer.nine_patch_margin_bottom)
+
+	if l + r > tex_size.x:
+		var sx: float = tex_size.x / (l + r)
+		l *= sx
+		r *= sx
+	if t + b > tex_size.y:
+		var sy: float = tex_size.y / (t + b)
+		t *= sy
+		b *= sy
+
+	var target_l: float = target.position.x
+	var target_t: float = target.position.y
+	var target_r: float = target.position.x + target.size.x
+	var target_b: float = target.position.y + target.size.y
+
+	var mid_x0: float = target_l + l
+	var mid_x1: float = target_r - r
+	var mid_y0: float = target_t + t
+	var mid_y1: float = target_b - b
+
+	var src_mid_x0: float = l
+	var src_mid_x1: float = tex_size.x - r
+	var src_mid_y0: float = t
+	var src_mid_y1: float = tex_size.y - b
+
+	_draw_patch(tex, Rect2(target_l, target_t, mid_x0 - target_l, mid_y0 - target_t),
+		Rect2(0, 0, src_mid_x0, src_mid_y0), tint)
+	_draw_patch(tex, Rect2(mid_x0, target_t, mid_x1 - mid_x0, mid_y0 - target_t),
+		Rect2(src_mid_x0, 0, src_mid_x1 - src_mid_x0, src_mid_y0), tint)
+	_draw_patch(tex, Rect2(mid_x1, target_t, target_r - mid_x1, mid_y0 - target_t),
+		Rect2(src_mid_x1, 0, tex_size.x - src_mid_x1, src_mid_y0), tint)
+
+	_draw_patch(tex, Rect2(target_l, mid_y0, mid_x0 - target_l, mid_y1 - mid_y0),
+		Rect2(0, src_mid_y0, src_mid_x0, src_mid_y1 - src_mid_y0), tint)
+	if layer.nine_patch_draw_center:
+		_draw_patch(tex, Rect2(mid_x0, mid_y0, mid_x1 - mid_x0, mid_y1 - mid_y0),
+			Rect2(src_mid_x0, src_mid_y0, src_mid_x1 - src_mid_x0, src_mid_y1 - src_mid_y0), tint)
+	_draw_patch(tex, Rect2(mid_x1, mid_y0, target_r - mid_x1, mid_y1 - mid_y0),
+		Rect2(src_mid_x1, src_mid_y0, tex_size.x - src_mid_x1, src_mid_y1 - src_mid_y0), tint)
+
+	_draw_patch(tex, Rect2(target_l, mid_y1, mid_x0 - target_l, target_b - mid_y1),
+		Rect2(0, src_mid_y1, src_mid_x0, tex_size.y - src_mid_y1), tint)
+	_draw_patch(tex, Rect2(mid_x0, mid_y1, mid_x1 - mid_x0, target_b - mid_y1),
+		Rect2(src_mid_x0, src_mid_y1, src_mid_x1 - src_mid_x0, tex_size.y - src_mid_y1), tint)
+	_draw_patch(tex, Rect2(mid_x1, mid_y1, target_r - mid_x1, target_b - mid_y1),
+		Rect2(src_mid_x1, src_mid_y1, tex_size.x - src_mid_x1, tex_size.y - src_mid_y1), tint)
+
+func _draw_patch(tex: Texture2D, target: Rect2, src: Rect2, tint: Color) -> void:
+	if target.size.x <= 0.0 or target.size.y <= 0.0:
+		return
+	if src.size.x <= 0.0 or src.size.y <= 0.0:
+		return
+	draw_texture_rect_region(tex, target, src, tint)
+
+func _draw_texture_keep_aspect(tex: Texture2D, target: Rect2, tint: Color) -> void:
+	var tex_size: Vector2 = tex.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+	var scale_x: float = target.size.x / tex_size.x
+	var scale_y: float = target.size.y / tex_size.y
+	var s: float = minf(scale_x, scale_y)
+	var draw_size: Vector2 = tex_size * s
+	var draw_pos: Vector2 = target.position + (target.size - draw_size) * 0.5
+	draw_texture_rect(tex, Rect2(draw_pos, draw_size), false, tint)
 
 # ============================================================
 # INPUT / DRAG

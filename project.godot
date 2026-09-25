@@ -17,10 +17,10 @@ config/icon="res://assets/icon.svg"
 
 [autoload]
 
-BayterekLoader="*uid://nkd7mhbs2vhv"
-BayterekSerializer="*uid://bncb0tmve5k7w"
 GameLocalization="*uid://brfo61g2bql3o"
 BayterekLocalizationLoader="*uid://cjmtxiyjohf62"
+BayterekLoader="*uid://nkd7mhbs2vhv"
+BayterekSerializer="*uid://bncb0tmve5k7w"
 
 [debug]
 

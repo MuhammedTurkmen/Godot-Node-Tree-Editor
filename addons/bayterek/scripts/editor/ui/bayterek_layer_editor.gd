@@ -476,6 +476,40 @@ func _rebuild_detail_form() -> void:
 	var field_rmode: String = "layers.%s.render_mode_override" % layer.layer_id
 	BayterekExportHelper.make_exportable(rmode_row, field_rmode, design, _on_export_changed)
 
+	# --- Texture Filter override ---
+	var tfilter_row := HBoxContainer.new()
+	tfilter_row.add_theme_constant_override("separation", 4)
+	_detail_root.add_child(tfilter_row)
+
+	var tfilter_label := Label.new()
+	tfilter_label.text = "Texture Filter"
+	tfilter_label.custom_minimum_size = Vector2(80, 0)
+	tfilter_label.tooltip_text = "Inherit uses the design's filter. Override per layer for pixel-perfect textures."
+	tfilter_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	tfilter_row.add_child(tfilter_label)
+
+	var tfilter_dropdown := OptionButton.new()
+	tfilter_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	tfilter_dropdown.tooltip_text = tfilter_label.tooltip_text
+	tfilter_dropdown.add_item("Inherit", BayterekLayer.TextureFilterOverride.INHERIT)
+	tfilter_dropdown.add_item("Linear (smooth)", BayterekLayer.TextureFilterOverride.LINEAR)
+	tfilter_dropdown.add_item("Nearest (pixel art)", BayterekLayer.TextureFilterOverride.NEAREST)
+	var tf_idx: int = tfilter_dropdown.get_item_index(int(layer.texture_filter_override))
+	if tf_idx >= 0:
+		tfilter_dropdown.select(tf_idx)
+	tfilter_dropdown.item_selected.connect(func(idx: int):
+		var new_filter_int = tfilter_dropdown.get_item_id(idx)
+		if typeof(new_filter_int) != TYPE_INT:
+			return
+		layer.texture_filter_override = new_filter_int as BayterekLayer.TextureFilterOverride
+		design.notify_layer_modified()
+		changed.emit()
+	)
+	tfilter_row.add_child(tfilter_dropdown)
+
+	var field_tfilter: String = "layers.%s.texture_filter_override" % layer.layer_id
+	BayterekExportHelper.make_exportable(tfilter_row, field_tfilter, design, _on_export_changed)
+
 	var transform_fold := _make_fold("Transform")
 	_detail_root.add_child(transform_fold)
 
@@ -907,6 +941,95 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		changed.emit()
 	)
 
+	# --- Stretch / Nine Patch fold ---
+	var stretch_fold := _make_fold("Stretch Mode")
+	_detail_root.add_child(stretch_fold)
+
+	var stretch_inner := VBoxContainer.new()
+	stretch_inner.add_theme_constant_override("separation", 4)
+	stretch_fold.add_child(stretch_inner)
+
+	# Stretch mode dropdown
+	var sm_row := HBoxContainer.new()
+	sm_row.add_theme_constant_override("separation", 4)
+	stretch_inner.add_child(sm_row)
+
+	var sm_label := Label.new()
+	sm_label.text = "Mode"
+	sm_label.custom_minimum_size = Vector2(80, 0)
+	sm_row.add_child(sm_label)
+
+	var sm_dropdown := OptionButton.new()
+	sm_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
+	sm_dropdown.add_item("Stretch", BayterekTextureLayer.StretchMode.STRETCH)
+	sm_dropdown.add_item("Keep Aspect", BayterekTextureLayer.StretchMode.KEEP_ASPECT)
+	sm_dropdown.add_item("Tile", BayterekTextureLayer.StretchMode.TILE)
+	sm_dropdown.add_item("Nine Patch", BayterekTextureLayer.StretchMode.NINE_PATCH)
+	var sm_idx: int = sm_dropdown.get_item_index(int(layer.stretch_mode))
+	if sm_idx >= 0:
+		sm_dropdown.select(sm_idx)
+	sm_dropdown.item_selected.connect(func(idx: int):
+		var mode_int = sm_dropdown.get_item_id(idx)
+		if typeof(mode_int) != TYPE_INT:
+			return
+		layer.stretch_mode = mode_int as BayterekTextureLayer.StretchMode
+		design.notify_layer_modified()
+		call_deferred("_rebuild_detail_form")
+		changed.emit()
+	)
+	sm_row.add_child(sm_dropdown)
+
+	var field_sm: String = "layers.%s.stretch_mode" % layer.layer_id
+	BayterekExportHelper.make_exportable(sm_row, field_sm, design, _on_export_changed)
+
+	# Nine-patch margins (only when NINE_PATCH mode is active)
+	if layer.stretch_mode == BayterekTextureLayer.StretchMode.NINE_PATCH:
+		var np_label := Label.new()
+		np_label.text = "Nine Patch Margins (px)"
+		np_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+		stretch_inner.add_child(np_label)
+
+		# Left / Top row
+		var lt_row := HBoxContainer.new()
+		lt_row.add_theme_constant_override("separation", 4)
+		stretch_inner.add_child(lt_row)
+
+		_add_nine_patch_spin(lt_row, layer, "Left", "nine_patch_margin_left")
+		_add_nine_patch_spin(lt_row, layer, "Top", "nine_patch_margin_top")
+
+		# Right / Bottom row
+		var rb_row := HBoxContainer.new()
+		rb_row.add_theme_constant_override("separation", 4)
+		stretch_inner.add_child(rb_row)
+
+		_add_nine_patch_spin(rb_row, layer, "Right", "nine_patch_margin_right")
+		_add_nine_patch_spin(rb_row, layer, "Bottom", "nine_patch_margin_bottom")
+
+		# Draw center toggle
+		var center_row := HBoxContainer.new()
+		center_row.add_theme_constant_override("separation", 4)
+		stretch_inner.add_child(center_row)
+
+		var center_label := Label.new()
+		center_label.text = "Draw Center"
+		center_label.size_flags_horizontal = SIZE_EXPAND_FILL
+		center_label.tooltip_text = "If off, the middle region is left transparent (useful for frames/panels)."
+		center_label.mouse_filter = Control.MOUSE_FILTER_PASS
+		center_row.add_child(center_label)
+
+		var center_check := CheckBox.new()
+		center_check.text = "On"
+		center_check.button_pressed = layer.nine_patch_draw_center
+		center_check.toggled.connect(func(p: bool):
+			layer.nine_patch_draw_center = p
+			design.notify_layer_modified()
+			changed.emit()
+		)
+		center_row.add_child(center_check)
+
+		var field_dc: String = "layers.%s.nine_patch_draw_center" % layer.layer_id
+		BayterekExportHelper.make_exportable(center_row, field_dc, design, _on_export_changed)
+
 	var tint_fold := _make_fold("Tint")
 	_detail_root.add_child(tint_fold)
 
@@ -950,6 +1073,29 @@ func _make_fold(title: String) -> FoldableContainer:
 	fold.title = title
 	fold.folded = false
 	return fold
+
+func _add_nine_patch_spin(parent: HBoxContainer, layer: BayterekTextureLayer, label_text: String, prop_name: String) -> void:
+	var label := Label.new()
+	label.text = label_text
+	label.custom_minimum_size = Vector2(60, 0)
+	parent.add_child(label)
+
+	var spin := SpinBox.new()
+	spin.size_flags_horizontal = SIZE_EXPAND_FILL
+	spin.min_value = 0
+	spin.max_value = 999
+	spin.step = 1
+	spin.rounded = true
+	spin.value = int(layer.get(prop_name))
+	spin.value_changed.connect(func(v: float):
+		layer.set(prop_name, int(v))
+		design.notify_layer_modified()
+		changed.emit()
+	)
+	parent.add_child(spin)
+
+	var field_path: String = "layers.%s.%s" % [layer.layer_id, prop_name]
+	BayterekExportHelper.make_exportable(parent, field_path, design, _on_export_changed)
 
 # ============================================================
 # EXPORT CALLBACK

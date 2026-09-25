@@ -27,22 +27,40 @@ var _pan_start_offset: Vector2 = Vector2.ZERO
 
 var show_pivot_markers: bool = true
 
+## Background color of the preview canvas.
+## Default: dark grey (matches the editor theme).
+var bg_color: Color = Color(0.08, 0.08, 0.10, 1.0) : set = set_bg_color
+
+## When true, draws the nine-patch margins of the currently selected
+## texture layer as guide lines.
+var show_nine_patch_guides: bool = false
+
+func set_bg_color(c: Color) -> void:
+	bg_color = c
+	queue_redraw()
+
 func _ready() -> void:
 	custom_minimum_size = Vector2(200, 200)
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.08, 0.10, 1.0)
-	style.border_color = Color(0.25, 0.25, 0.30, 1.0)
-	style.set_border_width_all(1)
-	add_theme_stylebox_override("panel", style)
-
 func set_design(d: BayterekNodeDesign) -> void:
+	if design and design.layers_changed.is_connected(_on_design_changed):
+		design.layers_changed.disconnect(_on_design_changed)
+
 	design = d
 	_reset_view()
 	_recompute_scale()
 	_apply_texture_filter()
+
+	if design:
+		design.layers_changed.connect(_on_design_changed)
+
+	queue_redraw()
+
+func _on_design_changed(_d: BayterekNodeDesign, change_type: String) -> void:
+	if change_type == "texture_filter" or change_type == "render_mode":
+		_apply_texture_filter()
 	queue_redraw()
 
 func _reset_view() -> void:
@@ -84,10 +102,16 @@ func _apply_texture_filter() -> void:
 	if not design:
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		return
+
 	if _is_pixel_design():
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	else:
-		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		return
+
+	match int(design.texture_filter):
+		1:
+			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_:
+			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 # ============================================================
 # FIT SCALE + PAN
@@ -199,12 +223,14 @@ func _gui_input(event: InputEvent) -> void:
 # ============================================================
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.08, 0.08, 0.10, 1.0), true)
+	# Background — use custom bg_color.
+	draw_rect(Rect2(Vector2.ZERO, size), bg_color, true)
+
+	# Grid is ALWAYS drawn, design or not.
+	_draw_background_grid()
 
 	if not design:
 		return
-
-	_draw_background_grid()
 
 	var center: Vector2 = size * 0.5 + pan_offset
 	var base_xform := Transform2D(
@@ -220,28 +246,79 @@ func _draw() -> void:
 			continue
 		_draw_layer(layer, base_xform)
 
+	# Optional: nine-patch guides.
+	if show_nine_patch_guides:
+		for layer in design.layers:
+			if not layer or not layer.visible:
+				continue
+			if not (layer is BayterekTextureLayer):
+				continue
+			if not layer.uses_nine_patch():
+				continue
+			_draw_nine_patch_guides(layer, base_xform)
+
 func _draw_design_center_marker(center: Vector2) -> void:
 	var c := Color(0.5, 0.6, 0.8, 0.35)
 	draw_line(center - Vector2(10, 0), center + Vector2(10, 0), c, 1.0)
 	draw_line(center - Vector2(0, 10), center + Vector2(0, 10), c, 1.0)
 
+# ============================================================
+# BACKGROUND GRID
+# ============================================================
+
 func _draw_background_grid() -> void:
+	# Base cell size is 16px scaled by the current preview scale.
 	var step: float = 16.0 * preview_scale
 	if step < 4.0:
 		step = 4.0
-	var color := Color(1, 1, 1, 0.05)
+
+	# --- Choose grid colors based on the background brightness ---
+	# so the grid is ALWAYS visible against any bg_color.
+	var luminance: float = bg_color.get_luminance()
+	var grid_color: Color
+	var primary_color: Color
+
+	if luminance > 0.6:
+		# Light background (e.g. white) → dark grid lines.
+		grid_color = Color(0.10, 0.10, 0.15, 0.35)
+		primary_color = Color(0.05, 0.05, 0.10, 0.55)
+	elif luminance > 0.25:
+		# Mid background (e.g. blue) → light-but-strong lines.
+		grid_color = Color(0.85, 0.90, 1.0, 0.28)
+		primary_color = Color(0.95, 1.0, 1.0, 0.50)
+	else:
+		# Dark background (e.g. black) → light grid lines.
+		grid_color = Color(0.75, 0.80, 0.90, 0.18)
+		primary_color = Color(0.90, 0.95, 1.0, 0.40)
 
 	var origin: Vector2 = Vector2(fposmod(pan_offset.x, step), fposmod(pan_offset.y, step))
 
+	# --- Secondary grid: every cell ---
 	var x: float = origin.x
 	while x < size.x:
-		draw_line(Vector2(x, 0), Vector2(x, size.y), color, 1.0)
+		draw_line(Vector2(x, 0), Vector2(x, size.y), grid_color, 1.0)
 		x += step
 
 	var y: float = origin.y
 	while y < size.y:
-		draw_line(Vector2(0, y), Vector2(size.x, y), color, 1.0)
+		draw_line(Vector2(0, y), Vector2(size.x, y), grid_color, 1.0)
 		y += step
+
+	# --- Primary grid: every 4 cells, thicker / stronger ---
+	var primary_step: float = step * 4.0
+	var px: float = fposmod(pan_offset.x, primary_step)
+	while px < size.x:
+		draw_line(Vector2(px, 0), Vector2(px, size.y), primary_color, 1.5)
+		px += primary_step
+
+	var py: float = fposmod(pan_offset.y, primary_step)
+	while py < size.y:
+		draw_line(Vector2(0, py), Vector2(size.x, py), primary_color, 1.5)
+		py += primary_step
+
+# ============================================================
+# DESIGN CONTENT
+# ============================================================
 
 func _draw_layer(layer: BayterekLayer, base_xform: Transform2D) -> void:
 	var simulated := _get_simulated_states()
@@ -432,6 +509,10 @@ func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Arr
 		out[i] = v + dir * offset
 	return out
 
+# ============================================================
+# TEXTURE DRAWING
+# ============================================================
+
 func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_size: Vector2, xform: Transform2D, pixel_mode: bool) -> void:
 	if not layer.should_draw_icon(state_key):
 		return
@@ -451,5 +532,139 @@ func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_siz
 		return
 
 	draw_set_transform_matrix(xform)
-	draw_texture_rect(tex, Rect2(-effective_size * 0.5, effective_size), false, tint)
+	_draw_texture_in_box(tex, Rect2(-effective_size * 0.5, effective_size), tint, layer)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+func _draw_texture_in_box(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
+	if not tex:
+		return
+
+	match layer.stretch_mode:
+		BayterekTextureLayer.StretchMode.NINE_PATCH:
+			_draw_nine_patch(tex, target, tint, layer)
+		BayterekTextureLayer.StretchMode.TILE:
+			draw_texture_rect(tex, target, true, tint)
+		BayterekTextureLayer.StretchMode.KEEP_ASPECT:
+			_draw_keep_aspect(tex, target, tint)
+		_:
+			draw_texture_rect(tex, target, false, tint)
+
+func _draw_nine_patch(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
+	var tex_size: Vector2 = tex.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+
+	var l: float = float(layer.nine_patch_margin_left)
+	var t: float = float(layer.nine_patch_margin_top)
+	var r: float = float(layer.nine_patch_margin_right)
+	var b: float = float(layer.nine_patch_margin_bottom)
+
+	if l + r > tex_size.x:
+		var sx: float = tex_size.x / (l + r)
+		l *= sx
+		r *= sx
+	if t + b > tex_size.y:
+		var sy: float = tex_size.y / (t + b)
+		t *= sy
+		b *= sy
+
+	var target_l: float = target.position.x
+	var target_t: float = target.position.y
+	var target_r: float = target.position.x + target.size.x
+	var target_b: float = target.position.y + target.size.y
+
+	var mid_x0: float = target_l + l
+	var mid_x1: float = target_r - r
+	var mid_y0: float = target_t + t
+	var mid_y1: float = target_b - b
+
+	var src_mid_x0: float = l
+	var src_mid_x1: float = tex_size.x - r
+	var src_mid_y0: float = t
+	var src_mid_y1: float = tex_size.y - b
+
+	_draw_patch(tex, Rect2(target_l, target_t, mid_x0 - target_l, mid_y0 - target_t),
+		Rect2(0, 0, src_mid_x0, src_mid_y0), tint)
+	_draw_patch(tex, Rect2(mid_x0, target_t, mid_x1 - mid_x0, mid_y0 - target_t),
+		Rect2(src_mid_x0, 0, src_mid_x1 - src_mid_x0, src_mid_y0), tint)
+	_draw_patch(tex, Rect2(mid_x1, target_t, target_r - mid_x1, mid_y0 - target_t),
+		Rect2(src_mid_x1, 0, tex_size.x - src_mid_x1, src_mid_y0), tint)
+
+	_draw_patch(tex, Rect2(target_l, mid_y0, mid_x0 - target_l, mid_y1 - mid_y0),
+		Rect2(0, src_mid_y0, src_mid_x0, src_mid_y1 - src_mid_y0), tint)
+	if layer.nine_patch_draw_center:
+		_draw_patch(tex, Rect2(mid_x0, mid_y0, mid_x1 - mid_x0, mid_y1 - mid_y0),
+			Rect2(src_mid_x0, src_mid_y0, src_mid_x1 - src_mid_x0, src_mid_y1 - src_mid_y0), tint)
+	_draw_patch(tex, Rect2(mid_x1, mid_y0, target_r - mid_x1, mid_y1 - mid_y0),
+		Rect2(src_mid_x1, src_mid_y0, tex_size.x - src_mid_x1, src_mid_y1 - src_mid_y0), tint)
+
+	_draw_patch(tex, Rect2(target_l, mid_y1, mid_x0 - target_l, target_b - mid_y1),
+		Rect2(0, src_mid_y1, src_mid_x0, tex_size.y - src_mid_y1), tint)
+	_draw_patch(tex, Rect2(mid_x0, mid_y1, mid_x1 - mid_x0, target_b - mid_y1),
+		Rect2(src_mid_x0, src_mid_y1, src_mid_x1 - src_mid_x0, tex_size.y - src_mid_y1), tint)
+	_draw_patch(tex, Rect2(mid_x1, mid_y1, target_r - mid_x1, target_b - mid_y1),
+		Rect2(src_mid_x1, src_mid_y1, tex_size.x - src_mid_x1, tex_size.y - src_mid_y1), tint)
+
+func _draw_patch(tex: Texture2D, target: Rect2, src: Rect2, tint: Color) -> void:
+	if target.size.x <= 0.0 or target.size.y <= 0.0:
+		return
+	if src.size.x <= 0.0 or src.size.y <= 0.0:
+		return
+	draw_texture_rect_region(tex, target, src, tint)
+
+func _draw_keep_aspect(tex: Texture2D, target: Rect2, tint: Color) -> void:
+	var tex_size: Vector2 = tex.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+	var scale_x: float = target.size.x / tex_size.x
+	var scale_y: float = target.size.y / tex_size.y
+	var s: float = minf(scale_x, scale_y)
+	var draw_size: Vector2 = tex_size * s
+	var draw_pos: Vector2 = target.position + (target.size - draw_size) * 0.5
+	draw_texture_rect(tex, Rect2(draw_pos, draw_size), false, tint)
+
+# ============================================================
+# NINE PATCH GUIDES
+# ============================================================
+
+func _draw_nine_patch_guides(layer: BayterekTextureLayer, base_xform: Transform2D) -> void:
+	var tex: Texture2D = layer.get_icon_for_state("normal")
+	if not tex:
+		return
+
+	var design_size: Vector2 = design.design_size
+	var effective_size: Vector2 = layer.get_size(design_size)
+	if effective_size.x <= 0.0 or effective_size.y <= 0.0:
+		return
+
+	var layer_matrix: Transform2D = layer.get_matrix(design_size, false)
+	var combined: Transform2D = base_xform * layer_matrix
+
+	var half: Vector2 = effective_size * 0.5
+	var l: float = float(layer.nine_patch_margin_left)
+	var t: float = float(layer.nine_patch_margin_top)
+	var r: float = float(layer.nine_patch_margin_right)
+	var b: float = float(layer.nine_patch_margin_bottom)
+
+	var x0: float = -half.x
+	var x1: float = -half.x + l
+	var x2: float = half.x - r
+	var x3: float = half.x
+
+	var y0: float = -half.y
+	var y1: float = -half.y + t
+	var y2: float = half.y - b
+	var y3: float = half.y
+
+	var guide_color := Color(0.4, 0.9, 1.0, 0.7)
+	var guide_width := 1.0
+
+	for gx in [x1, x2]:
+		var a: Vector2 = combined * Vector2(gx, y0)
+		var bb: Vector2 = combined * Vector2(gx, y3)
+		draw_dashed_line(a, bb, guide_color, guide_width, 4.0)
+
+	for gy in [y1, y2]:
+		var a: Vector2 = combined * Vector2(x0, gy)
+		var bb: Vector2 = combined * Vector2(x3, gy)
+		draw_dashed_line(a, bb, guide_color, guide_width, 4.0)

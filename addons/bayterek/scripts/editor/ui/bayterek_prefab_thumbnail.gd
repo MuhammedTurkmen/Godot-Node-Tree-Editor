@@ -134,5 +134,9 @@ func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_siz
 	var tint: Color = layer.get_tint_for_state(state_key)
 
 	draw_set_transform_matrix(xform)
+
+	# Thumbnail always uses STRETCH — nine-patch and tile are meaningless
+	# at thumbnail scale.
 	draw_texture_rect(tex, Rect2(-effective_size * 0.5, effective_size), false, tint)
+
 	draw_set_transform_matrix(Transform2D.IDENTITY)
