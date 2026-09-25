@@ -21,13 +21,6 @@ var _toggle_btn: Button
 var _content_root: VBoxContainer
 var _bottom_box: HBoxContainer
 
-## Render mode dropdown (design-level).
-var _render_mode_row: HBoxContainer
-var _render_mode_dropdown: OptionButton
-
-## Texture filter dropdown (design-level).
-var _texture_filter_dropdown: OptionButton
-
 var _collapsed: bool = false
 var _updating_ui: bool = false
 
@@ -61,48 +54,6 @@ func _build_ui() -> void:
 	_content_root.size_flags_vertical = SIZE_EXPAND_FILL
 	_content_root.add_theme_constant_override("separation", 4)
 	add_child(_content_root)
-
-	# --- Render mode row ---
-	_render_mode_row = HBoxContainer.new()
-	_render_mode_row.add_theme_constant_override("separation", 4)
-	_content_root.add_child(_render_mode_row)
-
-	var rm_label := Label.new()
-	rm_label.text = "Render"
-	rm_label.custom_minimum_size = Vector2(48, 0)
-	rm_label.tooltip_text = "Default render mode for this design's layers."
-	rm_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	_render_mode_row.add_child(rm_label)
-
-	_render_mode_dropdown = OptionButton.new()
-	_render_mode_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
-	_render_mode_dropdown.tooltip_text = rm_label.tooltip_text
-	_render_mode_dropdown.add_item("Vector", BayterekNodeDesign.RenderMode.VECTOR)
-	_render_mode_dropdown.add_item("Pixel", BayterekNodeDesign.RenderMode.PIXEL)
-	_render_mode_dropdown.disabled = true
-	_render_mode_dropdown.item_selected.connect(_on_render_mode_selected)
-	_render_mode_row.add_child(_render_mode_dropdown)
-
-	# --- Texture filter row (design-level) ---
-	var tf_row := HBoxContainer.new()
-	tf_row.add_theme_constant_override("separation", 4)
-	_content_root.add_child(tf_row)
-
-	var tf_label := Label.new()
-	tf_label.text = "Filter"
-	tf_label.custom_minimum_size = Vector2(48, 0)
-	tf_label.tooltip_text = "Default texture filter for this design's layers."
-	tf_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	tf_row.add_child(tf_label)
-
-	_texture_filter_dropdown = OptionButton.new()
-	_texture_filter_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
-	_texture_filter_dropdown.tooltip_text = tf_label.tooltip_text
-	_texture_filter_dropdown.add_item("Linear", BayterekNodeDesign.TextureFilter.LINEAR)
-	_texture_filter_dropdown.add_item("Nearest", BayterekNodeDesign.TextureFilter.NEAREST)
-	_texture_filter_dropdown.disabled = true
-	_texture_filter_dropdown.item_selected.connect(_on_texture_filter_selected)
-	tf_row.add_child(_texture_filter_dropdown)
 
 	# --- Search row ---
 	var top := HBoxContainer.new()
@@ -191,7 +142,6 @@ func refresh() -> void:
 
 	var reg = Bayterek.get_designs_registry()
 	if not reg:
-		_update_render_mode_ui()
 		return
 
 	var filter: String = _search_input.text.strip_edges() if _search_input else ""
@@ -216,8 +166,6 @@ func refresh() -> void:
 		if item:
 			item.select(0)
 
-	_update_render_mode_ui()
-
 func _clear_items() -> void:
 	if not _root_item:
 		return
@@ -241,69 +189,6 @@ func _add_design_item(design: BayterekNodeDesign) -> void:
 	_id_to_item[design.id] = item
 
 # ============================================================
-# RENDER MODE + TEXTURE FILTER UI
-# ============================================================
-
-func _update_render_mode_ui() -> void:
-	if not _render_mode_dropdown:
-		return
-
-	var design: BayterekNodeDesign = get_selected_design()
-	_updating_ui = true
-	if design:
-		_render_mode_dropdown.disabled = false
-		var idx: int = _render_mode_dropdown.get_item_index(int(design.render_mode))
-		if idx >= 0:
-			_render_mode_dropdown.select(idx)
-	else:
-		_render_mode_dropdown.disabled = true
-		_render_mode_dropdown.select(0)
-	_updating_ui = false
-
-	# Texture filter dropdown
-	if _texture_filter_dropdown:
-		_updating_ui = true
-		if design:
-			_texture_filter_dropdown.disabled = false
-			var tf_idx: int = _texture_filter_dropdown.get_item_index(int(design.texture_filter))
-			if tf_idx >= 0:
-				_texture_filter_dropdown.select(tf_idx)
-		else:
-			_texture_filter_dropdown.disabled = true
-			_texture_filter_dropdown.select(0)
-		_updating_ui = false
-
-func _on_render_mode_selected(index: int) -> void:
-	if _updating_ui:
-		return
-	var design: BayterekNodeDesign = get_selected_design()
-	if not design:
-		return
-	var meta = _render_mode_dropdown.get_item_id(index)
-	if typeof(meta) != TYPE_INT:
-		return
-	var mode: BayterekNodeDesign.RenderMode = meta as BayterekNodeDesign.RenderMode
-	if design.render_mode == mode:
-		return
-	design.set_render_mode(mode)
-	BayterekDesignService.save_design(design)
-
-func _on_texture_filter_selected(index: int) -> void:
-	if _updating_ui:
-		return
-	var design: BayterekNodeDesign = get_selected_design()
-	if not design:
-		return
-	var meta = _texture_filter_dropdown.get_item_id(index)
-	if typeof(meta) != TYPE_INT:
-		return
-	var new_filter: BayterekNodeDesign.TextureFilter = meta as BayterekNodeDesign.TextureFilter
-	if design.texture_filter == new_filter:
-		return
-	design.set_texture_filter(new_filter)
-	BayterekDesignService.save_design(design)
-
-# ============================================================
 # PUBLIC
 # ============================================================
 
@@ -320,7 +205,6 @@ func select_design(design: BayterekNodeDesign) -> void:
 		var item: TreeItem = _id_to_item[design.id]
 		if item:
 			item.select(0)
-	_update_render_mode_ui()
 
 # ============================================================
 # SIGNAL HANDLERS
@@ -338,7 +222,6 @@ func _on_item_selected() -> void:
 		return
 	_selected_design_id = id
 	var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(id)
-	_update_render_mode_ui()
 	if design:
 		design_selected.emit(design)
 

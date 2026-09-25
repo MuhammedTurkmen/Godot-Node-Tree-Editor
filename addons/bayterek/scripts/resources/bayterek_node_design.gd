@@ -7,23 +7,8 @@ signal layers_changed(design: BayterekNodeDesign, change_type: String)
 signal name_changed(design: BayterekNodeDesign)
 signal description_changed(design: BayterekNodeDesign)
 signal exported_fields_changed(design: BayterekNodeDesign)
-signal render_mode_changed(design: BayterekNodeDesign)
-
-## Design-level render mode. Layers can override via `render_mode_override`.
-enum RenderMode {
-	VECTOR,
-	PIXEL,
-}
-
-## Design-level texture filter. Layers can override via `texture_filter_override`.
-## 0 = Linear (smooth), 1 = Nearest (pixel art).
-enum TextureFilter {
-	LINEAR,
-	NEAREST,
-}
 
 ## Whitelist of layer fields that can be exported to prefabs.
-## Anything not in this list is treated as non-exportable.
 const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 	"visible",
 	"layer_name",
@@ -70,39 +55,13 @@ const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 @export_storage var description: String = ""
 @export_storage var category: String = ""
 
-## Default render mode for this design's layers. Layers may override it.
-@export_storage var render_mode: RenderMode = RenderMode.VECTOR
-
-## Default texture filter for this design's layers. Layers may override it.
-@export_storage var texture_filter: TextureFilter = TextureFilter.LINEAR
-
+## Fallback size for layers that don't specify their own size.
 @export_storage var design_size: Vector2 = Vector2(100, 100)
 @export_storage var scale: Vector2 = Vector2.ONE
 
 @export_storage var layers: Array[BayterekLayer] = []
 
 @export_storage var exported_fields: Dictionary = {}
-
-# ============================================================
-# RENDER MODE
-# ============================================================
-
-func set_render_mode(mode: RenderMode) -> void:
-	if render_mode == mode:
-		return
-	render_mode = mode
-	render_mode_changed.emit(self)
-	layers_changed.emit(self, "render_mode")
-
-# ============================================================
-# TEXTURE FILTER
-# ============================================================
-
-func set_texture_filter(new_filter: TextureFilter) -> void:
-	if texture_filter == new_filter:
-		return
-	texture_filter = new_filter
-	layers_changed.emit(self, "texture_filter")
 
 # ============================================================
 # EXPORTED FIELDS
@@ -126,11 +85,6 @@ func clear_all_exported_fields() -> void:
 # FIELD PATH API
 # ============================================================
 
-## Parses a field path into structured components.
-## Returns a Dictionary with keys:
-##   - "root": "design_size" | "scale" | "render_mode" | "texture_filter" | "layer"
-##   - "layer_id": String (only if root == "layer")
-##   - "segments": Array[String] — remaining segments after layer_id
 func parse_field_path(path: String) -> Dictionary:
 	if path.is_empty():
 		return {}
@@ -141,7 +95,7 @@ func parse_field_path(path: String) -> Dictionary:
 
 	var root: String = parts[0]
 
-	if root == "design_size" or root == "scale" or root == "render_mode" or root == "texture_filter":
+	if root == "design_size" or root == "scale":
 		return {"root": root, "segments": []}
 
 	if root == "layers":
@@ -155,7 +109,6 @@ func parse_field_path(path: String) -> Dictionary:
 
 	return {}
 
-## Returns the value at `field_path` in this design.
 func get_field_value(field_path: String) -> Variant:
 	var parsed: Dictionary = parse_field_path(field_path)
 	if parsed.is_empty():
@@ -168,10 +121,6 @@ func get_field_value(field_path: String) -> Variant:
 			return design_size
 		"scale":
 			return scale
-		"render_mode":
-			return int(render_mode)
-		"texture_filter":
-			return int(texture_filter)
 		"layer":
 			var layer_id: String = parsed.get("layer_id", "")
 			var layer: BayterekLayer = get_layer_by_id(layer_id)
@@ -182,7 +131,6 @@ func get_field_value(field_path: String) -> Variant:
 
 	return null
 
-## Sets the value at `field_path`. Emits `layers_changed` for layer fields.
 func set_field_value(field_path: String, value: Variant) -> void:
 	var parsed: Dictionary = parse_field_path(field_path)
 	if parsed.is_empty():
@@ -195,10 +143,6 @@ func set_field_value(field_path: String, value: Variant) -> void:
 			design_size = value
 		"scale":
 			scale = value
-		"render_mode":
-			set_render_mode(value as RenderMode)
-		"texture_filter":
-			set_texture_filter(value as TextureFilter)
 		"layer":
 			var layer_id: String = parsed.get("layer_id", "")
 			var layer: BayterekLayer = get_layer_by_id(layer_id)
@@ -208,7 +152,6 @@ func set_field_value(field_path: String, value: Variant) -> void:
 			_set_property_in_object(layer, segments, value)
 			notify_layer_modified()
 
-## Validates whether a given path is a real field on this design.
 func is_field_exportable(field_path: String) -> bool:
 	var parsed: Dictionary = parse_field_path(field_path)
 	if parsed.is_empty():
@@ -216,7 +159,7 @@ func is_field_exportable(field_path: String) -> bool:
 
 	var root: String = parsed.get("root", "")
 
-	if root == "design_size" or root == "scale" or root == "render_mode" or root == "texture_filter":
+	if root == "design_size" or root == "scale":
 		return true
 
 	if root == "layer":
@@ -229,12 +172,10 @@ func is_field_exportable(field_path: String) -> bool:
 		if segments.is_empty():
 			return false
 
-		# Build the sub-path (everything after the layer id).
 		var sub_path: String = ".".join(segments)
 		if sub_path in EXPORTABLE_LAYER_FIELDS:
 			return true
 
-		# Allow dictionary children like "fill_configs.normal.enabled".
 		for allowed in EXPORTABLE_LAYER_FIELDS:
 			if sub_path.begins_with(allowed + "."):
 				return true
@@ -305,35 +246,6 @@ func _set_property_in_object(obj: Object, segments: Array, value: Variant) -> vo
 	elif current is Dictionary:
 		current[last_seg] = value
 
-func _is_property_reachable(obj: Object, segments: Array) -> bool:
-	if not obj:
-		return false
-	if segments.is_empty():
-		return true
-
-	var current: Variant = obj
-	for seg in segments:
-		if current == null:
-			return false
-		var key: String = String(seg)
-		if current is Object:
-			var obj_current: Object = current
-			var found: bool = false
-			for prop in obj_current.get_property_list():
-				if prop.get("name", "") == key:
-					current = obj_current.get(key)
-					found = true
-					break
-			if not found:
-				return false
-		elif current is Dictionary:
-			if not current.has(key):
-				return false
-			current = current[key]
-		else:
-			return false
-	return true
-
 # ============================================================
 # LAYER MANAGEMENT
 # ============================================================
@@ -400,6 +312,59 @@ func copy_layers_from(source_layers: Array) -> void:
 	layers_changed.emit(self, "reset")
 
 # ============================================================
+# COMPUTED SIZE
+# ============================================================
+
+func get_computed_size() -> Vector2:
+	var bounds: Rect2 = get_computed_bounds()
+	if bounds.size.x > 0.0 and bounds.size.y > 0.0:
+		return bounds.size
+	return design_size
+
+func get_computed_bounds() -> Rect2:
+	if layers.is_empty():
+		return Rect2(-design_size * 0.5, design_size)
+
+	var has_any: bool = false
+	var min_x: float = INF
+	var min_y: float = INF
+	var max_x: float = -INF
+	var max_y: float = -INF
+
+	for layer in layers:
+		if not layer or not layer.visible:
+			continue
+
+		var pixel_mode: bool = layer.get_effective_render_mode() == 1
+
+		var effective_size: Vector2 = layer.get_size(design_size)
+		if effective_size.x <= 0.0 or effective_size.y <= 0.0:
+			continue
+
+		var matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
+		var half: Vector2 = effective_size * 0.5
+
+		var corners: Array[Vector2] = [
+			Vector2(-half.x, -half.y),
+			Vector2( half.x, -half.y),
+			Vector2( half.x,  half.y),
+			Vector2(-half.x,  half.y),
+		]
+
+		for c in corners:
+			var w: Vector2 = matrix * c
+			min_x = minf(min_x, w.x)
+			min_y = minf(min_y, w.y)
+			max_x = maxf(max_x, w.x)
+			max_y = maxf(max_y, w.y)
+			has_any = true
+
+	if not has_any:
+		return Rect2(-design_size * 0.5, design_size)
+
+	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+
+# ============================================================
 # IDENTITY SETTERS
 # ============================================================
 
@@ -425,8 +390,6 @@ func duplicate_design() -> BayterekNodeDesign:
 	copy.name = name + " Copy"
 	copy.description = description
 	copy.category = category
-	copy.render_mode = render_mode
-	copy.texture_filter = texture_filter
 	copy.design_size = design_size
 	copy.scale = scale
 	copy.copy_layers_from(layers)
@@ -434,6 +397,4 @@ func duplicate_design() -> BayterekNodeDesign:
 	return copy
 
 func _to_string() -> String:
-	return "BayterekNodeDesign(id='%s', name='%s', mode=%s, filter=%s, layers=%d)" % [
-		id, name, RenderMode.keys()[render_mode], TextureFilter.keys()[texture_filter], layers.size()
-	]
+	return "BayterekNodeDesign(id='%s', name='%s', layers=%d)" % [id, name, layers.size()]

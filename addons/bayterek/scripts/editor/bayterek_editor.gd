@@ -35,7 +35,6 @@ var prefabs_bar: BayterekPrefabsBar
 var context_menu: BayterekEditorContext
 var _shortcuts: BayterekShortcuts
 
-## Quick node search popup (Ctrl+P / Ctrl+F).
 var _node_search: BayterekNodeSearch
 
 var validator: BayterekValidator
@@ -61,9 +60,6 @@ var _group_dialog_target_id: String = ""
 # UNDO / REDO HELPERS
 # ============================================================
 
-## Wraps an action in undo/redo boilerplate. Both callables must be
-## self-contained — no captured state that becomes invalid between do
-## and undo.
 func _commit_action(action_name: String, do_callable: Callable, undo_callable: Callable) -> void:
 	if not undo_redo:
 		return
@@ -1619,7 +1615,6 @@ func _node_to_dict(node_data: BayterekNode) -> Dictionary:
 	d["external_id"] = node_data.external_id
 	d["reference_id"] = node_data.reference_id
 	d["design_id"] = node_data.design_id
-	d["render_mode"] = int(node_data.render_mode)
 	d["group_id"] = node_data.group_id
 	d["prerequisite_group_id"] = node_data.prerequisite_group_id
 
@@ -1781,9 +1776,6 @@ func _dict_to_node(nd: Dictionary, new_id: int, id_map: Dictionary, offset: Vect
 	node_data.locked = bool(nd.get("locked", false))
 	node_data.external_id = nd.get("external_id", "")
 	node_data.design_id = nd.get("design_id", "")
-	var rm = nd.get("render_mode", int(BayterekNodeDesign.RenderMode.VECTOR))
-	if typeof(rm) == TYPE_INT or typeof(rm) == TYPE_FLOAT:
-		node_data.render_mode = int(rm) as BayterekNodeDesign.RenderMode
 
 	var old_ref: String = nd.get("reference_id", "")
 	var prefab_exists: bool = false
@@ -1925,6 +1917,7 @@ func _layer_to_dict(layer: BayterekLayer) -> Dictionary:
 	d["animation_id"] = layer.animation_id
 	d["animated"] = layer.animated
 	d["render_mode_override"] = int(layer.render_mode_override)
+	d["texture_filter_override"] = int(layer.texture_filter_override)
 	d["transform"] = _transform_to_dict(layer.transform)
 
 	if layer is BayterekShapeLayer:
@@ -1952,6 +1945,12 @@ func _layer_to_dict(layer: BayterekLayer) -> Dictionary:
 		d["icon_configs"] = _icon_configs_to_dict(layer.icon_configs)
 		d["tint_enabled"] = layer.tint_enabled
 		d["tint_configs"] = _configs_to_dict(layer.tint_configs)
+		d["stretch_mode"] = int(layer.stretch_mode)
+		d["nine_patch_margin_left"] = layer.nine_patch_margin_left
+		d["nine_patch_margin_top"] = layer.nine_patch_margin_top
+		d["nine_patch_margin_right"] = layer.nine_patch_margin_right
+		d["nine_patch_margin_bottom"] = layer.nine_patch_margin_bottom
+		d["nine_patch_draw_center"] = layer.nine_patch_draw_center
 
 	return d
 
@@ -2017,6 +2016,9 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 	var rmo = d.get("render_mode_override", int(BayterekLayer.RenderModeOverride.INHERIT))
 	if typeof(rmo) == TYPE_INT or typeof(rmo) == TYPE_FLOAT:
 		layer.render_mode_override = int(rmo) as BayterekLayer.RenderModeOverride
+	var tfo = d.get("texture_filter_override", int(BayterekLayer.TextureFilterOverride.INHERIT))
+	if typeof(tfo) == TYPE_INT or typeof(tfo) == TYPE_FLOAT:
+		layer.texture_filter_override = int(tfo) as BayterekLayer.TextureFilterOverride
 
 	layer.transform = _dict_to_transform(d.get("transform", {}))
 
@@ -2043,6 +2045,12 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 		layer.icon_configs = _dict_to_icon_configs(d.get("icon_configs", {}))
 		layer.tint_enabled = d.get("tint_enabled", false)
 		layer.tint_configs = _dict_to_configs(d.get("tint_configs", {}))
+		layer.stretch_mode = int(d.get("stretch_mode", 0)) as BayterekTextureLayer.StretchMode
+		layer.nine_patch_margin_left = int(d.get("nine_patch_margin_left", 8))
+		layer.nine_patch_margin_top = int(d.get("nine_patch_margin_top", 8))
+		layer.nine_patch_margin_right = int(d.get("nine_patch_margin_right", 8))
+		layer.nine_patch_margin_bottom = int(d.get("nine_patch_margin_bottom", 8))
+		layer.nine_patch_draw_center = bool(d.get("nine_patch_draw_center", true))
 
 	return layer
 

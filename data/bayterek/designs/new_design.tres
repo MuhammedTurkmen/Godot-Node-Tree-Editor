@@ -1,19 +1,24 @@
 [gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://cc7onwl1wc0na"]
 
 [ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="1_a6nu6"]
-[ext_resource type="Script" uid="uid://bnggwadduoie5" path="res://addons/bayterek/scripts/resources/layers/bayterek_shape_layer.gd" id="2_3ujw7"]
+[ext_resource type="Texture2D" uid="uid://bad5qhdfe60r3" path="res://assets/big_border.png" id="2_3ujw7"]
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="3_paddw"]
+[ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="3_u1mso"]
 [ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="4_u1mso"]
 
-[sub_resource type="Resource" id="Resource_a6nu6"]
+[sub_resource type="Resource" id="Resource_joamw"]
 script = ExtResource("3_paddw")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_3ujw7"]
-script = ExtResource("2_3ujw7")
-shape_type = 1
-corner_radius = 15.0
-fill_configs = {
+[sub_resource type="Resource" id="Resource_5qdsx"]
+script = ExtResource("3_u1mso")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("2_3ujw7")
+}
+}
+tint_configs = {
 "allocateable": {
 "color": Color(0.5568628, 0.9607843, 0.5568628, 1),
 "enabled": false
@@ -35,8 +40,8 @@ fill_configs = {
 "enabled": false
 },
 "normal": {
-"color": Color(0.4, 0.7, 1, 1),
-"enabled": true
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
 },
 "not_allocateable": {
 "color": Color(1, 0.4, 0.4, 1),
@@ -51,50 +56,12 @@ fill_configs = {
 "enabled": false
 }
 }
-border_enabled = true
-border_configs = {
-"allocateable": {
-"color": Color(0.3019608, 0.85882354, 0.3019608, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.65882355, 0.47843137, 0, 1),
-"enabled": false
-},
-"hover": {
-"color": Color(1, 0.7490196, 0, 1),
-"enabled": false
-},
-"locked": {
-"color": Color(0.26666668, 0.26666668, 0.26666668, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(1, 0.8, 0, 1),
-"enabled": false
-},
-"normal": {
-"color": Color(1, 1, 1, 1),
-"enabled": true
-},
-"not_allocateable": {
-"color": Color(1, 0.2, 0.2, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.5019608, 0, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.3019608, 0.3019608, 1),
-"enabled": false
-}
-}
-layer_id = "06cafc13-4818-40fd-9adc-508a99faf05c"
-layer_name = "Background"
-transform = SubResource("Resource_a6nu6")
+layer_id = "739bee1c-bfb2-4f2d-8361-df1583c67c0a"
+layer_name = "Texture 2"
+transform = SubResource("Resource_joamw")
+texture_filter_override = 2
 
 [resource]
 script = ExtResource("4_u1mso")
 id = "new_design"
-layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_3ujw7")])
+layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_5qdsx")])

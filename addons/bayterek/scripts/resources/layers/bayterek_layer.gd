@@ -3,23 +3,19 @@ class_name BayterekLayer
 extends Resource
 ## Tüm katmanların türediği base sınıf.
 
-## Layer-level override for the design's render mode.
 enum RenderModeOverride {
 	INHERIT,
 	VECTOR,
 	PIXEL,
 }
 
-## Per-layer texture filter override. INHERIT uses the design's filter.
 enum TextureFilterOverride {
 	INHERIT,
 	LINEAR,
 	NEAREST,
 }
 
-## Render mode int values, matching BayterekNodeDesign.RenderMode.
-## Duplicated here to avoid a cyclic dependency between
-## BayterekLayer and BayterekNodeDesign.
+## Render mode int values. Duplicated to avoid a cyclic dependency.
 const RENDER_MODE_VECTOR := 0
 const RENDER_MODE_PIXEL := 1
 
@@ -47,7 +43,6 @@ const STATE_PRIORITY: Array[String] = [
 	"normal",
 ]
 
-## Kalıcı layer kimliği (UUID v4). Export field path'lerinde kullanılır.
 @export_storage var layer_id: String = ""
 
 @export_storage var layer_name: String = "Layer"
@@ -56,10 +51,10 @@ const STATE_PRIORITY: Array[String] = [
 @export_storage var animation_id: String = ""
 @export_storage var animated: bool = false
 
-## Per-layer render mode override. INHERIT uses the design's mode.
+## Per-layer render mode. INHERIT falls back to VECTOR.
 @export_storage var render_mode_override: RenderModeOverride = RenderModeOverride.INHERIT
 
-## Per-layer texture filter override. INHERIT uses the design's filter.
+## Per-layer texture filter. INHERIT falls back to LINEAR.
 @export_storage var texture_filter_override: TextureFilterOverride = TextureFilterOverride.INHERIT
 
 func _init() -> void:
@@ -92,33 +87,27 @@ func get_matrix(design_size: Vector2, pixel_mode: bool = false) -> Transform2D:
 	return transform.get_matrix(design_size, pixel_mode)
 
 ## Resolves the effective render mode for this layer.
-## `design_mode` is an int (0 = Vector, 1 = Pixel), same values as
-## BayterekNodeDesign.RenderMode. Returns the effective int mode.
-## Does NOT reference BayterekNodeDesign to avoid a cyclic dependency.
-func get_effective_render_mode(design_mode: int) -> int:
+## INHERIT defaults to VECTOR (there is no design-level setting anymore).
+func get_effective_render_mode() -> int:
 	match render_mode_override:
 		RenderModeOverride.VECTOR:
 			return RENDER_MODE_VECTOR
 		RenderModeOverride.PIXEL:
 			return RENDER_MODE_PIXEL
 		_:
-			return design_mode
+			return RENDER_MODE_VECTOR
 
 ## Resolves the effective texture filter for this layer.
-## `design_filter` is an int (0 = Linear, 1 = Nearest), matching
-## BayterekNodeDesign.TextureFilter. Returns the effective int filter.
-## Does NOT reference BayterekNodeDesign to avoid a cyclic dependency.
-func get_effective_texture_filter(design_filter: int) -> int:
+## INHERIT defaults to LINEAR.
+func get_effective_texture_filter() -> int:
 	match texture_filter_override:
 		TextureFilterOverride.LINEAR:
-			return 0   # TEXTURE_FILTER_LINEAR
+			return 0
 		TextureFilterOverride.NEAREST:
-			return 1   # TEXTURE_FILTER_NEAREST
+			return 1
 		_:
-			return design_filter
+			return 0
 
-## Duplicate ederken layer_id KORUNUR. Yeni bir ID istiyorsanız
-## caller tarafından atanmalı (örn. Layer Editor'ün "Duplicate" butonu).
 func duplicate_layer() -> BayterekLayer:
 	var copy := BayterekLayer.new()
 	_copy_base_to(copy)

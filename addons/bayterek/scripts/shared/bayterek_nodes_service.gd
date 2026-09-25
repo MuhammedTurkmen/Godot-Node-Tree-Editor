@@ -14,9 +14,6 @@ signal node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 var _nodes: Dictionary = {}
 
 # --- Batch refresh queue ---
-# When many nodes need a state refresh at once (e.g. allocation change),
-# coalesce the redraws into a single deferred pass instead of calling
-# `refresh_visuals()` on each node synchronously.
 var _refresh_queue: Dictionary = {}
 var _refresh_scheduled: bool = false
 
@@ -77,8 +74,6 @@ func get_all_nodes() -> Array:
 # CREATION
 # ============================================================
 
-## Yeni bir node oluşturur. `design` verilirse onu uygular;
-## verilmezse tree'nin default design'ı uygulanır.
 func create_node(position: Vector2, design: BayterekNodeDesign = null) -> BayterekNodeButton:
 	var node_data := BayterekNode.new()
 	node_data.id = _tree_data.get_next_id()
@@ -129,7 +124,6 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	if not _tree_has_root():
 		node_data.is_root = true
 
-	# Design'dan layer'ları uygula (prefab artık kendi layer'larını tutmaz)
 	if not prefab.design_id.is_empty():
 		var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
 		if design:
@@ -139,7 +133,6 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	else:
 		node_data.apply_defaults_from_tree(_tree_data)
 
-	# Prefab exported values → node exported_overrides (başlangıç)
 	if not prefab.exported_values.is_empty():
 		node_data.exported_overrides = prefab.exported_values.duplicate(true)
 
@@ -283,9 +276,6 @@ func _refresh_neighbors(node: BayterekNodeButton) -> void:
 		if neighbor:
 			_queue_refresh(neighbor)
 
-## Adds a node to the refresh queue and schedules a single deferred flush.
-## This coalesces multiple refresh requests (e.g. an allocation cascade)
-## into a single frame's worth of work.
 func _queue_refresh(node: BayterekNodeButton) -> void:
 	if not is_instance_valid(node):
 		return
@@ -412,12 +402,19 @@ func _compute_allocatable(node: BayterekNodeButton, active_ids: Array) -> bool:
 # PRIVATE
 # ============================================================
 
-## Node button oluşturur ve boyutunu design_size * scale olarak ayarlar.
+## Creates a node button sized to fit the largest visible layer.
 func _create_node_button(node_data: BayterekNode) -> BayterekNodeButton:
 	var node := BayterekNodeButton.new()
-	var node_size: Vector2 = node_data.design_size * node_data.scale
+
+	# Size to the largest visible layer, not design_size.
+	var visual_bounds: Rect2 = node_data.get_visual_bounds()
+	var node_size: Vector2 = visual_bounds.size * node_data.scale
+
+	if node_size.x <= 0.0 or node_size.y <= 0.0:
+		node_size = node_data.design_size * node_data.scale
 	if node_size.x <= 0.0 or node_size.y <= 0.0:
 		node_size = Vector2(100, 100)
+
 	node.size = node_size
 	node.custom_minimum_size = node_size
 	return node

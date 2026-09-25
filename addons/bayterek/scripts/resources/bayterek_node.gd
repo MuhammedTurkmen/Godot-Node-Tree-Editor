@@ -26,10 +26,6 @@ const MAX_LAYERS := 6
 
 @export_storage var design_id: String = ""
 
-## Cached from the design at apply time. Lets the node keep its render mode
-## even if the design resource is later deleted or changed.
-@export_storage var render_mode: BayterekNodeDesign.RenderMode = BayterekNodeDesign.RenderMode.VECTOR
-
 # ============================================================
 # LAYOUT
 # ============================================================
@@ -104,8 +100,6 @@ func clear_exported_override(field_path: String) -> void:
 func clear_all_exported_overrides() -> void:
 	exported_overrides.clear()
 
-## Returns the effective exported value for a field.
-## Priority: node override > prefab exported_values > design's own value.
 func resolve_exported_value(field_path: String, prefab: BayterekPrefab, design: BayterekNodeDesign) -> Variant:
 	if exported_overrides.has(field_path):
 		return exported_overrides[field_path]
@@ -115,12 +109,9 @@ func resolve_exported_value(field_path: String, prefab: BayterekPrefab, design: 
 		return design.get_field_value(field_path)
 	return null
 
-## Same as `resolve_exported_value` — alias for readability at call sites
-## that don't have the prefab/design refs handy.
 func resolve_field_value(field_path: String, prefab_ref: BayterekPrefab, design: BayterekNodeDesign) -> Variant:
 	return resolve_exported_value(field_path, prefab_ref, design)
 
-## True if this field has a node-level override.
 func has_field_override(field_path: String) -> bool:
 	return exported_overrides.has(field_path)
 
@@ -128,19 +119,14 @@ func has_field_override(field_path: String) -> bool:
 # EXPORTED OVERRIDES APPLICATION
 # ============================================================
 
-## Applies all exported overrides to this node's layers.
-## Priority: node.exported_overrides > prefab.exported_values > design.
 func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPrefab) -> void:
 	if not design:
 		return
 
-	# Önce design'dan taze layer'ları kopyala
 	copy_layers_from(design.layers)
 	design_size = design.design_size
 	scale = design.scale
-	render_mode = design.render_mode
 
-	# Toplanacak field path'ler: design.exported_fields + prefab.exported_fields
 	var all_paths: Dictionary = {}
 	for p in design.exported_fields.keys():
 		all_paths[p] = true
@@ -148,7 +134,6 @@ func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPr
 		for p in prefab_ref.exported_fields.keys():
 			all_paths[p] = true
 
-	# Her path için değeri resolve et ve layer'a yaz
 	for field_path in all_paths.keys():
 		if field_path == "design_size":
 			var v: Variant = resolve_exported_value(field_path, prefab_ref, design)
@@ -159,11 +144,6 @@ func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPr
 			var v2: Variant = resolve_exported_value(field_path, prefab_ref, design)
 			if v2 is Vector2:
 				scale = v2
-			continue
-		if field_path == "render_mode":
-			var v3: Variant = resolve_exported_value(field_path, prefab_ref, design)
-			if typeof(v3) == TYPE_INT or typeof(v3) == TYPE_FLOAT:
-				render_mode = int(v3) as BayterekNodeDesign.RenderMode
 			continue
 
 		var resolved: Variant = resolve_exported_value(field_path, prefab_ref, design)
@@ -284,7 +264,6 @@ func apply_design(design: BayterekNodeDesign) -> void:
 	design_id = design.id
 	design_size = design.design_size
 	scale = design.scale
-	render_mode = design.render_mode
 	copy_layers_from(design.layers)
 
 func apply_defaults_from_tree(tree: BayterekTree) -> void:
@@ -298,6 +277,56 @@ func apply_defaults_from_tree(tree: BayterekTree) -> void:
 		return
 
 	apply_design(design)
+
+# ============================================================
+# VISUAL BOUNDS
+# ============================================================
+
+func get_visual_bounds() -> Rect2:
+	if layers.is_empty():
+		return Rect2(-design_size * 0.5, design_size)
+
+	var has_any: bool = false
+	var min_x: float = INF
+	var min_y: float = INF
+	var max_x: float = -INF
+	var max_y: float = -INF
+
+	for layer in layers:
+		if not layer or not layer.visible:
+			continue
+
+		var pixel_mode: bool = layer.get_effective_render_mode() == 1
+
+		var effective_size: Vector2 = layer.get_size(design_size)
+		if effective_size.x <= 0.0 or effective_size.y <= 0.0:
+			continue
+
+		var matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
+		var half: Vector2 = effective_size * 0.5
+
+		var corners: Array[Vector2] = [
+			Vector2(-half.x, -half.y),
+			Vector2( half.x, -half.y),
+			Vector2( half.x,  half.y),
+			Vector2(-half.x,  half.y),
+		]
+
+		for c in corners:
+			var w: Vector2 = matrix * c
+			min_x = minf(min_x, w.x)
+			min_y = minf(min_y, w.y)
+			max_x = maxf(max_x, w.x)
+			max_y = maxf(max_y, w.y)
+			has_any = true
+
+	if not has_any:
+		return Rect2(-design_size * 0.5, design_size)
+
+	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+
+func get_visual_size() -> Vector2:
+	return get_visual_bounds().size
 
 # ============================================================
 # ACTIVE STATE RESOLUTION

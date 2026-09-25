@@ -3,9 +3,6 @@ class_name BayterekLayerPreview
 extends Control
 ## Live preview of a design's layer stack.
 ## Supports mouse-wheel zoom and middle-drag pan.
-##
-## In pixel render mode, `preview_scale` is snapped to an integer so the
-## preview grid stays perfectly aligned (Aseprite-style).
 
 signal zoom_changed(zoom: float)
 
@@ -27,12 +24,8 @@ var _pan_start_offset: Vector2 = Vector2.ZERO
 
 var show_pivot_markers: bool = true
 
-## Background color of the preview canvas.
-## Default: dark grey (matches the editor theme).
 var bg_color: Color = Color(0.08, 0.08, 0.10, 1.0) : set = set_bg_color
 
-## When true, draws the nine-patch margins of the currently selected
-## texture layer as guide lines.
 var show_nine_patch_guides: bool = false
 
 func set_bg_color(c: Color) -> void:
@@ -58,9 +51,9 @@ func set_design(d: BayterekNodeDesign) -> void:
 
 	queue_redraw()
 
-func _on_design_changed(_d: BayterekNodeDesign, change_type: String) -> void:
-	if change_type == "texture_filter" or change_type == "render_mode":
-		_apply_texture_filter()
+func _on_design_changed(_d: BayterekNodeDesign, _change_type: String) -> void:
+	_apply_texture_filter()
+	_recompute_scale()
 	queue_redraw()
 
 func _reset_view() -> void:
@@ -93,43 +86,22 @@ func _notification(what: int) -> void:
 		_recompute_scale()
 		queue_redraw()
 
-func _is_pixel_design() -> bool:
-	if not design:
-		return false
-	return int(design.render_mode) == RENDER_MODE_PIXEL
-
 func _apply_texture_filter() -> void:
 	if not design:
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		return
 
-	# Priority:
-	#   1. Pixel render mode → always NEAREST
-	#   2. First texture layer with a non-INHERIT filter override
-	#   3. Design-level texture_filter
-	#   4. Fallback: LINEAR
-	if _is_pixel_design():
-		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		return
-
-	# Look for the first texture layer with an explicit override.
 	for layer in design.layers:
 		if not layer or not (layer is BayterekTextureLayer):
 			continue
-		var override: int = int(layer.texture_filter_override)
-		if override == BayterekLayer.TextureFilterOverride.LINEAR:
-			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-			return
-		elif override == BayterekLayer.TextureFilterOverride.NEAREST:
+		if layer.texture_filter_override == BayterekLayer.TextureFilterOverride.NEAREST:
 			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			return
+		elif layer.texture_filter_override == BayterekLayer.TextureFilterOverride.LINEAR:
+			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 			return
 
-	# Design-level fallback.
-	match int(design.texture_filter):
-		1:
-			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_:
-			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 # ============================================================
 # FIT SCALE + PAN
@@ -138,48 +110,7 @@ func _apply_texture_filter() -> void:
 func _compute_content_bounds() -> Rect2:
 	if not design:
 		return Rect2()
-
-	var has_any: bool = false
-	var min_x: float = INF
-	var min_y: float = INF
-	var max_x: float = -INF
-	var max_y: float = -INF
-
-	var design_size: Vector2 = design.design_size
-
-	for layer in design.layers:
-		if not layer or not layer.visible:
-			continue
-
-		var effective_mode: int = layer.get_effective_render_mode(int(design.render_mode))
-		var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
-
-		var effective_size: Vector2 = layer.get_size(design_size)
-		if effective_size.x <= 0.0 or effective_size.y <= 0.0:
-			continue
-
-		var matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
-		var half: Vector2 = effective_size * 0.5
-
-		var corners: Array[Vector2] = [
-			Vector2(-half.x, -half.y),
-			Vector2( half.x, -half.y),
-			Vector2( half.x,  half.y),
-			Vector2(-half.x,  half.y),
-		]
-
-		for c in corners:
-			var w: Vector2 = matrix * c
-			min_x = minf(min_x, w.x)
-			min_y = minf(min_y, w.y)
-			max_x = maxf(max_x, w.x)
-			max_y = maxf(max_y, w.y)
-			has_any = true
-
-	if not has_any:
-		return Rect2()
-
-	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+	return design.get_computed_bounds()
 
 func _recompute_scale() -> void:
 	if not design:
@@ -191,7 +122,8 @@ func _recompute_scale() -> void:
 	var bounds: Rect2 = _compute_content_bounds()
 
 	if bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
-		bounds = Rect2(-design.design_size * 0.5, design.design_size)
+		var computed: Vector2 = design.get_computed_size()
+		bounds = Rect2(-computed * 0.5, computed)
 
 	var available: Vector2 = size - Vector2(Bayterek.PREVIEW_MARGIN, Bayterek.PREVIEW_MARGIN) * 2.0
 	if available.x <= 0.0 or available.y <= 0.0:
@@ -201,14 +133,7 @@ func _recompute_scale() -> void:
 		var sy: float = available.y / bounds.size.y
 		_fit_scale = min(sx, sy)
 
-	if _is_pixel_design():
-		var snapped_fit: int = maxi(1, int(floor(_fit_scale)))
-		_fit_scale = float(snapped_fit)
-
 	preview_scale = _fit_scale * user_zoom
-
-	if _is_pixel_design():
-		preview_scale = maxf(1.0, float(maxi(1, int(floor(preview_scale)))))
 
 	var content_center: Vector2 = bounds.position + bounds.size * 0.5
 	pan_offset = -content_center * preview_scale
@@ -241,10 +166,8 @@ func _gui_input(event: InputEvent) -> void:
 # ============================================================
 
 func _draw() -> void:
-	# Background — use custom bg_color.
 	draw_rect(Rect2(Vector2.ZERO, size), bg_color, true)
 
-	# Grid is ALWAYS drawn, design or not.
 	_draw_background_grid()
 
 	if not design:
@@ -264,7 +187,6 @@ func _draw() -> void:
 			continue
 		_draw_layer(layer, base_xform)
 
-	# Optional: nine-patch guides.
 	if show_nine_patch_guides:
 		for layer in design.layers:
 			if not layer or not layer.visible:
@@ -285,33 +207,26 @@ func _draw_design_center_marker(center: Vector2) -> void:
 # ============================================================
 
 func _draw_background_grid() -> void:
-	# Base cell size is 16px scaled by the current preview scale.
 	var step: float = 16.0 * preview_scale
 	if step < 4.0:
 		step = 4.0
 
-	# --- Choose grid colors based on the background brightness ---
-	# so the grid is ALWAYS visible against any bg_color.
 	var luminance: float = bg_color.get_luminance()
 	var grid_color: Color
 	var primary_color: Color
 
 	if luminance > 0.6:
-		# Light background (e.g. white) → dark grid lines.
 		grid_color = Color(0.10, 0.10, 0.15, 0.35)
 		primary_color = Color(0.05, 0.05, 0.10, 0.55)
 	elif luminance > 0.25:
-		# Mid background (e.g. blue) → light-but-strong lines.
 		grid_color = Color(0.85, 0.90, 1.0, 0.28)
 		primary_color = Color(0.95, 1.0, 1.0, 0.50)
 	else:
-		# Dark background (e.g. black) → light grid lines.
 		grid_color = Color(0.75, 0.80, 0.90, 0.18)
 		primary_color = Color(0.90, 0.95, 1.0, 0.40)
 
 	var origin: Vector2 = Vector2(fposmod(pan_offset.x, step), fposmod(pan_offset.y, step))
 
-	# --- Secondary grid: every cell ---
 	var x: float = origin.x
 	while x < size.x:
 		draw_line(Vector2(x, 0), Vector2(x, size.y), grid_color, 1.0)
@@ -322,7 +237,6 @@ func _draw_background_grid() -> void:
 		draw_line(Vector2(0, y), Vector2(size.x, y), grid_color, 1.0)
 		y += step
 
-	# --- Primary grid: every 4 cells, thicker / stronger ---
 	var primary_step: float = step * 4.0
 	var px: float = fposmod(pan_offset.x, primary_step)
 	while px < size.x:
@@ -343,7 +257,7 @@ func _draw_layer(layer: BayterekLayer, base_xform: Transform2D) -> void:
 	var state_key: String = layer.get_visual_state(simulated)
 	var design_size: Vector2 = design.design_size
 
-	var effective_mode: int = layer.get_effective_render_mode(int(design.render_mode))
+	var effective_mode: int = layer.get_effective_render_mode()
 	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
 
 	var layer_matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
@@ -553,8 +467,6 @@ func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_siz
 	_draw_texture_in_box(tex, Rect2(-effective_size * 0.5, effective_size), tint, layer)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
-## Draws a texture into a target rect, honoring stretch_mode and
-## nine-patch margins.
 func _draw_texture_in_box(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
 	if not tex:
 		return
@@ -647,8 +559,6 @@ func _draw_keep_aspect(tex: Texture2D, target: Rect2, tint: Color) -> void:
 # NINE PATCH GUIDES
 # ============================================================
 
-## Draws the nine-patch margins as dashed guide lines on top of the
-## preview so the user can see what region is being stretched.
 func _draw_nine_patch_guides(layer: BayterekTextureLayer, base_xform: Transform2D) -> void:
 	var tex: Texture2D = layer.get_icon_for_state("normal")
 	if not tex:

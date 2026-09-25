@@ -169,12 +169,9 @@ func _rebuild_layer_list() -> void:
 		item.set_metadata(0, i)
 		item.set_selectable(0, true)
 
-		# Layer type icon.
 		var icon_name: String = "CircleShape2D" if layer is BayterekShapeLayer else "ImageTexture"
 		if theme and theme.has_icon(icon_name, Bayterek.ICON_THEME):
 			item.set_icon(0, theme.get_icon(icon_name, Bayterek.ICON_THEME))
-
-		# --- Per-row buttons: visibility / up / down / delete ---
 
 		# 1) Visibility (eye)
 		var vis_icon: String = "GuiVisibilityVisible" if layer.visible else "GuiVisibilityHidden"
@@ -210,7 +207,6 @@ func _rebuild_layer_list() -> void:
 
 	_update_buttons_state()
 
-## Creates a simple 16×16 transparent texture used as a fallback icon.
 func _make_text_icon(_text: String) -> Texture2D:
 	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
@@ -425,7 +421,7 @@ func _on_add_shape_pressed() -> void:
 		return
 	var layer := BayterekShapeLayer.new()
 	layer.layer_name = "Shape %d" % (design.get_layer_count() + 1)
-	layer.transform.size = design.design_size
+	layer.transform.size = design.get_computed_size()
 	design.add_layer(layer)
 	_selected_layer_index = design.get_layer_count() - 1
 	_rebuild_layer_list()
@@ -440,7 +436,7 @@ func _on_add_texture_pressed() -> void:
 		return
 	var layer := BayterekTextureLayer.new()
 	layer.layer_name = "Texture %d" % (design.get_layer_count() + 1)
-	layer.transform.size = design.design_size
+	layer.transform.size = design.get_computed_size()
 	design.add_layer(layer)
 	_selected_layer_index = design.get_layer_count() - 1
 	_rebuild_layer_list()
@@ -482,10 +478,6 @@ func _update_buttons_state() -> void:
 # ============================================================
 
 func _rebuild_detail_form() -> void:
-	# Use remove_child + queue_free (deferred). Combined with the
-	# export-helper guard, this avoids "gui_input already connected"
-	# errors AND avoids freeing a widget while it's still emitting
-	# its own signal.
 	for child in _detail_root.get_children():
 		_detail_root.remove_child(child)
 		child.queue_free()
@@ -633,7 +625,6 @@ func _rebuild_detail_form() -> void:
 		_build_texture_detail(layer)
 
 func _build_shape_detail(layer: BayterekShapeLayer) -> void:
-	# --- Shape fold ---
 	var shape_fold := _make_fold("Shape")
 	_detail_root.add_child(shape_fold)
 
@@ -641,7 +632,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	shape_inner.add_theme_constant_override("separation", 4)
 	shape_fold.add_child(shape_inner)
 
-	# Shape type
 	var type_row := HBoxContainer.new()
 	type_row.add_theme_constant_override("separation", 4)
 	shape_inner.add_child(type_row)
@@ -670,7 +660,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	var field_st: String = "layers.%s.shape_type" % layer.layer_id
 	BayterekExportHelper.make_exportable(type_row, field_st, design, _on_export_changed)
 
-	# Corner radius
 	var cr_row := HBoxContainer.new()
 	cr_row.add_theme_constant_override("separation", 4)
 	shape_inner.add_child(cr_row)
@@ -700,7 +689,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	var field_cr: String = "layers.%s.corner_radius" % layer.layer_id
 	BayterekExportHelper.make_exportable(cr_row, field_cr, design, _on_export_changed)
 
-	# --- Fill fold ---
 	var fill_fold := _make_fold("Fill")
 	_detail_root.add_child(fill_fold)
 
@@ -735,7 +723,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 		changed.emit()
 	)
 
-	# --- Border fold ---
 	var border_fold := _make_fold("Border")
 	_detail_root.add_child(border_fold)
 
@@ -761,7 +748,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	var field_be: String = "layers.%s.border_enabled" % layer.layer_id
 	BayterekExportHelper.make_exportable(border_check_row, field_be, design, _on_export_changed)
 
-	# Width
 	var bw_row := HBoxContainer.new()
 	bw_row.add_theme_constant_override("separation", 4)
 	border_inner.add_child(bw_row)
@@ -785,7 +771,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	var field_bw: String = "layers.%s.border_width" % layer.layer_id
 	BayterekExportHelper.make_exportable(bw_row, field_bw, design, _on_export_changed)
 
-	# Corner gap (pixel-art frame mode)
 	var gap_row := HBoxContainer.new()
 	gap_row.add_theme_constant_override("separation", 4)
 	border_inner.add_child(gap_row)
@@ -810,7 +795,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	var field_gap: String = "layers.%s.border_corner_gap" % layer.layer_id
 	BayterekExportHelper.make_exportable(gap_row, field_gap, design, _on_export_changed)
 
-	# Edges label
 	var edges_label := Label.new()
 	edges_label.text = "Edges"
 	edges_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
@@ -837,7 +821,6 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 		changed.emit()
 	)
 
-	# --- Shadow fold ---
 	var shadow_fold := _make_fold("Shadow")
 	_detail_root.add_child(shadow_fold)
 
@@ -977,7 +960,7 @@ func _update_corner_radius_tooltip(
 	label: Label,
 	input: SpinBox
 ) -> void:
-	var effective_size: Vector2 = design.design_size if design else Vector2(100, 100)
+	var effective_size: Vector2 = design.get_computed_size() if design else Vector2(100, 100)
 	var limit: float = layer._corner_radius_limit(effective_size)
 	var effective: float = layer.get_clamped_corner_radius(effective_size)
 
@@ -1000,7 +983,7 @@ func _sync_corner_radius_ui(
 	if not layer or not input:
 		return
 
-	var effective_size: Vector2 = design.design_size if design else Vector2(100, 100)
+	var effective_size: Vector2 = design.get_computed_size() if design else Vector2(100, 100)
 	var effective: float = layer.get_clamped_corner_radius(effective_size)
 
 	if not is_equal_approx(input.value, effective):
@@ -1043,7 +1026,6 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		changed.emit()
 	)
 
-	# --- Stretch / Nine Patch fold ---
 	var stretch_fold := _make_fold("Stretch Mode")
 	_detail_root.add_child(stretch_fold)
 
@@ -1051,7 +1033,6 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	stretch_inner.add_theme_constant_override("separation", 4)
 	stretch_fold.add_child(stretch_inner)
 
-	# Stretch mode dropdown
 	var sm_row := HBoxContainer.new()
 	sm_row.add_theme_constant_override("separation", 4)
 	stretch_inner.add_child(sm_row)
@@ -1084,14 +1065,12 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	var field_sm: String = "layers.%s.stretch_mode" % layer.layer_id
 	BayterekExportHelper.make_exportable(sm_row, field_sm, design, _on_export_changed)
 
-	# Nine-patch margins (only when NINE_PATCH mode is active)
 	if layer.stretch_mode == BayterekTextureLayer.StretchMode.NINE_PATCH:
 		var np_label := Label.new()
 		np_label.text = "Nine Patch Margins (px)"
 		np_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
 		stretch_inner.add_child(np_label)
 
-		# Left / Top row
 		var lt_row := HBoxContainer.new()
 		lt_row.add_theme_constant_override("separation", 4)
 		stretch_inner.add_child(lt_row)
@@ -1099,7 +1078,6 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		_add_nine_patch_spin(lt_row, layer, "Left", "nine_patch_margin_left")
 		_add_nine_patch_spin(lt_row, layer, "Top", "nine_patch_margin_top")
 
-		# Right / Bottom row
 		var rb_row := HBoxContainer.new()
 		rb_row.add_theme_constant_override("separation", 4)
 		stretch_inner.add_child(rb_row)
@@ -1107,7 +1085,6 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		_add_nine_patch_spin(rb_row, layer, "Right", "nine_patch_margin_right")
 		_add_nine_patch_spin(rb_row, layer, "Bottom", "nine_patch_margin_bottom")
 
-		# Draw center toggle
 		var center_row := HBoxContainer.new()
 		center_row.add_theme_constant_override("separation", 4)
 		stretch_inner.add_child(center_row)
@@ -1203,8 +1180,6 @@ func _add_nine_patch_spin(parent: HBoxContainer, layer: BayterekTextureLayer, la
 # DEFERRED REBUILD
 # ============================================================
 
-## Rebuilds the detail form on the next idle frame. Use this from signal
-## handlers that would otherwise free the emitting widget mid-signal.
 func _rebuild_detail_form_deferred() -> void:
 	call_deferred("_rebuild_detail_form")
 

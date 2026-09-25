@@ -172,16 +172,34 @@ func rebuild_from_design() -> void:
 func _apply_texture_filter() -> void:
 	if not node_data:
 		return
-	var is_pixel: bool = int(node_data.render_mode) == RENDER_MODE_PIXEL
-	if is_pixel:
-		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	elif tree_data:
+
+	# Look for the first layer with an explicit filter override.
+	for layer in node_data.layers:
+		if not layer:
+			continue
+		if layer.texture_filter_override == BayterekLayer.TextureFilterOverride.NEAREST:
+			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			return
+		elif layer.texture_filter_override == BayterekLayer.TextureFilterOverride.LINEAR:
+			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+			return
+
+	# Fallback to tree-level default.
+	if tree_data:
 		texture_filter = tree_data.get_godot_texture_filter()
 	else:
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 func _sync_size_with_design() -> void:
-	var target: Vector2 = node_data.design_size * node_data.scale
+	if not node_data:
+		return
+
+	# Size the node to fit the LARGEST visible layer's bounding box.
+	var visual_bounds: Rect2 = node_data.get_visual_bounds()
+	var target: Vector2 = visual_bounds.size * node_data.scale
+
+	if target.x <= 0.0 or target.y <= 0.0:
+		target = node_data.design_size * node_data.scale
 	if target.x <= 0.0 or target.y <= 0.0:
 		target = Vector2(100, 100)
 
@@ -210,10 +228,15 @@ func _draw() -> void:
 	var design_size: Vector2 = node_data.design_size
 	var node_scale: Vector2 = node_data.scale
 
+	# Recenter: shift the visual bounds' center to the node rect's center.
+	var visual_bounds: Rect2 = node_data.get_visual_bounds()
+	var bounds_center: Vector2 = visual_bounds.position + visual_bounds.size * 0.5
+
+	var node_rect_center: Vector2 = size * 0.5
 	var scale_transform := Transform2D(
 		Vector2(node_scale.x, 0.0),
 		Vector2(0.0, node_scale.y),
-		design_size * 0.5 * node_scale
+		node_rect_center - bounds_center * node_scale
 	)
 
 	for layer in node_data.layers:
@@ -224,8 +247,7 @@ func _draw() -> void:
 func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transform2D) -> void:
 	var state_key: String = layer.get_visual_state(_active_states)
 
-	var design_mode: int = int(node_data.render_mode) if node_data else RENDER_MODE_VECTOR
-	var effective_mode: int = layer.get_effective_render_mode(design_mode)
+	var effective_mode: int = layer.get_effective_render_mode()
 	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
 
 	var layer_matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
