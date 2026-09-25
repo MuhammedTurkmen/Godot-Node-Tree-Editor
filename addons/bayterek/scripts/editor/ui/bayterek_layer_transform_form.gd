@@ -15,6 +15,7 @@ var _updating: bool = false
 # --- Position ---
 var _pos_x: SpinBox
 var _pos_y: SpinBox
+var _pos_row: HBoxContainer
 
 # --- Size ---
 var _size_x: SpinBox
@@ -23,13 +24,16 @@ var _size_y: SpinBox
 # --- Scale ---
 var _scale_x: SpinBox
 var _scale_y: SpinBox
+var _scale_row: HBoxContainer
 
 # --- Flip ---
 var _flip_x_check: CheckBox
 var _flip_y_check: CheckBox
+var _flip_row: HBoxContainer
 
 # --- Rotation ---
 var _rotation: SpinBox
+var _rotation_row: HBoxContainer
 
 # --- Skew ---
 var _skew_x: SpinBox
@@ -43,10 +47,12 @@ var _pivot_custom_panel: HBoxContainer
 
 # --- Scale from pivot ---
 var _scale_from_pivot_check: CheckBox
+var _scale_from_pivot_row: HBoxContainer
 
 var _btn_group: ButtonGroup = null
 
 var _ui_ready: bool = false
+var _exports_bound: bool = false
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 6)
@@ -54,20 +60,17 @@ func _ready() -> void:
 	_ui_ready = true
 	if _transform:
 		_refresh_from_data()
+		_bind_exports()
 
 func _build_ui() -> void:
 	# --- Position ---
 	var pos_row_data := _make_pair_row_container("Position", "X", "Y",
 		-99999.0, 99999.0, 1.0, true, 0.0, "")
-	var pos_row: HBoxContainer = pos_row_data["row"]
+	_pos_row = pos_row_data["row"]
 	_pos_x = pos_row_data["a"]
 	_pos_y = pos_row_data["b"]
 	_pos_x.value_changed.connect(_on_pos_changed)
 	_pos_y.value_changed.connect(_on_pos_changed)
-
-	if not _layer_id.is_empty():
-		var fp_pos: String = "layers.%s.transform.position" % _layer_id
-		BayterekExportHelper.make_exportable(pos_row, fp_pos, _design, _on_export_changed)
 
 	# --- Size ---
 	var size_row_data := _make_pair_row_container("Size", "W", "H",
@@ -77,54 +80,46 @@ func _build_ui() -> void:
 	_size_x.value_changed.connect(_on_size_changed)
 	_size_y.value_changed.connect(_on_size_changed)
 
-	# --- Scale (min 0.01, max 100, step 0.01, rounded=false, initial 1.0) ---
+	# --- Scale ---
 	var scale_row_data := _make_pair_row_container("Scale", "X", "Y",
 		0.01, 100.0, 0.01, false, 1.0, "")
-	var scale_row: HBoxContainer = scale_row_data["row"]
+	_scale_row = scale_row_data["row"]
 	_scale_x = scale_row_data["a"]
 	_scale_y = scale_row_data["b"]
 	_scale_x.value_changed.connect(_on_scale_changed)
 	_scale_y.value_changed.connect(_on_scale_changed)
 
-	if not _layer_id.is_empty():
-		var fp_scale: String = "layers.%s.transform.scale" % _layer_id
-		BayterekExportHelper.make_exportable(scale_row, fp_scale, _design, _on_export_changed)
-
 	# --- Flip ---
-	var flip_row := HBoxContainer.new()
-	flip_row.add_theme_constant_override("separation", 4)
-	add_child(flip_row)
+	_flip_row = HBoxContainer.new()
+	_flip_row.add_theme_constant_override("separation", 4)
+	add_child(_flip_row)
 
 	var flip_label := Label.new()
 	flip_label.text = "Flip"
 	flip_label.custom_minimum_size = Vector2(80, 0)
-	flip_row.add_child(flip_label)
+	_flip_row.add_child(flip_label)
 
 	_flip_x_check = CheckBox.new()
 	_flip_x_check.text = "X"
 	_flip_x_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	_flip_x_check.tooltip_text = "Mirror horizontally"
 	_flip_x_check.toggled.connect(_on_flip_toggled)
-	flip_row.add_child(_flip_x_check)
+	_flip_row.add_child(_flip_x_check)
 
 	_flip_y_check = CheckBox.new()
 	_flip_y_check.text = "Y"
 	_flip_y_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	_flip_y_check.tooltip_text = "Mirror vertically"
 	_flip_y_check.toggled.connect(_on_flip_toggled)
-	flip_row.add_child(_flip_y_check)
-
-	if not _layer_id.is_empty():
-		var fp_flip: String = "layers.%s.transform.flip_x" % _layer_id
-		BayterekExportHelper.make_exportable(flip_row, fp_flip, _design, _on_export_changed)
+	_flip_row.add_child(_flip_y_check)
 
 	# --- Rotation ---
-	var rot_row := HBoxContainer.new()
-	add_child(rot_row)
+	_rotation_row = HBoxContainer.new()
+	add_child(_rotation_row)
 	var rot_label := Label.new()
 	rot_label.text = "Rotation"
 	rot_label.custom_minimum_size = Vector2(80, 0)
-	rot_row.add_child(rot_label)
+	_rotation_row.add_child(rot_label)
 	_rotation = SpinBox.new()
 	_rotation.size_flags_horizontal = SIZE_EXPAND_FILL
 	_rotation.min_value = -3600.0
@@ -132,11 +127,7 @@ func _build_ui() -> void:
 	_rotation.step = 1.0
 	_rotation.suffix = "°"
 	_rotation.value_changed.connect(_on_rotation_changed)
-	rot_row.add_child(_rotation)
-
-	if not _layer_id.is_empty():
-		var fp_rot: String = "layers.%s.transform.rotation" % _layer_id
-		BayterekExportHelper.make_exportable(rot_row, fp_rot, _design, _on_export_changed)
+	_rotation_row.add_child(_rotation)
 
 	# --- Skew ---
 	var skew_row_data := _make_pair_row_container("Skew", "X", "Y",
@@ -200,42 +191,27 @@ func _build_ui() -> void:
 	_pivot_custom_panel.add_child(_pivot_custom_y)
 
 	# --- Scale from pivot ---
-	var sfp_row := HBoxContainer.new()
-	sfp_row.add_theme_constant_override("separation", 4)
-	add_child(sfp_row)
+	_scale_from_pivot_row = HBoxContainer.new()
+	_scale_from_pivot_row.add_theme_constant_override("separation", 4)
+	add_child(_scale_from_pivot_row)
 
 	var sfp_label := Label.new()
 	sfp_label.text = "Scale from Pivot"
 	sfp_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	sfp_label.tooltip_text = (
-		"When ON, Position is interpreted as the pivot point and size/scale grow " +
-		"away from the pivot. When OFF, Position is the layer center and size/scale " +
-		"grow symmetrically."
-	)
+	sfp_label.tooltip_text = "When ON, Position is the pivot point."
 	sfp_label.mouse_filter = Control.MOUSE_FILTER_PASS
-	sfp_row.add_child(sfp_label)
+	_scale_from_pivot_row.add_child(sfp_label)
 
 	_scale_from_pivot_check = CheckBox.new()
 	_scale_from_pivot_check.text = "On"
-	_scale_from_pivot_check.tooltip_text = sfp_label.tooltip_text
 	_scale_from_pivot_check.toggled.connect(_on_scale_from_pivot_toggled)
-	sfp_row.add_child(_scale_from_pivot_check)
-
-	if not _layer_id.is_empty():
-		var fp_sfp: String = "layers.%s.transform.scale_from_pivot" % _layer_id
-		BayterekExportHelper.make_exportable(sfp_row, fp_sfp, _design, _on_export_changed)
+	_scale_from_pivot_row.add_child(_scale_from_pivot_check)
 
 func _get_or_make_group() -> ButtonGroup:
 	if not _btn_group:
 		_btn_group = ButtonGroup.new()
 	return _btn_group
 
-## Creates a labeled two-spinbox row.
-##
-## IMPORTANT: min/max/step/rounded are configured BEFORE `value` is set.
-## Godot's SpinBox snaps `value` to the current `step` at set time, so
-## setting value first and step later can leave the display out of sync
-## (e.g. "1.01" instead of "1.00").
 func _make_pair_row_container(
 	label_text: String,
 	axis_a: String,
@@ -296,17 +272,38 @@ func _make_pair_row_container(
 
 	return {"row": row, "a": spin_a, "b": spin_b}
 
-# ============================================================
-# PUBLIC
-# ============================================================
-
 func set_transform(t: BayterekLayerTransform, design: BayterekNodeDesign = null, layer_id: String = "") -> void:
 	_transform = t
 	_design = design
+
+	if _layer_id != layer_id:
+		_exports_bound = false
 	_layer_id = layer_id
+
 	if _ui_ready:
 		_refresh_from_data()
-		_refresh_export_markers()
+		_bind_exports()
+
+func _bind_exports() -> void:
+	if _exports_bound:
+		return
+	if _layer_id.is_empty():
+		return
+	if not _design:
+		return
+
+	BayterekExportHelper.make_exportable(_pos_row,
+		"layers.%s.transform.position" % _layer_id, _design, _on_export_changed)
+	BayterekExportHelper.make_exportable(_scale_row,
+		"layers.%s.transform.scale" % _layer_id, _design, _on_export_changed)
+	BayterekExportHelper.make_exportable(_flip_row,
+		"layers.%s.transform.flip_x" % _layer_id, _design, _on_export_changed)
+	BayterekExportHelper.make_exportable(_rotation_row,
+		"layers.%s.transform.rotation" % _layer_id, _design, _on_export_changed)
+	BayterekExportHelper.make_exportable(_scale_from_pivot_row,
+		"layers.%s.transform.scale_from_pivot" % _layer_id, _design, _on_export_changed)
+
+	_exports_bound = true
 
 func _refresh_export_markers() -> void:
 	if not _design or _layer_id.is_empty():
@@ -365,10 +362,6 @@ func _refresh_from_data() -> void:
 	_pivot_custom_y.set_value_no_signal(_transform.pivot.y)
 
 	_updating = false
-
-# ============================================================
-# HANDLERS
-# ============================================================
 
 func _on_pos_changed(_v: float) -> void:
 	if _updating or not _transform: return

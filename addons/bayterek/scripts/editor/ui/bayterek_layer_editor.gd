@@ -516,6 +516,7 @@ func _rebuild_detail_form() -> void:
 
 	# --- Visibility checkbox in detail panel ---
 	var vis_row := HBoxContainer.new()
+	vis_row.add_theme_constant_override("separation", 4)
 	_detail_root.add_child(vis_row)
 
 	var vis_label := Label.new()
@@ -535,6 +536,14 @@ func _rebuild_detail_form() -> void:
 		changed.emit()
 	)
 	vis_row.add_child(vis_check)
+
+	# --- Export: visible ---
+	BayterekExportHelper.make_exportable(
+		vis_row,
+		"layers.%s.visible" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	# --- Render Mode override ---
 	var rmode_row := HBoxContainer.new()
@@ -567,8 +576,12 @@ func _rebuild_detail_form() -> void:
 	)
 	rmode_row.add_child(rmode_dropdown)
 
-	var field_rmode: String = "layers.%s.render_mode_override" % layer.layer_id
-	BayterekExportHelper.make_exportable(rmode_row, field_rmode, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		rmode_row,
+		"layers.%s.render_mode_override" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	# --- Texture Filter override ---
 	var tfilter_row := HBoxContainer.new()
@@ -601,8 +614,12 @@ func _rebuild_detail_form() -> void:
 	)
 	tfilter_row.add_child(tfilter_dropdown)
 
-	var field_tfilter: String = "layers.%s.texture_filter_override" % layer.layer_id
-	BayterekExportHelper.make_exportable(tfilter_row, field_tfilter, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		tfilter_row,
+		"layers.%s.texture_filter_override" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var transform_fold := _make_fold("Transform")
 	_detail_root.add_child(transform_fold)
@@ -657,8 +674,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	type_row.add_child(type_dropdown)
 
-	var field_st: String = "layers.%s.shape_type" % layer.layer_id
-	BayterekExportHelper.make_exportable(type_row, field_st, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		type_row,
+		"layers.%s.shape_type" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var cr_row := HBoxContainer.new()
 	cr_row.add_theme_constant_override("separation", 4)
@@ -686,8 +707,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	_update_corner_radius_tooltip(layer, cr_label, cr_input)
 	_sync_corner_radius_ui(layer, cr_input, cr_label)
 
-	var field_cr: String = "layers.%s.corner_radius" % layer.layer_id
-	BayterekExportHelper.make_exportable(cr_row, field_cr, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		cr_row,
+		"layers.%s.corner_radius" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var fill_fold := _make_fold("Fill")
 	_detail_root.add_child(fill_fold)
@@ -711,8 +736,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	fill_check_row.add_child(fill_check)
 
-	var field_fe: String = "layers.%s.fill_enabled" % layer.layer_id
-	BayterekExportHelper.make_exportable(fill_check_row, field_fe, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		fill_check_row,
+		"layers.%s.fill_enabled" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var fill_colors := BayterekLayerStateColors.new()
 	fill_inner.add_child(fill_colors)
@@ -745,8 +774,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	border_check_row.add_child(border_check)
 
-	var field_be: String = "layers.%s.border_enabled" % layer.layer_id
-	BayterekExportHelper.make_exportable(border_check_row, field_be, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		border_check_row,
+		"layers.%s.border_enabled" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var bw_row := HBoxContainer.new()
 	bw_row.add_theme_constant_override("separation", 4)
@@ -768,8 +801,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	bw_row.add_child(bw_input)
 
-	var field_bw: String = "layers.%s.border_width" % layer.layer_id
-	BayterekExportHelper.make_exportable(bw_row, field_bw, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		bw_row,
+		"layers.%s.border_width" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var gap_row := HBoxContainer.new()
 	gap_row.add_theme_constant_override("separation", 4)
@@ -792,8 +829,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	gap_row.add_child(gap_check)
 
-	var field_gap: String = "layers.%s.border_corner_gap" % layer.layer_id
-	BayterekExportHelper.make_exportable(gap_row, field_gap, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		gap_row,
+		"layers.%s.border_corner_gap" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var edges_label := Label.new()
 	edges_label.text = "Edges"
@@ -843,8 +884,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	shadow_check_row.add_child(shadow_check)
 
-	var field_se: String = "layers.%s.shadow_enabled" % layer.layer_id
-	BayterekExportHelper.make_exportable(shadow_check_row, field_se, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		shadow_check_row,
+		"layers.%s.shadow_enabled" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var shadow_color_row := HBoxContainer.new()
 	shadow_color_row.add_theme_constant_override("separation", 4)
@@ -863,8 +908,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	shadow_color_row.add_child(sc_picker)
 
-	var field_sc: String = "layers.%s.shadow_color" % layer.layer_id
-	BayterekExportHelper.make_exportable(shadow_color_row, field_sc, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		shadow_color_row,
+		"layers.%s.shadow_color" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var shadow_offset_row := HBoxContainer.new()
 	shadow_offset_row.add_theme_constant_override("separation", 4)
@@ -900,8 +949,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	shadow_offset_row.add_child(so_y)
 
-	var field_ss: String = "layers.%s.shadow_size" % layer.layer_id
-	BayterekExportHelper.make_exportable(shadow_offset_row, field_ss, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		shadow_offset_row,
+		"layers.%s.shadow_size" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var shadow_blur_row := HBoxContainer.new()
 	shadow_blur_row.add_theme_constant_override("separation", 4)
@@ -925,8 +978,12 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	)
 	shadow_blur_row.add_child(sb_input)
 
-	var field_sb: String = "layers.%s.shadow_blur" % layer.layer_id
-	BayterekExportHelper.make_exportable(shadow_blur_row, field_sb, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		shadow_blur_row,
+		"layers.%s.shadow_blur" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 func _build_edge_checkbox(parent: Control, layer: BayterekShapeLayer, label_text: String, prop_name: String) -> void:
 	var row := HBoxContainer.new()
@@ -952,8 +1009,12 @@ func _build_edge_checkbox(parent: Control, layer: BayterekShapeLayer, label_text
 	)
 	row.add_child(check)
 
-	var field_path: String = "layers.%s.%s" % [layer.layer_id, prop_name]
-	BayterekExportHelper.make_exportable(row, field_path, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		row,
+		"layers.%s.%s" % [layer.layer_id, prop_name],
+		design,
+		_on_export_changed
+	)
 
 func _update_corner_radius_tooltip(
 	layer: BayterekShapeLayer,
@@ -1014,8 +1075,12 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	)
 	icon_check_row.add_child(icon_check)
 
-	var field_ie: String = "layers.%s.icon_enabled" % layer.layer_id
-	BayterekExportHelper.make_exportable(icon_check_row, field_ie, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		icon_check_row,
+		"layers.%s.icon_enabled" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var icon_editor := BayterekLayerStateTextures.new()
 	icon_inner.add_child(icon_editor)
@@ -1062,8 +1127,12 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	)
 	sm_row.add_child(sm_dropdown)
 
-	var field_sm: String = "layers.%s.stretch_mode" % layer.layer_id
-	BayterekExportHelper.make_exportable(sm_row, field_sm, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		sm_row,
+		"layers.%s.stretch_mode" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	if layer.stretch_mode == BayterekTextureLayer.StretchMode.NINE_PATCH:
 		var np_label := Label.new()
@@ -1106,8 +1175,12 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		)
 		center_row.add_child(center_check)
 
-		var field_dc: String = "layers.%s.nine_patch_draw_center" % layer.layer_id
-		BayterekExportHelper.make_exportable(center_row, field_dc, design, _on_export_changed)
+		BayterekExportHelper.make_exportable(
+			center_row,
+			"layers.%s.nine_patch_draw_center" % layer.layer_id,
+			design,
+			_on_export_changed
+		)
 
 	var tint_fold := _make_fold("Tint")
 	_detail_root.add_child(tint_fold)
@@ -1131,8 +1204,12 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	)
 	tint_check_row.add_child(tint_check)
 
-	var field_te: String = "layers.%s.tint_enabled" % layer.layer_id
-	BayterekExportHelper.make_exportable(tint_check_row, field_te, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		tint_check_row,
+		"layers.%s.tint_enabled" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
 
 	var tint_editor := BayterekLayerStateColors.new()
 	tint_inner.add_child(tint_editor)
@@ -1173,8 +1250,12 @@ func _add_nine_patch_spin(parent: HBoxContainer, layer: BayterekTextureLayer, la
 	)
 	parent.add_child(spin)
 
-	var field_path: String = "layers.%s.%s" % [layer.layer_id, prop_name]
-	BayterekExportHelper.make_exportable(parent, field_path, design, _on_export_changed)
+	BayterekExportHelper.make_exportable(
+		parent,
+		"layers.%s.%s" % [layer.layer_id, prop_name],
+		design,
+		_on_export_changed
+	)
 
 # ============================================================
 # DEFERRED REBUILD

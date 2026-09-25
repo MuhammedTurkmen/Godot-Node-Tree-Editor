@@ -56,6 +56,7 @@ tint_configs = {
 "enabled": false
 }
 }
+stretch_mode = 3
 layer_id = "739bee1c-bfb2-4f2d-8361-df1583c67c0a"
 layer_name = "Texture 2"
 transform = SubResource("Resource_joamw")
