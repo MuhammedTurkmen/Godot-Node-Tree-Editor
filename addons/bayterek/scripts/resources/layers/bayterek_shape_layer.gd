@@ -24,6 +24,20 @@ const EDGE_RIGHT := 1
 const EDGE_BOTTOM := 2
 const EDGE_LEFT := 3
 
+# ============================================================
+# RENDER CACHE
+# ============================================================
+# Bu cache'ler, tekrarlayan pahalı hesaplamaları önler.
+# Her cache, girdi parametrelerinden üretilen bir key ile eşleşir.
+# Parametreler değişince key değişir → eski cache kullanılmaz.
+
+var _pixel_spans_cache: Dictionary = {}
+var _pixel_spans_cache_key: String = ""
+
+var _polygon_cache: Dictionary = {}
+
+var _border_segments_cache: Dictionary = {}
+
 @export_storage var shape_type: ShapeType = ShapeType.CIRCLE
 
 @export_storage var corner_radius: float = 0.0
@@ -200,35 +214,84 @@ func _corner_radius_limit(effective_size: Vector2) -> float:
 # ============================================================
 
 func get_polygon_vertices(effective_size: Vector2, pixel_mode: bool = false) -> PackedVector2Array:
-	return _build_polygon(effective_size, get_clamped_corner_radius(effective_size, pixel_mode), pixel_mode)
+	var cache_key: String = "poly_%d_%d_%d_%d_%d" % [
+		int(round(effective_size.x)),
+		int(round(effective_size.y)),
+		int(shape_type),
+		int(round(corner_radius * 100.0)),
+		1 if pixel_mode else 0,
+	]
+	if _polygon_cache.has(cache_key):
+		var cached: PackedVector2Array = _polygon_cache[cache_key]
+		return cached
+
+	var result: PackedVector2Array = _build_polygon(
+		effective_size,
+		get_clamped_corner_radius(effective_size, pixel_mode),
+		pixel_mode
+	)
+	_polygon_cache[cache_key] = result
+	return result
 
 func get_fill_vertices(effective_size: Vector2, pixel_mode: bool = false) -> PackedVector2Array:
+	var cache_key: String = "fv_%d_%d_%d_%d_%d_%d_%d" % [
+		int(round(effective_size.x)),
+		int(round(effective_size.y)),
+		int(shape_type),
+		int(round(corner_radius * 100.0)),
+		int(round(border_width * 100.0)),
+		1 if pixel_mode else 0,
+		1 if border_enabled else 0,
+	]
+	if _polygon_cache.has(cache_key):
+		var cached: PackedVector2Array = _polygon_cache[cache_key]
+		return cached
+
+	var result: PackedVector2Array
+
 	if not border_enabled or border_width <= 0.0:
-		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size, pixel_mode), pixel_mode)
+		result = _build_polygon(effective_size, get_clamped_corner_radius(effective_size, pixel_mode), pixel_mode)
+	else:
+		var inset: float = border_width
+		var inner_size: Vector2 = effective_size - Vector2(inset, inset) * 2.0
+		if inner_size.x <= 0.5 or inner_size.y <= 0.5:
+			result = PackedVector2Array()
+		else:
+			var cr: float = get_clamped_corner_radius(effective_size, pixel_mode)
+			var inner_radius: float = maxf(0.0, cr - inset)
+			result = _build_polygon(inner_size, inner_radius, pixel_mode)
 
-	var inset: float = border_width
-	var inner_size: Vector2 = effective_size - Vector2(inset, inset) * 2.0
-	if inner_size.x <= 0.5 or inner_size.y <= 0.5:
-		return PackedVector2Array()
-
-	var cr: float = get_clamped_corner_radius(effective_size, pixel_mode)
-	var inner_radius: float = maxf(0.0, cr - inset)
-
-	return _build_polygon(inner_size, inner_radius, pixel_mode)
+	_polygon_cache[cache_key] = result
+	return result
 
 func get_border_centerline_vertices(effective_size: Vector2, pixel_mode: bool = false) -> PackedVector2Array:
+	var cache_key: String = "bcv_%d_%d_%d_%d_%d_%d" % [
+		int(round(effective_size.x)),
+		int(round(effective_size.y)),
+		int(shape_type),
+		int(round(corner_radius * 100.0)),
+		int(round(border_width * 100.0)),
+		1 if pixel_mode else 0,
+	]
+	if _polygon_cache.has(cache_key):
+		return _polygon_cache[cache_key]
+
+	var result: PackedVector2Array
+
 	if border_width <= 0.0:
-		return _build_polygon(effective_size, get_clamped_corner_radius(effective_size, pixel_mode), pixel_mode)
+		result = _build_polygon(effective_size, get_clamped_corner_radius(effective_size, pixel_mode), pixel_mode)
+	else:
+		var inset: float = border_width * 0.5
+		var center_size: Vector2 = effective_size - Vector2(inset, inset) * 2.0
+		if center_size.x <= 0.5 or center_size.y <= 0.5:
+			result = PackedVector2Array()
+		else:
+			var cr: float = get_clamped_corner_radius(effective_size, pixel_mode)
+			var center_radius: float = maxf(0.0, cr - inset)
+			result = _build_polygon(center_size, center_radius, pixel_mode)
 
-	var inset: float = border_width * 0.5
-	var center_size: Vector2 = effective_size - Vector2(inset, inset) * 2.0
-	if center_size.x <= 0.5 or center_size.y <= 0.5:
-		return PackedVector2Array()
-
-	var cr: float = get_clamped_corner_radius(effective_size, pixel_mode)
-	var center_radius: float = maxf(0.0, cr - inset)
-
-	return _build_polygon(center_size, center_radius, pixel_mode)
+	_polygon_cache[cache_key] = result
+	return result
 
 func get_border_vertices(effective_size: Vector2, pixel_mode: bool = false) -> PackedVector2Array:
 	return get_polygon_vertices(effective_size, pixel_mode)
@@ -238,15 +301,37 @@ func get_border_vertices(effective_size: Vector2, pixel_mode: bool = false) -> P
 # ============================================================
 
 func get_border_segments(effective_size: Vector2, pixel_mode: bool = false) -> Array:
+	var cache_key: String = "bs_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d" % [
+		int(round(effective_size.x)),
+		int(round(effective_size.y)),
+		int(shape_type),
+		int(round(corner_radius * 100.0)),
+		int(round(border_width * 100.0)),
+		1 if border_corner_gap else 0,
+		1 if border_top_enabled else 0,
+		1 if border_right_enabled else 0,
+		1 if border_bottom_enabled else 0,
+		1 if border_left_enabled else 0,
+		1 if pixel_mode else 0,
+		1 if border_enabled else 0,
+	]
+	if _border_segments_cache.has(cache_key):
+		return _border_segments_cache[cache_key]
+
 	var center_verts: PackedVector2Array = get_border_centerline_vertices(effective_size, pixel_mode)
 	if center_verts.size() < 2:
+		_border_segments_cache[cache_key] = []
 		return []
 
 	if shape_type == ShapeType.CIRCLE:
-		return [_make_closed_ring(center_verts)]
+		var ring: Array = [_make_closed_ring(center_verts)]
+		_border_segments_cache[cache_key] = ring
+		return ring
 
 	if not border_corner_gap and enabled_edge_count() >= 4:
-		return [_make_closed_ring(center_verts)]
+		var ring2: Array = [_make_closed_ring(center_verts)]
+		_border_segments_cache[cache_key] = ring2
+		return ring2
 
 	var half: Vector2 = effective_size * 0.5
 	var tol: float = maxf(border_width * 0.5 + 0.5, 1.0) + get_clamped_corner_radius(effective_size, pixel_mode)
@@ -283,6 +368,7 @@ func get_border_segments(effective_size: Vector2, pixel_mode: bool = false) -> A
 			if pts.size() >= 2:
 				result.append(pts)
 
+	_border_segments_cache[cache_key] = result
 	return result
 
 func _make_closed_ring(center_verts: PackedVector2Array) -> PackedVector2Array:
@@ -351,13 +437,29 @@ func is_axis_aligned() -> bool:
 ## Border classification uses distance-to-edge, not an inner polygon.
 ## This guarantees uniform thickness on diagonal edges across all shapes.
 func get_pixel_spans(effective_size: Vector2) -> Dictionary:
+	var cache_key: String = "ps_%d_%d_%d_%d_%d_%d_%d_%d" % [
+		int(round(effective_size.x)),
+		int(round(effective_size.y)),
+		int(shape_type),
+		int(round(corner_radius * 100.0)),
+		int(round(border_width * 100.0)),
+		1 if border_enabled else 0,
+		1 if border_corner_gap else 0,
+		1 if fill_enabled else 0,
+	]
+	if cache_key == _pixel_spans_cache_key:
+		return _pixel_spans_cache
+
 	var fill_spans: Array = []
 	var border_spans: Array = []
 
 	var W: int = int(round(effective_size.x))
 	var H: int = int(round(effective_size.y))
 	if W <= 0 or H <= 0:
-		return {"fill": fill_spans, "border": border_spans}
+		var empty: Dictionary = {"fill": fill_spans, "border": border_spans}
+		_pixel_spans_cache = empty
+		_pixel_spans_cache_key = cache_key
+		return empty
 
 	var bw: int = 0
 	if border_enabled and border_width > 0.0:
@@ -428,7 +530,10 @@ func get_pixel_spans(effective_size: Vector2) -> Dictionary:
 		for r in row_border_runs:
 			border_spans.append(Rect2i(r.x + x_off, y + y_off, r.y - r.x, 1))
 
-	return {"fill": fill_spans, "border": border_spans}
+	var result: Dictionary = {"fill": fill_spans, "border": border_spans}
+	_pixel_spans_cache = result
+	_pixel_spans_cache_key = cache_key
+	return result
 
 ## Distance from (px, py) to the shape's nearest edge.
 ## Circle: r - d. Square: min(hw - |lx|, hh - |ly|). Polygon: min segment distance.
@@ -448,7 +553,6 @@ func _pixel_edge_distance(px: float, py: float, W: int, H: int, R: int, poly: Pa
 		var dy: float = hh - absf(py - cy2)
 		var r2: int = clampi(R, 0, int(minf(hw, hh)))
 		if r2 > 0:
-			# Near a rounded corner, distance is along the arc.
 			var ax: float = absf(px - cx2)
 			var ay: float = absf(py - cy2)
 			if ax > hw - r2 and ay > hh - r2:
@@ -459,7 +563,6 @@ func _pixel_edge_distance(px: float, py: float, W: int, H: int, R: int, poly: Pa
 				return float(r2) - sqrt(qx * qx + qy * qy)
 		return minf(dx, dy)
 
-	# Polygon: min distance to any edge segment.
 	if poly.size() < 2:
 		return 1e9
 	var best: float = 1e9
@@ -499,7 +602,6 @@ func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 		var angle: float = start_angle + TAU * float(i) / float(sides)
 		base[i] = Vector2(cos(angle) * half_x, sin(angle) * half_y)
 
-	# Normalize vertically to fill [0, H].
 	var y_min: float = INF
 	var y_max: float = -INF
 	for v in base:
@@ -511,7 +613,6 @@ func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 		for i in base.size():
 			base[i].y = (base[i].y - y_min) * scale_y
 
-	# Normalize horizontally to fill [0, W].
 	var x_min: float = INF
 	var x_max: float = -INF
 	for v in base:
@@ -523,7 +624,6 @@ func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 		for i in base.size():
 			base[i].x = (base[i].x - x_min) * scale_x
 
-	# Optional corner rounding.
 	if R > 0:
 		var center_pt: Vector2 = Vector2(float(W) * 0.5, float(H) * 0.5)
 		for i in base.size():
@@ -534,7 +634,6 @@ func _shape_pixel_outline(W: int, H: int, R: int) -> PackedVector2Array:
 
 	return base
 
-## True if pixel center (px, py) in local coords [0..W, 0..H] lies inside.
 func _pixel_inside(px: float, py: float, W: int, H: int, R: int, poly: PackedVector2Array) -> bool:
 	if shape_type == ShapeType.CIRCLE:
 		var cx: float = float(W) * 0.5
@@ -564,7 +663,6 @@ func _pixel_inside(px: float, py: float, W: int, H: int, R: int, poly: PackedVec
 		var qy: float = ay - (hh - r2)
 		return qx * qx + qy * qy <= float(r2) * float(r2)
 
-	# Polygon: half-open ray casting.
 	if poly.size() < 3:
 		return false
 	var inside: bool = false
@@ -760,3 +858,13 @@ func duplicate_layer() -> BayterekLayer:
 
 func _to_string() -> String:
 	return "BayterekShapeLayer(name='%s', type=%s)" % [layer_name, ShapeType.keys()[shape_type]]
+
+# ============================================================
+# CACHE MANAGEMENT
+# ============================================================
+
+func clear_render_cache() -> void:
+	_pixel_spans_cache.clear()
+	_pixel_spans_cache_key = ""
+	_polygon_cache.clear()
+	_border_segments_cache.clear()

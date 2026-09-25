@@ -68,7 +68,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 
 	_create_containers()
 	_create_background()
-	_create_grid()
 	_create_camera()
 	_create_services()
 	_create_selection_box()
@@ -667,7 +666,12 @@ func _create_background() -> void:
 	texture_rect.visible = _tree_data.bg_texture != null
 	background_container.add_child(texture_rect)
 
-func _create_grid() -> void:
+	# --- Grid ---
+	# Grid, background_container'ın İÇİNE eklenir. Böylece:
+	#   1. Grid, arka plan renginin ÜSTÜNDE çizilir (ColorRect'ten sonra).
+	#   2. Grid, node'ların ALTINDA kalır (background_container, node
+	#      container'larından önce eklenir).
+	# Bu, hem görünürlüğü hem doğru z-order'ı sağlar.
 	grid = BayterekProceduralGrid.new()
 	grid.name = "Grid"
 	grid.target = main_container
@@ -675,7 +679,7 @@ func _create_grid() -> void:
 	grid.primary_line_step = Bayterek.GRID_PRIMARY_STEP
 	grid.line_color = Bayterek.GRID_LINE_COLOR
 	grid.line_width = Bayterek.GRID_LINE_WIDTH
-	add_child(grid)
+	background_container.add_child(grid)
 	grid.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	if not Engine.is_editor_hint():

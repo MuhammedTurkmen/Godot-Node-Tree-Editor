@@ -450,12 +450,25 @@ func _draw_texture_layer(
 	pixel_mode: bool
 ) -> void:
 
-	print("[DRAW-TEX] name=%s override=%d effective=%d saved_filter=%d" % [
-		layer.layer_name,
-		layer.texture_filter_override,
-		layer.get_effective_texture_filter(),
-		texture_filter
-	])
+	# --- DEBUG PRINT ---
+	var dbg_tex: Texture2D = layer.get_icon_for_state(state_key)
+	var dbg_tint: Color = layer.get_tint_for_state(state_key)
+	var dbg_img_alpha: String = "n/a"
+	var dbg_img_size: String = "n/a"
+	var dbg_tex_class: String = "null"
+	if dbg_tex:
+		dbg_tex_class = dbg_tex.get_class()
+		dbg_img_size = str(dbg_tex.get_size())
+		if dbg_tex.has_method("get_image"):
+			var dbg_img: Image = dbg_tex.get_image()
+			if dbg_img:
+				var p00: Color = dbg_img.get_pixel(0, 0)
+				var cx: int = int(dbg_img.get_width() / 2)
+				var cy: int = int(dbg_img.get_height() / 2)
+				var pc: Color = dbg_img.get_pixel(cx, cy)
+				dbg_img_alpha = "p00=%s pc=%s" % [str(p00), str(pc)]
+
+	# --- END DEBUG PRINT ---
 
 	if not layer.should_draw_icon(state_key):
 		return
@@ -470,9 +483,6 @@ func _draw_texture_layer(
 	var half: Vector2 = effective_size * 0.5
 
 	# --- Per-layer texture filter override ---
-	# CanvasItem.texture_filter is per-node, not per-draw. To render a
-	# single layer with a different filter we temporarily swap it,
-	# draw, and restore.
 	var saved_filter: int = texture_filter
 	if layer.texture_filter_override != BayterekLayer.TextureFilterOverride.INHERIT:
 		var eff: int = layer.get_effective_texture_filter()
