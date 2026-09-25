@@ -115,6 +115,15 @@ func resolve_exported_value(field_path: String, prefab: BayterekPrefab, design: 
 		return design.get_field_value(field_path)
 	return null
 
+## Same as `resolve_exported_value` — alias for readability at call sites
+## that don't have the prefab/design refs handy.
+func resolve_field_value(field_path: String, prefab_ref: BayterekPrefab, design: BayterekNodeDesign) -> Variant:
+	return resolve_exported_value(field_path, prefab_ref, design)
+
+## True if this field has a node-level override.
+func has_field_override(field_path: String) -> bool:
+	return exported_overrides.has(field_path)
+
 # ============================================================
 # EXPORTED OVERRIDES APPLICATION
 # ============================================================

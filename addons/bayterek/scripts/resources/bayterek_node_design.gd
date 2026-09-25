@@ -22,6 +22,49 @@ enum TextureFilter {
 	NEAREST,
 }
 
+## Whitelist of layer fields that can be exported to prefabs.
+## Anything not in this list is treated as non-exportable.
+const EXPORTABLE_LAYER_FIELDS: Array[String] = [
+	"visible",
+	"layer_name",
+	"render_mode_override",
+	"texture_filter_override",
+	"transform.position",
+	"transform.size",
+	"transform.scale",
+	"transform.rotation",
+	"transform.flip_x",
+	"transform.flip_y",
+	"transform.skew",
+	"transform.pivot",
+	"transform.pivot_mode",
+	"transform.scale_from_pivot",
+	# Shape
+	"shape_type",
+	"corner_radius",
+	"fill_enabled",
+	"border_enabled",
+	"border_width",
+	"border_corner_gap",
+	"border_top_enabled",
+	"border_right_enabled",
+	"border_bottom_enabled",
+	"border_left_enabled",
+	"shadow_enabled",
+	"shadow_color",
+	"shadow_size",
+	"shadow_blur",
+	# Texture
+	"icon_enabled",
+	"tint_enabled",
+	"stretch_mode",
+	"nine_patch_margin_left",
+	"nine_patch_margin_top",
+	"nine_patch_margin_right",
+	"nine_patch_margin_bottom",
+	"nine_patch_draw_center",
+]
+
 @export_storage var id: String = ""
 @export_storage var name: String = "New Design"
 @export_storage var description: String = ""
@@ -181,8 +224,22 @@ func is_field_exportable(field_path: String) -> bool:
 		var layer: BayterekLayer = get_layer_by_id(layer_id)
 		if not layer:
 			return false
+
 		var segments: Array = parsed.get("segments", [])
-		return _is_property_reachable(layer, segments)
+		if segments.is_empty():
+			return false
+
+		# Build the sub-path (everything after the layer id).
+		var sub_path: String = ".".join(segments)
+		if sub_path in EXPORTABLE_LAYER_FIELDS:
+			return true
+
+		# Allow dictionary children like "fill_configs.normal.enabled".
+		for allowed in EXPORTABLE_LAYER_FIELDS:
+			if sub_path.begins_with(allowed + "."):
+				return true
+
+		return false
 
 	return false
 

@@ -217,6 +217,9 @@ func set_design(design: BayterekNodeDesign) -> void:
 	_update_zoom_label()
 
 func refresh() -> void:
+	if not _preview:
+		return
+	_preview._apply_texture_filter()
 	_preview.queue_redraw()
 
 # ============================================================

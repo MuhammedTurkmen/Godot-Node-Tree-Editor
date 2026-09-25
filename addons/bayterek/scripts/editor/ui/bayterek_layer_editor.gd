@@ -24,6 +24,12 @@ var _context_menu: PopupMenu
 var _selected_layer_index: int = -1
 var _updating_ui: bool = false
 
+# Button IDs on each layer row
+const BTN_VISIBILITY := 0
+const BTN_MOVE_UP := 1
+const BTN_MOVE_DOWN := 2
+const BTN_DELETE := 3
+
 const CM_RENAME := 1
 const CM_DUPLICATE := 2
 const CM_DELETE := 3
@@ -64,14 +70,14 @@ func _build_ui() -> void:
 
 	_up_btn = Button.new()
 	_up_btn.text = "▲"
-	_up_btn.tooltip_text = "Move layer up"
+	_up_btn.tooltip_text = "Move selected layer up"
 	_up_btn.custom_minimum_size = Vector2(28, 0)
 	_up_btn.pressed.connect(_on_up_pressed)
 	toolbar.add_child(_up_btn)
 
 	_down_btn = Button.new()
 	_down_btn.text = "▼"
-	_down_btn.tooltip_text = "Move layer down"
+	_down_btn.tooltip_text = "Move selected layer down"
 	_down_btn.custom_minimum_size = Vector2(28, 0)
 	_down_btn.pressed.connect(_on_down_pressed)
 	toolbar.add_child(_down_btn)
@@ -163,18 +169,53 @@ func _rebuild_layer_list() -> void:
 		item.set_metadata(0, i)
 		item.set_selectable(0, true)
 
+		# Layer type icon.
 		var icon_name: String = "CircleShape2D" if layer is BayterekShapeLayer else "ImageTexture"
 		if theme and theme.has_icon(icon_name, Bayterek.ICON_THEME):
 			item.set_icon(0, theme.get_icon(icon_name, Bayterek.ICON_THEME))
 
+		# --- Per-row buttons: visibility / up / down / delete ---
+
+		# 1) Visibility (eye)
 		var vis_icon: String = "GuiVisibilityVisible" if layer.visible else "GuiVisibilityHidden"
 		if theme and theme.has_icon(vis_icon, Bayterek.ICON_THEME):
-			item.add_button(0, theme.get_icon(vis_icon, Bayterek.ICON_THEME), 0)
+			item.add_button(0, theme.get_icon(vis_icon, Bayterek.ICON_THEME), BTN_VISIBILITY)
+			item.set_button_tooltip_text(0, item.get_button_count(0) - 1, "Toggle visibility")
+
+		# 2) Move up
+		var up_icon_name: String = "ArrowUp" if theme and theme.has_icon("ArrowUp", Bayterek.ICON_THEME) else ""
+		if up_icon_name.is_empty():
+			item.add_button(0, _make_text_icon("▲"), BTN_MOVE_UP)
+		else:
+			item.add_button(0, theme.get_icon(up_icon_name, Bayterek.ICON_THEME), BTN_MOVE_UP)
+		item.set_button_tooltip_text(0, item.get_button_count(0) - 1, "Move up")
+		item.set_button_disabled(0, item.get_button_count(0) - 1, i == 0)
+
+		# 3) Move down
+		var down_icon_name: String = "ArrowDown" if theme and theme.has_icon("ArrowDown", Bayterek.ICON_THEME) else ""
+		if down_icon_name.is_empty():
+			item.add_button(0, _make_text_icon("▼"), BTN_MOVE_DOWN)
+		else:
+			item.add_button(0, theme.get_icon(down_icon_name, Bayterek.ICON_THEME), BTN_MOVE_DOWN)
+		item.set_button_tooltip_text(0, item.get_button_count(0) - 1, "Move down")
+		item.set_button_disabled(0, item.get_button_count(0) - 1, i == design.layers.size() - 1)
+
+		# 4) Delete
+		if theme and theme.has_icon("Close", Bayterek.ICON_THEME):
+			item.add_button(0, theme.get_icon("Close", Bayterek.ICON_THEME), BTN_DELETE)
+			item.set_button_tooltip_text(0, item.get_button_count(0) - 1, "Delete layer")
 
 		if i == _selected_layer_index:
 			item.select(0)
 
 	_update_buttons_state()
+
+## Creates a simple 16×16 transparent texture used as a fallback icon.
+func _make_text_icon(_text: String) -> Texture2D:
+	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var tex := ImageTexture.create_from_image(img)
+	return tex
 
 func _on_layer_selected() -> void:
 	var item: TreeItem = _layer_tree.get_selected()
@@ -195,10 +236,26 @@ func _on_layer_selected() -> void:
 func _on_layer_button_clicked(item: TreeItem, _column: int, id: int, mouse_button_index: int) -> void:
 	if mouse_button_index != MOUSE_BUTTON_LEFT:
 		return
-	if id != 0:
-		return
+
 	var idx = item.get_metadata(0)
 	if typeof(idx) != TYPE_INT:
+		return
+
+	if idx != _selected_layer_index:
+		item.select(0)
+
+	match id:
+		BTN_VISIBILITY:
+			_toggle_layer_visibility(idx)
+		BTN_MOVE_UP:
+			_move_layer_by_index(idx, -1)
+		BTN_MOVE_DOWN:
+			_move_layer_by_index(idx, +1)
+		BTN_DELETE:
+			_delete_layer_by_index(idx)
+
+func _toggle_layer_visibility(idx: int) -> void:
+	if not design:
 		return
 	var layer: BayterekLayer = design.get_layer(idx)
 	if not layer:
@@ -206,6 +263,42 @@ func _on_layer_button_clicked(item: TreeItem, _column: int, id: int, mouse_butto
 	layer.visible = not layer.visible
 	design.notify_layer_modified()
 	_rebuild_layer_list()
+	changed.emit()
+
+func _move_layer_by_index(idx: int, direction: int) -> void:
+	if not design:
+		return
+	if direction < 0 and idx <= 0:
+		return
+	if direction > 0 and idx >= design.get_layer_count() - 1:
+		return
+
+	var target: int = idx + direction
+	if not design.move_layer(idx, target):
+		return
+
+	_selected_layer_index = target
+	design.notify_layer_modified()
+	_rebuild_layer_list()
+	_rebuild_detail_form()
+	changed.emit()
+
+func _delete_layer_by_index(idx: int) -> void:
+	if not design:
+		return
+	if idx < 0 or idx >= design.get_layer_count():
+		return
+
+	design.remove_layer(idx)
+
+	var new_idx: int = -1
+	var count: int = design.get_layer_count()
+	if count > 0:
+		new_idx = max(0, idx - 1)
+
+	_selected_layer_index = new_idx
+	_rebuild_layer_list()
+	_rebuild_detail_form()
 	changed.emit()
 
 func _on_layer_gui_input(event: InputEvent) -> void:
@@ -321,7 +414,7 @@ func _duplicate_selected_layer() -> void:
 	changed.emit()
 
 # ============================================================
-# ADD / DELETE / MOVE
+# ADD / DELETE / MOVE (toolbar handlers)
 # ============================================================
 
 func _on_add_shape_pressed() -> void:
@@ -357,27 +450,12 @@ func _on_add_texture_pressed() -> void:
 func _on_delete_pressed() -> void:
 	if not design or _selected_layer_index < 0:
 		return
-
-	var removed_idx: int = _selected_layer_index
-	design.remove_layer(removed_idx)
-
-	var new_idx: int = -1
-	var count: int = design.get_layer_count()
-	if count > 0:
-		new_idx = max(0, removed_idx - 1)
-
-	_selected_layer_index = new_idx
-	_rebuild_layer_list()
-	_rebuild_detail_form()
-	changed.emit()
+	_delete_layer_by_index(_selected_layer_index)
 
 func _on_up_pressed() -> void:
 	if not design or _selected_layer_index <= 0:
 		return
-	if design.move_layer(_selected_layer_index, _selected_layer_index - 1):
-		_selected_layer_index -= 1
-		_rebuild_layer_list()
-		changed.emit()
+	_move_layer_by_index(_selected_layer_index, -1)
 
 func _on_down_pressed() -> void:
 	if not design:
@@ -385,10 +463,7 @@ func _on_down_pressed() -> void:
 	var max_idx: int = design.get_layer_count() - 1
 	if _selected_layer_index < 0 or _selected_layer_index >= max_idx:
 		return
-	if design.move_layer(_selected_layer_index, _selected_layer_index + 1):
-		_selected_layer_index += 1
-		_rebuild_layer_list()
-		changed.emit()
+	_move_layer_by_index(_selected_layer_index, +1)
 
 func _update_buttons_state() -> void:
 	var has_selection: bool = _selected_layer_index >= 0 and design != null
@@ -407,7 +482,12 @@ func _update_buttons_state() -> void:
 # ============================================================
 
 func _rebuild_detail_form() -> void:
+	# Use remove_child + queue_free (deferred). Combined with the
+	# export-helper guard, this avoids "gui_input already connected"
+	# errors AND avoids freeing a widget while it's still emitting
+	# its own signal.
 	for child in _detail_root.get_children():
+		_detail_root.remove_child(child)
 		child.queue_free()
 
 	if not design:
@@ -441,6 +521,28 @@ func _rebuild_detail_form() -> void:
 		changed.emit()
 	)
 	name_row.add_child(name_input)
+
+	# --- Visibility checkbox in detail panel ---
+	var vis_row := HBoxContainer.new()
+	_detail_root.add_child(vis_row)
+
+	var vis_label := Label.new()
+	vis_label.text = "Visible"
+	vis_label.custom_minimum_size = Vector2(80, 0)
+	vis_label.tooltip_text = "Toggle this layer's visibility. Same as the eye button on the layer list."
+	vis_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	vis_row.add_child(vis_label)
+
+	var vis_check := CheckBox.new()
+	vis_check.text = "On"
+	vis_check.button_pressed = layer.visible
+	vis_check.toggled.connect(func(p: bool):
+		layer.visible = p
+		design.notify_layer_modified()
+		_rebuild_layer_list()
+		changed.emit()
+	)
+	vis_row.add_child(vis_check)
 
 	# --- Render Mode override ---
 	var rmode_row := HBoxContainer.new()
@@ -560,7 +662,7 @@ func _build_shape_detail(layer: BayterekShapeLayer) -> void:
 	type_dropdown.item_selected.connect(func(i: int):
 		layer.shape_type = i as BayterekShapeLayer.ShapeType
 		design.notify_layer_modified()
-		call_deferred("_rebuild_detail_form")
+		_rebuild_detail_form_deferred()
 		changed.emit()
 	)
 	type_row.add_child(type_dropdown)
@@ -974,7 +1076,7 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 			return
 		layer.stretch_mode = mode_int as BayterekTextureLayer.StretchMode
 		design.notify_layer_modified()
-		call_deferred("_rebuild_detail_form")
+		_rebuild_detail_form_deferred()
 		changed.emit()
 	)
 	sm_row.add_child(sm_dropdown)
@@ -1096,6 +1198,15 @@ func _add_nine_patch_spin(parent: HBoxContainer, layer: BayterekTextureLayer, la
 
 	var field_path: String = "layers.%s.%s" % [layer.layer_id, prop_name]
 	BayterekExportHelper.make_exportable(parent, field_path, design, _on_export_changed)
+
+# ============================================================
+# DEFERRED REBUILD
+# ============================================================
+
+## Rebuilds the detail form on the next idle frame. Use this from signal
+## handlers that would otherwise free the emitting widget mid-signal.
+func _rebuild_detail_form_deferred() -> void:
+	call_deferred("_rebuild_detail_form")
 
 # ============================================================
 # EXPORT CALLBACK

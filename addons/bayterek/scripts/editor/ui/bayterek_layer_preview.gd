@@ -103,10 +103,28 @@ func _apply_texture_filter() -> void:
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		return
 
+	# Priority:
+	#   1. Pixel render mode → always NEAREST
+	#   2. First texture layer with a non-INHERIT filter override
+	#   3. Design-level texture_filter
+	#   4. Fallback: LINEAR
 	if _is_pixel_design():
 		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		return
 
+	# Look for the first texture layer with an explicit override.
+	for layer in design.layers:
+		if not layer or not (layer is BayterekTextureLayer):
+			continue
+		var override: int = int(layer.texture_filter_override)
+		if override == BayterekLayer.TextureFilterOverride.LINEAR:
+			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+			return
+		elif override == BayterekLayer.TextureFilterOverride.NEAREST:
+			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			return
+
+	# Design-level fallback.
 	match int(design.texture_filter):
 		1:
 			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -535,6 +553,8 @@ func _draw_texture(layer: BayterekTextureLayer, state_key: String, effective_siz
 	_draw_texture_in_box(tex, Rect2(-effective_size * 0.5, effective_size), tint, layer)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
+## Draws a texture into a target rect, honoring stretch_mode and
+## nine-patch margins.
 func _draw_texture_in_box(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
 	if not tex:
 		return
@@ -627,6 +647,8 @@ func _draw_keep_aspect(tex: Texture2D, target: Rect2, tint: Color) -> void:
 # NINE PATCH GUIDES
 # ============================================================
 
+## Draws the nine-patch margins as dashed guide lines on top of the
+## preview so the user can see what region is being stretched.
 func _draw_nine_patch_guides(layer: BayterekTextureLayer, base_xform: Transform2D) -> void:
 	var tex: Texture2D = layer.get_icon_for_state("normal")
 	if not tex:

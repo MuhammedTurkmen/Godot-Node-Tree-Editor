@@ -1,15 +1,15 @@
-[gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://cs1hc4ww5gsk6"]
+[gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://cc7onwl1wc0na"]
 
 [ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="1_a6nu6"]
 [ext_resource type="Script" uid="uid://bnggwadduoie5" path="res://addons/bayterek/scripts/resources/layers/bayterek_shape_layer.gd" id="2_3ujw7"]
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="3_paddw"]
 [ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="4_u1mso"]
 
-[sub_resource type="Resource" id="Resource_joamw"]
+[sub_resource type="Resource" id="Resource_a6nu6"]
 script = ExtResource("3_paddw")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_5qdsx"]
+[sub_resource type="Resource" id="Resource_3ujw7"]
 script = ExtResource("2_3ujw7")
 shape_type = 1
 corner_radius = 15.0
@@ -90,12 +90,11 @@ border_configs = {
 "enabled": false
 }
 }
-layer_id = "f77f99e6-ef87-4d02-b1f1-28419f1c3a04"
+layer_id = "06cafc13-4818-40fd-9adc-508a99faf05c"
 layer_name = "Background"
-transform = SubResource("Resource_joamw")
+transform = SubResource("Resource_a6nu6")
 
 [resource]
 script = ExtResource("4_u1mso")
 id = "new_design"
-texture_filter = 1
-layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_5qdsx")])
+layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_3ujw7")])

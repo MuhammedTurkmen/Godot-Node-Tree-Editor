@@ -448,7 +448,6 @@ func _draw_texture_layer(
 
 	var half: Vector2 = effective_size * 0.5
 
-	# Pixel-aligned fast path (axis-aligned pixel mode only).
 	if pixel_mode and layer.is_axis_aligned():
 		var tl_world: Vector2 = combined * (-half)
 		var br_world: Vector2 = combined * half
@@ -462,8 +461,6 @@ func _draw_texture_layer(
 	_draw_texture_in_box(tex, Rect2(-half, effective_size), tint, layer)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
-## Draws a texture into a target rect, honoring stretch_mode and
-## nine-patch margins. Vector mode only.
 func _draw_texture_in_box(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
 	if not tex:
 		return

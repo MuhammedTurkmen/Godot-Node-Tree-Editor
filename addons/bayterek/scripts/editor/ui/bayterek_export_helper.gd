@@ -16,6 +16,15 @@ static func make_exportable(
 	if not row or field_path.is_empty():
 		return
 
+	# Guard: if this row was already set up, do nothing. Prevents
+	# "Signal 'gui_input' is already connected" errors when the detail
+	# form is rebuilt multiple times.
+	if row.has_meta("__export_field_path"):
+		# Still refresh the design reference and marker state.
+		row.set_meta("__export_design", design)
+		_refresh_marker(row)
+		return
+
 	# Marker Label at the end
 	var marker := Label.new()
 	marker.name = "__export_marker"
