@@ -107,6 +107,9 @@ func _notification(what: int) -> void:
 func _compute_content_bounds() -> Rect2:
 	if not design:
 		return Rect2()
+	# Use bounds rect if a bounds layer is set.
+	if not design.bounds_layer_id.is_empty():
+		return design.get_bounds_rect()
 	return design.get_computed_bounds()
 
 func _recompute_scale() -> void:

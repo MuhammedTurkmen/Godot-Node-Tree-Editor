@@ -35,6 +35,7 @@ const CM_DUPLICATE := 2
 const CM_DELETE := 3
 const CM_MOVE_UP := 4
 const CM_MOVE_DOWN := 5
+const CM_SET_BOUNDS := 6
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
@@ -120,6 +121,8 @@ func _build_context_menu() -> void:
 	_context_menu.add_item("Move Up", CM_MOVE_UP)
 	_context_menu.add_item("Move Down", CM_MOVE_DOWN)
 	_context_menu.add_separator()
+	_context_menu.add_item("Set as Bounds", CM_SET_BOUNDS)
+	_context_menu.add_separator()
 	_context_menu.add_item("Delete", CM_DELETE)
 	_context_menu.id_pressed.connect(_on_context_menu_pressed)
 	add_child(_context_menu)
@@ -165,7 +168,10 @@ func _rebuild_layer_list() -> void:
 			continue
 
 		var item := _layer_root.create_child()
-		item.set_text(0, layer.layer_name)
+		var display_name: String = layer.layer_name
+		if design.bounds_layer_id == layer.layer_id:
+			display_name = "◆ " + display_name
+		item.set_text(0, display_name)
 		item.set_metadata(0, i)
 		item.set_selectable(0, true)
 
@@ -285,6 +291,7 @@ func _delete_layer_by_index(idx: int) -> void:
 	if idx < 0 or idx >= design.get_layer_count():
 		return
 
+	# Bounds reference is cleared inside design.remove_layer().
 	design.remove_layer(idx)
 
 	var new_idx: int = -1
@@ -321,12 +328,18 @@ func _show_layer_context_menu(pos: Vector2) -> void:
 	var del_i: int = _context_menu.get_item_index(CM_DELETE)
 	var up_i: int = _context_menu.get_item_index(CM_MOVE_UP)
 	var down_i: int = _context_menu.get_item_index(CM_MOVE_DOWN)
+	var bounds_i: int = _context_menu.get_item_index(CM_SET_BOUNDS)
 
 	_context_menu.set_item_disabled(rename_i, false)
 	_context_menu.set_item_disabled(dup_i, false)
 	_context_menu.set_item_disabled(del_i, false)
 	_context_menu.set_item_disabled(up_i, idx <= 0)
 	_context_menu.set_item_disabled(down_i, idx >= count - 1)
+	_context_menu.set_item_disabled(bounds_i, false)
+
+	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+	var is_bounds: bool = (layer and design.bounds_layer_id == layer.layer_id)
+	_context_menu.set_item_checked(bounds_i, is_bounds)
 
 	_context_menu.position = Vector2i(_layer_tree.get_screen_position() + pos)
 	_context_menu.popup()
@@ -338,6 +351,24 @@ func _on_context_menu_pressed(id: int) -> void:
 		CM_DELETE: _on_delete_pressed()
 		CM_MOVE_UP: _on_up_pressed()
 		CM_MOVE_DOWN: _on_down_pressed()
+		CM_SET_BOUNDS: _toggle_bounds_for_selected()
+
+func _toggle_bounds_for_selected() -> void:
+	if not design or _selected_layer_index < 0:
+		return
+	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not layer:
+		return
+
+	if design.bounds_layer_id == layer.layer_id:
+		design.bounds_layer_id = ""
+	else:
+		design.bounds_layer_id = layer.layer_id
+
+	design.notify_layer_modified()
+	_rebuild_layer_list()
+	_rebuild_detail_form()
+	changed.emit()
 
 func _rename_layer_dialog() -> void:
 	if not design or _selected_layer_index < 0:
@@ -513,6 +544,14 @@ func _rebuild_detail_form() -> void:
 		changed.emit()
 	)
 	name_row.add_child(name_input)
+
+	# --- Bounds indicator ---
+	if design.bounds_layer_id == layer.layer_id:
+		var bounds_hint := Label.new()
+		bounds_hint.text = "◆ This layer defines the design's bounds (node hitbox size)"
+		bounds_hint.add_theme_color_override("font_color", Color(0.4, 0.9, 1.0))
+		bounds_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_detail_root.add_child(bounds_hint)
 
 	# --- Visibility checkbox in detail panel ---
 	var vis_row := HBoxContainer.new()

@@ -10,7 +10,6 @@
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="6_6p5mu"]
 [ext_resource type="Texture2D" uid="uid://bkkoqrayg42dr" path="res://assets/BorderInner3px.png" id="7_6p5mu"]
 [ext_resource type="Texture2D" uid="uid://c4dwqfi5il0dh" path="res://assets/Border1px.png" id="8_5lgyx"]
-[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="8_j5a67"]
 
 [sub_resource type="Resource" id="Resource_safsq"]
 script = ExtResource("2_3oq2p")
@@ -18,11 +17,11 @@ id = "3aabee69-9105-4ecb-b868-059e776ce4b9"
 name = "Test"
 node_ids = Array[int]([10, 12, 11, 13])
 
-[sub_resource type="Resource" id="Resource_royti"]
+[sub_resource type="Resource" id="Resource_x1plc"]
 script = ExtResource("6_6p5mu")
 size = Vector2(32, 32)
 
-[sub_resource type="Resource" id="Resource_qlprm"]
+[sub_resource type="Resource" id="Resource_royti"]
 script = ExtResource("5_qlprm")
 icon_configs = {
 "normal": {
@@ -75,10 +74,70 @@ nine_patch_margin_right = 5
 nine_patch_margin_bottom = 5
 layer_id = "1debcfb8-b60f-4de4-aca5-d97499da13f0"
 layer_name = "InnerBorder"
-transform = SubResource("Resource_royti")
+transform = SubResource("Resource_x1plc")
 texture_filter_override = 2
 
+[sub_resource type="Resource" id="Resource_qlprm"]
+script = ExtResource("6_6p5mu")
+size = Vector2(32, 32)
+
 [sub_resource type="Resource" id="Resource_6p5mu"]
+script = ExtResource("5_qlprm")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("4_qlprm")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+nine_patch_margin_left = 15
+nine_patch_margin_top = 15
+nine_patch_margin_right = 15
+nine_patch_margin_bottom = 15
+layer_id = "f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f"
+layer_name = "Icon"
+transform = SubResource("Resource_qlprm")
+render_mode_override = 1
+texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_5lgyx"]
 script = ExtResource("6_6p5mu")
 size = Vector2(32, 32)
 
@@ -87,9 +146,10 @@ script = ExtResource("5_qlprm")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("4_qlprm")
+"texture": ExtResource("8_5lgyx")
 }
 }
+tint_enabled = true
 tint_configs = {
 "allocateable": {
 "color": Color(0.5568628, 0.9607843, 0.5568628, 1),
@@ -97,23 +157,23 @@ tint_configs = {
 },
 "clicked": {
 "color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
+"enabled": true
 },
 "hover": {
 "color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "locked": {
 "color": Color(0.4, 0.4, 0.4, 1),
 "enabled": false
 },
 "max_level": {
-"color": Color(1, 0.8784314, 0.4, 1),
+"color": Color(0.9930115, 0.10546875, 1, 1),
 "enabled": false
 },
 "normal": {
-"color": Color(0.49803922, 0.72156864, 1, 1),
-"enabled": false
+"color": Color(0, 0, 0, 1),
+"enabled": true
 },
 "not_allocateable": {
 "color": Color(1, 0.4, 0.4, 1),
@@ -128,485 +188,29 @@ tint_configs = {
 "enabled": false
 }
 }
-nine_patch_margin_left = 15
-nine_patch_margin_top = 15
-nine_patch_margin_right = 15
-nine_patch_margin_bottom = 15
-layer_id = "f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f"
-layer_name = "Icon"
-transform = SubResource("Resource_6p5mu")
-render_mode_override = 1
+nine_patch_margin_left = 3
+nine_patch_margin_top = 3
+nine_patch_margin_right = 3
+nine_patch_margin_bottom = 3
+layer_id = "c2620033-590a-42d1-a3cb-737a4740b482"
+layer_name = "OuterBorder"
+transform = SubResource("Resource_5lgyx")
 texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_wfhhu"]
-script = ExtResource("6_6p5mu")
-size = Vector2(32, 32)
-
-[sub_resource type="Resource" id="Resource_nrko7"]
-script = ExtResource("5_qlprm")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("8_5lgyx")
-}
-}
-tint_enabled = true
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": true
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": true
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(0.9930115, 0.10546875, 1, 1),
-"enabled": false
-},
-"normal": {
-"color": Color(0, 0, 0, 1),
-"enabled": true
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-nine_patch_margin_left = 3
-nine_patch_margin_top = 3
-nine_patch_margin_right = 3
-nine_patch_margin_bottom = 3
-layer_id = "c2620033-590a-42d1-a3cb-737a4740b482"
-layer_name = "OuterBorder"
-transform = SubResource("Resource_wfhhu")
-texture_filter_override = 2
-
-[sub_resource type="Resource" id="Resource_5lgyx"]
-script = ExtResource("8_j5a67")
-
-[sub_resource type="Resource" id="Resource_x2q8f"]
 script = ExtResource("1_immpc")
 is_root = true
-id = 10
+id = 14
 name = "TestButton"
 design_id = "new_design"
-position = Vector2(-128, -64)
-line_data = {
-12: SubResource("Resource_5lgyx")
-}
-out_nodes = Array[int]([12])
-group_id = "3aabee69-9105-4ecb-b868-059e776ce4b9"
-layers = Array[ExtResource("3_x1plc")]([SubResource("Resource_qlprm"), SubResource("Resource_j5a67"), SubResource("Resource_nrko7")])
-
-[sub_resource type="Resource" id="Resource_53451"]
-script = ExtResource("6_6p5mu")
-size = Vector2(32, 32)
-
-[sub_resource type="Resource" id="Resource_k0kgc"]
-script = ExtResource("5_qlprm")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("7_6p5mu")
-}
-}
-tint_enabled = true
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(1, 0.72448474, 0.13671875, 1),
-"enabled": true
-},
-"normal": {
-"color": Color(0, 0.4453125, 1, 1),
-"enabled": true
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-nine_patch_margin_left = 5
-nine_patch_margin_top = 5
-nine_patch_margin_right = 5
-nine_patch_margin_bottom = 5
-layer_id = "1debcfb8-b60f-4de4-aca5-d97499da13f0"
-layer_name = "InnerBorder"
-transform = SubResource("Resource_53451")
-texture_filter_override = 2
-
-[sub_resource type="Resource" id="Resource_tmiro"]
-script = ExtResource("6_6p5mu")
-size = Vector2(32, 32)
-
-[sub_resource type="Resource" id="Resource_3cysg"]
-script = ExtResource("5_qlprm")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("4_qlprm")
-}
-}
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(1, 0.8784314, 0.4, 1),
-"enabled": false
-},
-"normal": {
-"color": Color(0.49803922, 0.72156864, 1, 1),
-"enabled": false
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-nine_patch_margin_left = 15
-nine_patch_margin_top = 15
-nine_patch_margin_right = 15
-nine_patch_margin_bottom = 15
-layer_id = "f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f"
-layer_name = "Icon"
-transform = SubResource("Resource_tmiro")
-render_mode_override = 1
-texture_filter_override = 2
-
-[sub_resource type="Resource" id="Resource_mklcx"]
-script = ExtResource("6_6p5mu")
-size = Vector2(32, 32)
-
-[sub_resource type="Resource" id="Resource_botrw"]
-script = ExtResource("5_qlprm")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("8_5lgyx")
-}
-}
-tint_enabled = true
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": true
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": true
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(0.9930115, 0.10546875, 1, 1),
-"enabled": false
-},
-"normal": {
-"color": Color(0, 0, 0, 1),
-"enabled": true
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-nine_patch_margin_left = 3
-nine_patch_margin_top = 3
-nine_patch_margin_right = 3
-nine_patch_margin_bottom = 3
-layer_id = "c2620033-590a-42d1-a3cb-737a4740b482"
-layer_name = "OuterBorder"
-transform = SubResource("Resource_mklcx")
-texture_filter_override = 2
-
-[sub_resource type="Resource" id="Resource_l2tvo"]
-script = ExtResource("8_j5a67")
-
-[sub_resource type="Resource" id="Resource_bxwvi"]
-script = ExtResource("1_immpc")
-id = 12
-name = "TestButton"
-design_id = "new_design"
-position = Vector2(-32, -160)
-line_data = {
-13: SubResource("Resource_l2tvo")
-}
-out_nodes = Array[int]([13])
-in_nodes = Array[int]([10])
-group_id = "3aabee69-9105-4ecb-b868-059e776ce4b9"
-layers = Array[ExtResource("3_x1plc")]([SubResource("Resource_k0kgc"), SubResource("Resource_3cysg"), SubResource("Resource_botrw")])
-
-[sub_resource type="Resource" id="Resource_67hed"]
-script = ExtResource("6_6p5mu")
-size = Vector2(32, 32)
-
-[sub_resource type="Resource" id="Resource_vn7yg"]
-script = ExtResource("5_qlprm")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("7_6p5mu")
-}
-}
-tint_enabled = true
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(1, 0.72448474, 0.13671875, 1),
-"enabled": true
-},
-"normal": {
-"color": Color(0, 0.4453125, 1, 1),
-"enabled": true
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-nine_patch_margin_left = 5
-nine_patch_margin_top = 5
-nine_patch_margin_right = 5
-nine_patch_margin_bottom = 5
-layer_id = "1debcfb8-b60f-4de4-aca5-d97499da13f0"
-layer_name = "InnerBorder"
-transform = SubResource("Resource_67hed")
-texture_filter_override = 2
-
-[sub_resource type="Resource" id="Resource_bjop0"]
-script = ExtResource("6_6p5mu")
-size = Vector2(32, 32)
-
-[sub_resource type="Resource" id="Resource_pvlmy"]
-script = ExtResource("5_qlprm")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("4_qlprm")
-}
-}
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(1, 0.8784314, 0.4, 1),
-"enabled": false
-},
-"normal": {
-"color": Color(0.49803922, 0.72156864, 1, 1),
-"enabled": false
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-nine_patch_margin_left = 15
-nine_patch_margin_top = 15
-nine_patch_margin_right = 15
-nine_patch_margin_bottom = 15
-layer_id = "f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f"
-layer_name = "Icon"
-transform = SubResource("Resource_bjop0")
-render_mode_override = 1
-texture_filter_override = 2
-
-[sub_resource type="Resource" id="Resource_p8dnb"]
-script = ExtResource("6_6p5mu")
-size = Vector2(32, 32)
-
-[sub_resource type="Resource" id="Resource_451aj"]
-script = ExtResource("5_qlprm")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("8_5lgyx")
-}
-}
-tint_enabled = true
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": true
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": true
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(0.9930115, 0.10546875, 1, 1),
-"enabled": false
-},
-"normal": {
-"color": Color(0, 0, 0, 1),
-"enabled": true
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-nine_patch_margin_left = 3
-nine_patch_margin_top = 3
-nine_patch_margin_right = 3
-nine_patch_margin_bottom = 3
-layer_id = "c2620033-590a-42d1-a3cb-737a4740b482"
-layer_name = "OuterBorder"
-transform = SubResource("Resource_p8dnb")
-texture_filter_override = 2
-
-[sub_resource type="Resource" id="Resource_ss5fq"]
-script = ExtResource("1_immpc")
-id = 13
-name = "TestButton"
-design_id = "new_design"
-position = Vector2(-32, -304)
-in_nodes = Array[int]([12])
-group_id = "3aabee69-9105-4ecb-b868-059e776ce4b9"
-layers = Array[ExtResource("3_x1plc")]([SubResource("Resource_vn7yg"), SubResource("Resource_pvlmy"), SubResource("Resource_451aj")])
+position = Vector2(-194.28174, -99.11743)
+layers = Array[ExtResource("3_x1plc")]([SubResource("Resource_royti"), SubResource("Resource_6p5mu"), SubResource("Resource_j5a67")])
 
 [resource]
 script = ExtResource("4_ak1rv")
 id = "tree_1"
 name = "Tree 1"
-id_counter = 13
-nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_x2q8f"), SubResource("Resource_bxwvi"), SubResource("Resource_ss5fq")])
+id_counter = 14
+nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_wfhhu")])
 node_groups = Array[ExtResource("2_3oq2p")]([SubResource("Resource_safsq")])
-hierarchy_split_offset = -387
+hierarchy_split_offset = -375

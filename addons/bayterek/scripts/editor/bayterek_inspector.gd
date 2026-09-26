@@ -170,7 +170,7 @@ func _build_ui() -> void:
 	var dss_label := Label.new()
 	dss_label.text = "Design Size"
 	dss_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	dss_label.tooltip_text = "Base size (from design). Read-only."
+	dss_label.tooltip_text = "Effective bounds size. If the design has a bounds layer, shows that layer's size; otherwise shows design_size."
 	dss_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	_design_size_row.add_child(dss_label)
 
@@ -488,7 +488,16 @@ func inspect(node: BayterekNodeButton) -> void:
 func _refresh_design_size_label() -> void:
 	if not _design_size_label or not _current_node:
 		return
-	var ds: Vector2 = _current_node.node_data.design_size
+
+	var node_data: BayterekNode = _current_node.node_data
+	var ds: Vector2 = node_data.design_size
+
+	# If the design has a bounds layer, show that instead.
+	if not node_data.design_id.is_empty():
+		var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(node_data.design_id)
+		if design:
+			ds = design.get_bounds_size()
+
 	_design_size_label.text = "%d × %d" % [int(ds.x), int(ds.y)]
 
 func _update_group_display(group_id: String) -> void:

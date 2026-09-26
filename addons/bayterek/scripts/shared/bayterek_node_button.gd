@@ -217,6 +217,21 @@ func _sync_size_with_design() -> void:
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var target: Vector2 = visual_bounds.size * node_data.scale
 
+	# --- DEBUG ---
+	var dbg_design: BayterekNodeDesign = null
+	if not node_data.design_id.is_empty():
+		dbg_design = Bayterek.get_designs_registry().get_design_by_id(node_data.design_id)
+	print("[SYNC-SIZE] node_id=%d design_id=%s bounds_layer=%s bounds_size=%s visual_bounds=%s target=%s current_size=%s" % [
+		node_data.id,
+		node_data.design_id,
+		str(dbg_design.bounds_layer_id) if dbg_design else "no-design",
+		str(dbg_design.get_bounds_size()) if dbg_design else "-",
+		str(visual_bounds.size),
+		str(target),
+		str(size),
+	])
+	# --- END DEBUG ---
+
 	if target.x <= 0.0 or target.y <= 0.0:
 		target = node_data.design_size * node_data.scale
 	if target.x <= 0.0 or target.y <= 0.0:
@@ -249,13 +264,11 @@ func _rebuild_layer_nodes() -> void:
 		_layer_nodes.clear()
 		return
 
-	# Set of layer_ids that should have a live child node.
 	var valid_ids: Dictionary = {}
 	for layer in node_data.layers:
 		if layer is BayterekTextureLayer and layer.visible:
 			valid_ids[layer.layer_id] = true
 
-	# Remove obsolete.
 	for layer_id in _layer_nodes.keys():
 		if not valid_ids.has(layer_id):
 			var ln: BayterekLayerNode = _layer_nodes[layer_id]
@@ -263,7 +276,6 @@ func _rebuild_layer_nodes() -> void:
 				ln.queue_free()
 			_layer_nodes.erase(layer_id)
 
-	# Create/update.
 	for layer in node_data.layers:
 		if not layer or not layer.visible:
 			continue
@@ -285,7 +297,6 @@ func _update_layer_nodes() -> void:
 	if not node_data:
 		return
 
-	# Base transform: center the node's visual bounds on the node's rect.
 	var design_size: Vector2 = node_data.design_size
 	var node_scale: Vector2 = node_data.scale
 
@@ -313,18 +324,9 @@ func _update_layer_nodes() -> void:
 		var effective_mode: int = layer.get_effective_render_mode()
 		var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
 
-		# Set the layer node's transform to base_xform * layer_matrix
-		# This is done inside `update()`; but `update()` computes its
-		# own transform from layer_matrix only. We need to compose.
-		# Simplest: set _texture_layer_root's transform to base_xform,
-		# then each layer node's transform to layer_matrix.
-		# But base_xform is per-node, so we set it once on the root.
 		ln.update(design_size, pixel_mode)
+		ln.transform = base_xform * layer.get_matrix(design_size, pixel_mode)
 
-		# Apply base transform on top
-		ln.transform = base_xform * ln.layer.get_matrix(design_size, pixel_mode)
-
-		# z-order
 		var layer_index: int = node_data.layers.find(layer)
 		if layer_index < 0:
 			layer_index = 0

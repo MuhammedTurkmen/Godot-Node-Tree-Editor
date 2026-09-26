@@ -3,6 +3,8 @@ class_name BayterekNode
 extends Resource
 ## Data model for a single node.
 
+const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
+
 enum PrerequisiteMode {
 	ANY,
 	COUNT,
@@ -11,6 +13,16 @@ enum PrerequisiteMode {
 }
 
 const MAX_LAYERS := 6
+
+# ============================================================
+# RENDER CACHE
+# ============================================================
+
+var _visual_bounds_cache: Rect2 = Rect2()
+var _visual_bounds_cache_key: String = ""
+
+var _active_states_cache: Dictionary = {}
+var _active_states_cache_key: String = ""
 
 # ============================================================
 # IDENTITY
@@ -116,6 +128,16 @@ func has_field_override(field_path: String) -> bool:
 	return exported_overrides.has(field_path)
 
 # ============================================================
+# DESIGN RESOLUTION
+# ============================================================
+
+## Returns the design that this node references, or null.
+func _resolve_design() -> BayterekNodeDesign:
+	if design_id.is_empty():
+		return null
+	return Bayterek.get_designs_registry().get_design_by_id(design_id)
+
+# ============================================================
 # EXPORTED OVERRIDES APPLICATION
 # ============================================================
 
@@ -181,6 +203,8 @@ func _apply_override_to_layer(field_path: String, value: Variant) -> void:
 	elif current is Dictionary:
 		current[last_seg] = value
 
+	clear_render_cache()
+
 func parse_field_path_for_layer(path: String) -> Dictionary:
 	var parts: Array = path.split(".")
 	if parts.size() < 3:
@@ -211,6 +235,7 @@ func add_layer(layer: BayterekLayer) -> bool:
 	if not can_add_layer():
 		return false
 	layers.append(layer)
+	clear_render_cache()
 	return true
 
 func remove_layer(index: int) -> BayterekLayer:
@@ -218,6 +243,7 @@ func remove_layer(index: int) -> BayterekLayer:
 		return null
 	var removed: BayterekLayer = layers[index]
 	layers.remove_at(index)
+	clear_render_cache()
 	return removed
 
 func move_layer(from_index: int, to_index: int) -> bool:
@@ -230,6 +256,7 @@ func move_layer(from_index: int, to_index: int) -> bool:
 	var layer: BayterekLayer = layers[from_index]
 	layers.remove_at(from_index)
 	layers.insert(to_index, layer)
+	clear_render_cache()
 	return true
 
 func get_layer(index: int) -> BayterekLayer:
@@ -247,12 +274,14 @@ func get_layer_by_id(layer_id: String) -> BayterekLayer:
 
 func clear_layers() -> void:
 	layers.clear()
+	clear_render_cache()
 
 func copy_layers_from(source_layers: Array) -> void:
 	layers.clear()
 	for layer in source_layers:
 		if layer is BayterekLayer:
 			layers.append(layer.duplicate_layer())
+	clear_render_cache()
 
 # ============================================================
 # DESIGN APPLICATION
@@ -283,8 +312,24 @@ func apply_defaults_from_tree(tree: BayterekTree) -> void:
 # ============================================================
 
 func get_visual_bounds() -> Rect2:
+	var cache_key: String = _make_visual_bounds_cache_key()
+	if cache_key == _visual_bounds_cache_key:
+		return _visual_bounds_cache
+
+	# 1) If the design has a bounds layer, use its effective size.
+	var design: BayterekNodeDesign = _resolve_design()
+	if design and not design.bounds_layer_id.is_empty():
+		var result: Rect2 = design.get_bounds_rect()
+		_visual_bounds_cache = result
+		_visual_bounds_cache_key = cache_key
+		return result
+
+	# 2) Otherwise, fall back to the union of all visible layers.
 	if layers.is_empty():
-		return Rect2(-design_size * 0.5, design_size)
+		var empty_result: Rect2 = Rect2(-design_size * 0.5, design_size)
+		_visual_bounds_cache = empty_result
+		_visual_bounds_cache_key = cache_key
+		return empty_result
 
 	var has_any: bool = false
 	var min_x: float = INF
@@ -321,20 +366,73 @@ func get_visual_bounds() -> Rect2:
 			has_any = true
 
 	if not has_any:
-		return Rect2(-design_size * 0.5, design_size)
+		var fallback: Rect2 = Rect2(-design_size * 0.5, design_size)
+		_visual_bounds_cache = fallback
+		_visual_bounds_cache_key = cache_key
+		return fallback
 
-	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+	var result: Rect2 = Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+	_visual_bounds_cache = result
+	_visual_bounds_cache_key = cache_key
+	return result
+
+func _make_visual_bounds_cache_key() -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	parts.append("%d_%d" % [int(round(design_size.x)), int(round(design_size.y))])
+	parts.append("%d" % layers.size())
+
+	# Include design_id so bounds_layer_id changes are caught.
+	parts.append(design_id)
+
+	# Include bounds_layer_id from design if it exists.
+	var design: BayterekNodeDesign = _resolve_design()
+	if design:
+		parts.append(design.bounds_layer_id)
+
+	for layer in layers:
+		if not layer:
+			parts.append("null")
+			continue
+		if not layer.visible:
+			parts.append("hid")
+			continue
+		var t: BayterekLayerTransform = layer.transform
+		if not t:
+			parts.append("noT")
+			continue
+		parts.append("%d_%d_%d_%d_%d_%d_%d_%d_%d" % [
+			int(round(t.position.x)),
+			int(round(t.position.y)),
+			int(round(t.size.x)),
+			int(round(t.size.y)),
+			int(round(t.scale.x * 100.0)),
+			int(round(t.scale.y * 100.0)),
+			int(round(t.rotation)),
+			int(layer.get_effective_render_mode()),
+			int(t.pivot_mode),
+		])
+	return "|".join(parts)
 
 func get_visual_size() -> Vector2:
 	return get_visual_bounds().size
+
+# ============================================================
+# CACHE MANAGEMENT
+# ============================================================
+
+## Clears visual bounds and active states caches.
+func clear_render_cache() -> void:
+	_visual_bounds_cache_key = ""
+	_active_states_cache_key = ""
+	for layer in layers:
+		if layer is BayterekShapeLayer:
+			layer.clear_render_cache()
 
 # ============================================================
 # ACTIVE STATE RESOLUTION
 # ============================================================
 
 func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
-	var result: Dictionary = {}
-
 	var is_hovered: bool = runtime_flags.get("is_hovered", false)
 	var is_clicked: bool = runtime_flags.get("is_clicked", false)
 	var allocated: bool = runtime_flags.get("allocated", false)
@@ -342,6 +440,23 @@ func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
 	var refund: bool = runtime_flags.get("refund", false)
 	var allocation_level: int = runtime_flags.get("allocation_level", 0)
 	var is_allocatable: bool = runtime_flags.get("is_allocatable", false)
+
+	var cache_key: String = "%d_%d_%d_%d_%d_%d_%d_%d_%d_%d" % [
+		int(locked),
+		max_allocations,
+		int(is_hovered),
+		int(is_clicked),
+		int(allocated),
+		int(preallocated),
+		int(refund),
+		allocation_level,
+		int(is_allocatable),
+		int(layers.size()),
+	]
+	if cache_key == _active_states_cache_key:
+		return _active_states_cache
+
+	var result: Dictionary = {}
 
 	result["locked"] = locked
 	result["prerefund"] = refund
@@ -364,4 +479,6 @@ func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
 			break
 	result["normal"] = not any_special
 
+	_active_states_cache = result
+	_active_states_cache_key = cache_key
 	return result

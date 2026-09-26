@@ -193,3 +193,4 @@ script = ExtResource("4_u1mso")
 id = "new_design"
 name = "TestButton"
 layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_wjuy6"), SubResource("Resource_5qdsx"), SubResource("Resource_pcukm")])
+bounds_layer_id = "f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f"

@@ -61,6 +61,10 @@ const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 
 @export_storage var layers: Array[BayterekLayer] = []
 
+## If non-empty, this layer_id determines the design's effective bounds.
+## If empty, falls back to design_size.
+@export_storage var bounds_layer_id: String = ""
+
 @export_storage var exported_fields: Dictionary = {}
 
 # ============================================================
@@ -267,6 +271,11 @@ func remove_layer(index: int) -> BayterekLayer:
 	if index < 0 or index >= layers.size():
 		return null
 	var removed: BayterekLayer = layers[index]
+
+	# Clear bounds reference if this layer was bounds.
+	if removed and bounds_layer_id == removed.layer_id:
+		bounds_layer_id = ""
+
 	layers.remove_at(index)
 	layers_changed.emit(self, "remove")
 	return removed
@@ -299,9 +308,13 @@ func get_layer_by_id(layer_id: String) -> BayterekLayer:
 
 func clear_layers() -> void:
 	layers.clear()
+	bounds_layer_id = ""
 	layers_changed.emit(self, "reset")
 
 func notify_layer_modified() -> void:
+	for layer in layers:
+		if layer is BayterekShapeLayer:
+			layer.clear_render_cache()
 	layers_changed.emit(self, "modify")
 
 func copy_layers_from(source_layers: Array) -> void:
@@ -314,6 +327,31 @@ func copy_layers_from(source_layers: Array) -> void:
 # ============================================================
 # COMPUTED SIZE
 # ============================================================
+
+## Returns the effective bounds size.
+## If bounds_layer_id is set and the layer exists, uses that layer's
+## effective size. Otherwise falls back to design_size.
+func get_bounds_size() -> Vector2:
+	if bounds_layer_id.is_empty():
+		return design_size
+
+	var layer: BayterekLayer = get_layer_by_id(bounds_layer_id)
+	if not layer:
+		return design_size
+
+	var t: BayterekLayerTransform = layer.transform
+	if not t:
+		return design_size
+
+	var sz: Vector2 = t.get_effective_size(design_size)
+	if sz.x <= 0.0 or sz.y <= 0.0:
+		return design_size
+	return sz
+
+## Returns the effective bounds as a Rect2 centered at origin.
+func get_bounds_rect() -> Rect2:
+	var sz: Vector2 = get_bounds_size()
+	return Rect2(-sz * 0.5, sz)
 
 func get_computed_size() -> Vector2:
 	var bounds: Rect2 = get_computed_bounds()
@@ -394,6 +432,7 @@ func duplicate_design() -> BayterekNodeDesign:
 	copy.scale = scale
 	copy.copy_layers_from(layers)
 	copy.exported_fields = exported_fields.duplicate(true)
+	copy.bounds_layer_id = bounds_layer_id
 	return copy
 
 func _to_string() -> String:
