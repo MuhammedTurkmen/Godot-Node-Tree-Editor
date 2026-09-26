@@ -125,6 +125,46 @@ func _clear_items() -> void:
 func _update_header() -> void:
 	pass
 
+## Removes the "Ungrouped (N)" header and any group TreeItems whose
+## child count dropped to zero. Also refreshes the "(N)" count on
+## the headers that survive.
+func _cleanup_empty_group_items() -> void:
+	# Ungrouped header: önce sayıyı güncelle, sonra boşsa sil.
+	if _ungrouped_item:
+		var child_count: int = _ungrouped_item.get_child_count()
+		if child_count == 0:
+			if _ungrouped_item.get_parent():
+				_ungrouped_item.get_parent().remove_child(_ungrouped_item)
+			_ungrouped_item.free()
+			_ungrouped_item = null
+		else:
+			_ungrouped_item.set_text(0, "Ungrouped (%d)" % child_count)
+
+	# Group item'ları: önce sayıyı güncelle, sonra boşsa sil.
+	var empty_group_ids: Array = []
+	for group_id in _group_id_to_item.keys():
+		var item: TreeItem = _group_id_to_item[group_id]
+		if not item:
+			empty_group_ids.append(group_id)
+			continue
+
+		var count: int = item.get_child_count()
+		if count == 0:
+			empty_group_ids.append(group_id)
+		else:
+			# Grup adını + sayıyı yeniden yaz.
+			var group: BayterekNodeGroup = editor.tree.get_group_by_id(group_id) if editor and editor.tree else null
+			if group:
+				item.set_text(0, "%s (%d)" % [group.name, count])
+
+	for group_id in empty_group_ids:
+		var item: TreeItem = _group_id_to_item.get(group_id, null)
+		if item:
+			if item.get_parent():
+				item.get_parent().remove_child(item)
+			item.free()
+		_group_id_to_item.erase(group_id)
+
 # ============================================================
 # DISPLAY HELPERS
 # ============================================================
@@ -308,6 +348,7 @@ func _on_node_deleted(node: BayterekNodeButton) -> void:
 	if not node:
 		return
 	_remove_item_for_node(node.id)
+	_cleanup_empty_group_items()
 	_update_header()
 
 # ============================================================
@@ -361,6 +402,7 @@ func _do_delete_node(node: BayterekNodeButton) -> void:
 		tree_view.node_deleted.emit(node)
 
 	_remove_item_for_node(node.id)
+	_cleanup_empty_group_items()
 	changed.emit()
 
 # ============================================================

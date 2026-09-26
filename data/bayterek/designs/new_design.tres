@@ -129,6 +129,3 @@ script = ExtResource("4_u1mso")
 id = "new_design"
 name = "TestButton"
 layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_pcukm"), SubResource("Resource_5qdsx")])
-exported_fields = {
-"layers.f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f.icon_configs.normal.enabled": true
-}

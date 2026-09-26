@@ -23,8 +23,6 @@
 ## EASY
 
 ## MEDIUM
-[] gruplanmamış düğümleri toplu silince hiyerarşide doğru güncellenmedi
-	[] ungrouped kısmı silinmiyor hiyerarşiden
 
 ## HARD
 [] araç bilgisi (tooltip)
