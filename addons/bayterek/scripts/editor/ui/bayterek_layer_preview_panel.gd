@@ -202,7 +202,10 @@ func set_design(design: BayterekNodeDesign) -> void:
 func refresh() -> void:
 	if not _preview:
 		return
-	_preview._apply_texture_filter()
+	# `_apply_texture_filter` artık BayterekLayerPreview'da yok —
+	# per-layer filter `_rebuild_texture_rects()` içinde çizim anında
+	# uygulanıyor. Bu yüzden burada sadece queue_redraw yeterli.
+	_preview.rebuild_texture_rects()
 	_preview.queue_redraw()
 
 # ============================================================

@@ -171,6 +171,12 @@ func _gui_input(event: InputEvent) -> void:
 # TEXTURE RECT BUILDING (per-layer filter support)
 # ============================================================
 
+## Public wrapper — lets external code (e.g. BayterekLayerPreviewPanel)
+## trigger a rebuild after the design changes.
+func rebuild_texture_rects() -> void:
+	_rebuild_texture_rects()
+
+
 ## Clears and rebuilds the per-texture-layer TextureRect children.
 ## Called whenever the design, zoom, or pan changes.
 func _rebuild_texture_rects() -> void:

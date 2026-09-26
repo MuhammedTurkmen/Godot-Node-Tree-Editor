@@ -46,8 +46,14 @@ func load_tree(tree_data: BayterekTree) -> void:
 			continue
 		node.allocated = true
 		node.set_state(Bayterek.AllocationState.ACTIVE)
-		if _tree_data.multiallocation:
-			node.allocation_level = _allocation_level.get(node_id, 1)
+		# Multiallocation açık veya kapalı — allocation_level her zaman
+		# en az 1 olmalı (allocated node'lar için).
+		var lvl: int = _allocation_level.get(node_id, 1)
+		if lvl <= 0:
+			lvl = 1
+			_allocation_level[node_id] = 1
+		node.allocation_level = lvl
+		node.refresh_state_only()
 		node_allocated.emit(node)
 
 # ============================================================
@@ -88,6 +94,7 @@ func _handle_preallocation_click(node: BayterekNodeButton) -> void:
 	if _can_preallocate(node):
 		_preallocated_nodes.append(node.id)
 		node.preallocated = true
+		node_refresh(node)
 		node_preallocated.emit(node)
 	else:
 		var closure: Array[int] = _get_unpreallocation_closure(node.id)
@@ -98,6 +105,7 @@ func _handle_preallocation_click(node: BayterekNodeButton) -> void:
 					continue
 				_preallocated_nodes.erase(node_id)
 				n.preallocated = false
+				node_refresh(n)
 				node_unpreallocated.emit(n)
 
 	if Input.is_key_pressed(KEY_CTRL) and pre_size == 0:
@@ -125,6 +133,7 @@ func _handle_refund_click(node: BayterekNodeButton) -> void:
 				if not n:
 					continue
 				n.refund = true
+				node_refresh(n)
 				_refund_nodes.append(node_id)
 				node_refund_added.emit(n)
 	elif _refund_nodes.has(node.id):
@@ -140,6 +149,7 @@ func _handle_refund_click(node: BayterekNodeButton) -> void:
 				if not n:
 					continue
 				n.refund = false
+				node_refresh(n)
 				_refund_nodes.erase(node_id)
 				node_refund_removed.emit(n)
 
@@ -200,6 +210,7 @@ func clear_preallocations() -> void:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if node:
 			node.preallocated = false
+			node_refresh(node)
 			node_unpreallocated.emit(node)
 
 func enter_refund_mode() -> void:
@@ -221,6 +232,7 @@ func exit_refund_mode() -> void:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if node:
 			node.refund = false
+			node_refresh(node)
 			node_refund_removed.emit(node)
 
 	refund_mode_exited.emit()
@@ -244,6 +256,7 @@ func stage_all_for_refund() -> void:
 			continue
 
 		node.refund = true
+		node_refresh(node)
 		_refund_nodes.append(node_id)
 		node_refund_added.emit(node)
 
@@ -259,6 +272,7 @@ func clear_all_allocations() -> void:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if node:
 			node.preallocated = false
+			node_refresh(node)
 			node_unpreallocated.emit(node)
 
 	# 2) Clear refund staging
@@ -270,6 +284,7 @@ func clear_all_allocations() -> void:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if node:
 			node.refund = false
+			node_refresh(node)
 			node_refund_removed.emit(node)
 
 	# 3) Clear real allocations
@@ -300,8 +315,17 @@ func _refresh_all_node_visuals() -> void:
 	for node in _tree_view.nodes_service.get_all_nodes():
 		if not is_instance_valid(node):
 			continue
-		if node.has_method("refresh_visuals"):
-			node.refresh_visuals()
+		node_refresh(node)
+
+## Safe refresh helper — calls refresh_state_only() if available,
+## falls back to refresh_visuals() otherwise.
+func node_refresh(node: BayterekNodeButton) -> void:
+	if not is_instance_valid(node):
+		return
+	if node.has_method("refresh_state_only"):
+		node.refresh_state_only()
+	elif node.has_method("refresh_visuals"):
+		node.refresh_visuals()
 
 # ============================================================
 # PREREQUISITE LOGIC
@@ -766,8 +790,18 @@ func _allocate_node(node: BayterekNodeButton) -> void:
 		if not _allocated_nodes.has(node.id):
 			_allocated_nodes.append(node.id)
 		node.allocated = true
+		# Multiallocation kapalıyken bile allocation_level 1 olmalı.
+		# Aksi halde max_allocations == 1 olan node'larda max_level
+		# state'i hiç tetiklenmez.
+		_allocation_level[node.id] = 1
+		node.allocation_level = 1
 
 	node.preallocated = false
+
+	# Refresh the node's visual state immediately — allocation level
+	# may have changed even if the overall state stayed ACTIVE.
+	node_refresh(node)
+
 	node_allocated.emit(node)
 
 func _deallocate_node(node: BayterekNodeButton) -> void:
@@ -781,9 +815,15 @@ func _deallocate_node(node: BayterekNodeButton) -> void:
 				node.allocated = false
 	else:
 		_allocated_nodes.erase(node.id)
+		_allocation_level.erase(node.id)
 		node.allocated = false
+		node.allocation_level = 0
 
 	node.refund = false
+
+	# Refresh the node's visual state immediately.
+	node_refresh(node)
+
 	node_deallocated.emit(node)
 
 # ============================================================
@@ -811,8 +851,12 @@ func reload_from_state() -> void:
 			continue
 		node.allocated = true
 		node.set_state(Bayterek.AllocationState.ACTIVE)
-		if _tree_data.multiallocation:
-			node.allocation_level = _allocation_level.get(node_id, 1)
+		var lvl: int = _allocation_level.get(node_id, 1)
+		if lvl <= 0:
+			lvl = 1
+			_allocation_level[node_id] = 1
+		node.allocation_level = lvl
+		node_refresh(node)
 
 	for node in _tree_view.nodes_service.get_all_nodes():
 		if not node.allocated and not node.preallocated:

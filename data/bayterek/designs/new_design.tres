@@ -19,6 +19,7 @@ icon_configs = {
 "texture": ExtResource("5_paddw")
 }
 }
+tint_enabled = true
 tint_configs = {
 "allocateable": {
 "color": Color(0.5568628, 0.9607843, 0.5568628, 1),
@@ -26,23 +27,23 @@ tint_configs = {
 },
 "clicked": {
 "color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
+"enabled": true
 },
 "hover": {
 "color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "locked": {
 "color": Color(0.4, 0.4, 0.4, 1),
 "enabled": false
 },
 "max_level": {
-"color": Color(1, 0.8784314, 0.4, 1),
-"enabled": false
+"color": Color(0.9930115, 0.10546875, 1, 1),
+"enabled": true
 },
 "normal": {
 "color": Color(0.49803922, 0.72156864, 1, 1),
-"enabled": false
+"enabled": true
 },
 "not_allocateable": {
 "color": Color(1, 0.4, 0.4, 1),
@@ -58,7 +59,7 @@ tint_configs = {
 }
 }
 layer_id = "c2620033-590a-42d1-a3cb-737a4740b482"
-layer_name = "Texture 2"
+layer_name = "Border"
 transform = SubResource("Resource_u1mso")
 texture_filter_override = 2
 

@@ -169,6 +169,28 @@ func rebuild_from_design() -> void:
 	_design_applied = false
 	refresh_visuals()
 
+## Sadece hover durumu değiştiğinde çağrılır. Boyut, filter veya
+## design apply yapmaz — sadece state cache'ini günceller ve redraw eder.
+func refresh_hover_only() -> void:
+	if not node_data:
+		return
+	_recompute_active_states()
+	queue_redraw()
+
+## Sadece selection değiştiğinde çağrılır. Border zaten ayrı bir Panel,
+## _draw()'ı etkilemez. Bu yüzden queue_redraw() çağrılmaz.
+func refresh_selection_only() -> void:
+	if _select_border:
+		_select_border.visible = selected
+
+## Sadece allocation state değiştiğinde çağrılır. Boyut ve filter
+## değişmez, sadece state cache'i ve redraw.
+func refresh_state_only() -> void:
+	if not node_data:
+		return
+	_recompute_active_states()
+	queue_redraw()
+
 func _apply_texture_filter() -> void:
 	# Per-layer filter artık _draw_texture_layer() içinde çizim anında
 	# uygulanıyor. Burada sadece node'un DEFAULT filter'ını set ediyoruz;
@@ -201,12 +223,11 @@ func _sync_size_with_design() -> void:
 
 func set_state(new_state: Bayterek.AllocationState) -> void:
 	state = new_state
-	refresh_visuals()
+	refresh_state_only()
 
 func set_selected(value: bool) -> void:
 	selected = value
-	if _select_border:
-		_select_border.visible = value
+	refresh_selection_only()
 
 # ============================================================
 # DRAW
@@ -451,23 +472,26 @@ func _draw_texture_layer(
 ) -> void:
 
 	# --- DEBUG PRINT ---
-	var dbg_tex: Texture2D = layer.get_icon_for_state(state_key)
-	var dbg_tint: Color = layer.get_tint_for_state(state_key)
-	var dbg_img_alpha: String = "n/a"
-	var dbg_img_size: String = "n/a"
-	var dbg_tex_class: String = "null"
-	if dbg_tex:
-		dbg_tex_class = dbg_tex.get_class()
-		dbg_img_size = str(dbg_tex.get_size())
-		if dbg_tex.has_method("get_image"):
-			var dbg_img: Image = dbg_tex.get_image()
-			if dbg_img:
-				var p00: Color = dbg_img.get_pixel(0, 0)
-				var cx: int = int(dbg_img.get_width() / 2)
-				var cy: int = int(dbg_img.get_height() / 2)
-				var pc: Color = dbg_img.get_pixel(cx, cy)
-				dbg_img_alpha = "p00=%s pc=%s" % [str(p00), str(pc)]
-
+	if layer is BayterekTextureLayer:
+		var tint_cfg = layer.tint_configs
+		print(("[MAXLEVEL-CHECK] node_id=%d allocation_level=%d max_allocations=%d allocated=%s " +
+			"max_level_flag=%s " +
+			"tint_enabled=%s " +
+			"tint_max_enabled=%s tint_max_color=%s " +
+			"tint_normal_enabled=%s tint_normal_color=%s " +
+			"state_key=%s") % [
+			node_data.id if node_data else -1,
+			allocation_level,
+			node_data.max_allocations if node_data else -1,
+			str(allocated),
+			str(_active_states.get("max_level", false)),
+			str(layer.tint_enabled),
+			str(tint_cfg.get("max_level", {}).get("enabled", false)),
+			str(tint_cfg.get("max_level", {}).get("color", Color.WHITE)),
+			str(tint_cfg.get("normal", {}).get("enabled", false)),
+			str(tint_cfg.get("normal", {}).get("color", Color.WHITE)),
+			state_key,
+		])
 	# --- END DEBUG PRINT ---
 
 	if not layer.should_draw_icon(state_key):
@@ -610,12 +634,12 @@ func _gui_input(event: InputEvent) -> void:
 				_is_dragging = false
 				if not is_clicked:
 					is_clicked = true
-					refresh_visuals()
+					refresh_hover_only()
 				accept_event()
 			else:
 				if is_clicked:
 					is_clicked = false
-					refresh_visuals()
+					refresh_hover_only()
 				if _is_dragging:
 					drag_ended.emit(self)
 					_is_dragging = false
@@ -640,14 +664,14 @@ func _gui_input(event: InputEvent) -> void:
 
 func _on_mouse_entered() -> void:
 	is_mouse_over = true
-	refresh_visuals()
+	refresh_hover_only()
 	node_hovered.emit(self, true)
 
 func _on_mouse_exited() -> void:
 	is_mouse_over = false
 	if is_clicked:
 		is_clicked = false
-	refresh_visuals()
+	refresh_hover_only()
 	node_hovered.emit(self, false)
 
 # ============================================================
