@@ -15,7 +15,7 @@
 script = ExtResource("2_3oq2p")
 id = "3aabee69-9105-4ecb-b868-059e776ce4b9"
 name = "Test"
-node_ids = Array[int]([10, 12, 11, 13])
+node_ids = Array[int]([10, 12, 11, 13, 14])
 
 [sub_resource type="Resource" id="Resource_x1plc"]
 script = ExtResource("6_6p5mu")
@@ -203,7 +203,8 @@ is_root = true
 id = 14
 name = "TestButton"
 design_id = "new_design"
-position = Vector2(-194.28174, -99.11743)
+position = Vector2(-376.73047, 37.94043)
+group_id = "3aabee69-9105-4ecb-b868-059e776ce4b9"
 layers = Array[ExtResource("3_x1plc")]([SubResource("Resource_royti"), SubResource("Resource_6p5mu"), SubResource("Resource_j5a67")])
 
 [resource]
@@ -213,4 +214,4 @@ name = "Tree 1"
 id_counter = 14
 nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_wfhhu")])
 node_groups = Array[ExtResource("2_3oq2p")]([SubResource("Resource_safsq")])
-hierarchy_split_offset = -375
+hierarchy_split_offset = -475

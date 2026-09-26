@@ -35,6 +35,19 @@ var state: Bayterek.AllocationState = Bayterek.AllocationState.NORMAL
 
 var is_allocatable: bool = false
 
+## Node-wide transform, backed by node_data so it persists.
+var node_rotation: float:
+	get: return node_data.node_rotation if node_data else 0.0
+	set(v):
+		if node_data:
+			node_data.node_rotation = v
+
+var node_skew: Vector2:
+	get: return node_data.node_skew if node_data else Vector2.ZERO
+	set(v):
+		if node_data:
+			node_data.node_skew = v
+
 var _select_border: Panel
 var _crown_label: Label
 var _texture_layer_root: Node2D
@@ -132,6 +145,45 @@ func _build_children() -> void:
 	add_child(_crown_label)
 
 # ============================================================
+# NODE TRANSFORM HELPERS
+# ============================================================
+
+## Builds a Transform2D from node_rotation and node_skew.
+## Order: skew → rotation. Origin at (0, 0).
+func _build_node_transform() -> Transform2D:
+	var t := Transform2D.IDENTITY
+
+	# Skew: build the matrix manually since Transform2D.skewed()
+	# was removed in Godot 4.7.
+	var sx_skew: float = tan(deg_to_rad(node_skew.x))
+	var sy_skew: float = tan(deg_to_rad(node_skew.y))
+	if absf(sx_skew) > 0.0001 or absf(sy_skew) > 0.0001:
+		var skew_matrix := Transform2D(
+			Vector2(1.0, sy_skew),
+			Vector2(sx_skew, 1.0),
+			Vector2.ZERO
+		)
+		t = t * skew_matrix
+
+	if absf(node_rotation) > 0.0001:
+		t = t.rotated(deg_to_rad(node_rotation))
+
+	return t
+
+## Applies a node transform around a pivot point (usually the node's center).
+func _transform_around(node_transform: Transform2D, pivot: Vector2) -> Transform2D:
+	return Transform2D(
+		node_transform.x,
+		node_transform.y,
+		pivot - (node_transform * pivot) + node_transform.origin
+	)
+
+## Re-applies the node transform to all layers and redraws.
+func refresh_transform() -> void:
+	_update_layer_nodes()
+	queue_redraw()
+
+# ============================================================
 # STATE RESOLUTION
 # ============================================================
 
@@ -217,21 +269,6 @@ func _sync_size_with_design() -> void:
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var target: Vector2 = visual_bounds.size * node_data.scale
 
-	# --- DEBUG ---
-	var dbg_design: BayterekNodeDesign = null
-	if not node_data.design_id.is_empty():
-		dbg_design = Bayterek.get_designs_registry().get_design_by_id(node_data.design_id)
-	print("[SYNC-SIZE] node_id=%d design_id=%s bounds_layer=%s bounds_size=%s visual_bounds=%s target=%s current_size=%s" % [
-		node_data.id,
-		node_data.design_id,
-		str(dbg_design.bounds_layer_id) if dbg_design else "no-design",
-		str(dbg_design.get_bounds_size()) if dbg_design else "-",
-		str(visual_bounds.size),
-		str(target),
-		str(size),
-	])
-	# --- END DEBUG ---
-
 	if target.x <= 0.0 or target.y <= 0.0:
 		target = node_data.design_size * node_data.scale
 	if target.x <= 0.0 or target.y <= 0.0:
@@ -298,17 +335,22 @@ func _update_layer_nodes() -> void:
 		return
 
 	var design_size: Vector2 = node_data.design_size
-	var node_scale: Vector2 = node_data.scale
+	var design_scale: Vector2 = node_data.scale
 
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var bounds_center: Vector2 = visual_bounds.position + visual_bounds.size * 0.5
 
 	var node_rect_center: Vector2 = size * 0.5
 	var base_xform := Transform2D(
-		Vector2(node_scale.x, 0.0),
-		Vector2(0.0, node_scale.y),
-		node_rect_center - bounds_center * node_scale
+		Vector2(design_scale.x, 0.0),
+		Vector2(0.0, design_scale.y),
+		node_rect_center - bounds_center * design_scale
 	)
+
+	# Apply node-wide transform around the node's center.
+	var node_transform: Transform2D = _build_node_transform()
+	var transform_with_center := _transform_around(node_transform, node_rect_center)
+	base_xform = transform_with_center * base_xform
 
 	for layer_id in _layer_nodes.keys():
 		var ln: BayterekLayerNode = _layer_nodes[layer_id]
@@ -341,17 +383,22 @@ func _draw() -> void:
 		return
 
 	var design_size: Vector2 = node_data.design_size
-	var node_scale: Vector2 = node_data.scale
+	var design_scale: Vector2 = node_data.scale
 
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var bounds_center: Vector2 = visual_bounds.position + visual_bounds.size * 0.5
 
 	var node_rect_center: Vector2 = size * 0.5
 	var scale_transform := Transform2D(
-		Vector2(node_scale.x, 0.0),
-		Vector2(0.0, node_scale.y),
-		node_rect_center - bounds_center * node_scale
+		Vector2(design_scale.x, 0.0),
+		Vector2(0.0, design_scale.y),
+		node_rect_center - bounds_center * design_scale
 	)
+
+	# Apply node-wide transform around the node's center.
+	var node_transform: Transform2D = _build_node_transform()
+	var transform_with_center := _transform_around(node_transform, node_rect_center)
+	scale_transform = transform_with_center * scale_transform
 
 	for layer in node_data.layers:
 		if not layer or not layer.visible:

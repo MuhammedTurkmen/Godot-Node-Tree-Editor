@@ -2,11 +2,6 @@
 class_name BayterekTreeEditorInspector
 extends Control
 ## Node Inspector with Prefab mode support.
-##
-## The three content panels (Exported Fields, Attributes, Connections)
-## are separated into their own scripts. This file coordinates them and
-## owns the top-level layout (mode banner, root toggle, info rows,
-## design dropdown, transform, etc.).
 
 signal changed
 
@@ -53,6 +48,9 @@ var _prereq_group_dropdown: OptionButton
 var _transform_panel: VBoxContainer
 var _pos_x_input: SpinBox
 var _pos_y_input: SpinBox
+var _node_rotation_input: SpinBox
+var _node_skew_x_input: SpinBox
+var _node_skew_y_input: SpinBox
 
 # --- Sub-panels (own scripts) ---
 var _exported_fields: BayterekInspectorExportedFields
@@ -374,6 +372,71 @@ func _build_ui() -> void:
 	_pos_y_input.value_changed.connect(_on_position_changed)
 	y_row.add_child(_pos_y_input)
 
+	# --- Node Rotation ---
+	var rot_row := HBoxContainer.new()
+	_transform_panel.add_child(rot_row)
+	var rot_label := Label.new()
+	rot_label.text = "Rotation"
+	rot_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	rot_label.tooltip_text = "Node-wide rotation applied to all layers."
+	rot_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	rot_row.add_child(rot_label)
+
+	_node_rotation_input = SpinBox.new()
+	_node_rotation_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	_node_rotation_input.min_value = -3600.0
+	_node_rotation_input.max_value = 3600.0
+	_node_rotation_input.step = 1.0
+	_node_rotation_input.suffix = "°"
+	_node_rotation_input.allow_greater = true
+	_node_rotation_input.allow_lesser = true
+	_node_rotation_input.value_changed.connect(_on_node_transform_changed)
+	rot_row.add_child(_node_rotation_input)
+
+	# --- Node Skew ---
+	var skew_row2 := HBoxContainer.new()
+	_transform_panel.add_child(skew_row2)
+	var nskew_label := Label.new()
+	nskew_label.text = "Node Skew"
+	nskew_label.custom_minimum_size = Vector2(80, 0)
+	nskew_label.tooltip_text = "Node-wide skew applied to all layers."
+	nskew_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	skew_row2.add_child(nskew_label)
+
+	var nskx_label := Label.new()
+	nskx_label.text = "X"
+	nskx_label.custom_minimum_size = Vector2(20, 0)
+	nskx_label.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
+	skew_row2.add_child(nskx_label)
+
+	_node_skew_x_input = SpinBox.new()
+	_node_skew_x_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	_node_skew_x_input.min_value = -89.0
+	_node_skew_x_input.max_value = 89.0
+	_node_skew_x_input.step = 1.0
+	_node_skew_x_input.suffix = "°"
+	_node_skew_x_input.allow_greater = true
+	_node_skew_x_input.allow_lesser = true
+	_node_skew_x_input.value_changed.connect(_on_node_transform_changed)
+	skew_row2.add_child(_node_skew_x_input)
+
+	var nsky_label := Label.new()
+	nsky_label.text = "Y"
+	nsky_label.custom_minimum_size = Vector2(20, 0)
+	nsky_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.4))
+	skew_row2.add_child(nsky_label)
+
+	_node_skew_y_input = SpinBox.new()
+	_node_skew_y_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	_node_skew_y_input.min_value = -89.0
+	_node_skew_y_input.max_value = 89.0
+	_node_skew_y_input.step = 1.0
+	_node_skew_y_input.suffix = "°"
+	_node_skew_y_input.allow_greater = true
+	_node_skew_y_input.allow_lesser = true
+	_node_skew_y_input.value_changed.connect(_on_node_transform_changed)
+	skew_row2.add_child(_node_skew_y_input)
+
 	# --- Sub-panels ---
 	_exported_fields = BayterekInspectorExportedFields.new()
 	_exported_fields.inspector = self
@@ -457,6 +520,10 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_pos_x_input.set_value_no_signal(node.node_data.position.x)
 	_pos_y_input.set_value_no_signal(node.node_data.position.y)
+
+	_node_rotation_input.set_value_no_signal(node.node_data.node_rotation)
+	_node_skew_x_input.set_value_no_signal(node.node_data.node_skew.x)
+	_node_skew_y_input.set_value_no_signal(node.node_data.node_skew.y)
 
 	_scale_x_input.set_value_no_signal(node.node_data.scale.x)
 	_scale_y_input.set_value_no_signal(node.node_data.scale.y)
@@ -801,6 +868,17 @@ func _on_position_changed(_value: float) -> void:
 	if editor and editor.tree_view and editor.tree_view.nodes_service:
 		editor.tree_view.nodes_service.update_position(_current_node, new_pos)
 		editor.tree_view.connections_service.update_lines_of(_current_node)
+
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_node_transform_changed(_value: float) -> void:
+	if _updating_ui or _current_prefab or not _current_node:
+		return
+
+	_current_node.node_data.node_rotation = _node_rotation_input.value
+	_current_node.node_data.node_skew = Vector2(_node_skew_x_input.value, _node_skew_y_input.value)
+	_current_node.refresh_transform()
 
 	changed.emit()
 	_notify_editor_dirty()

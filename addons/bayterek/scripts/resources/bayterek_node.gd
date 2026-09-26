@@ -46,6 +46,10 @@ var _active_states_cache_key: String = ""
 @export_storage var design_size: Vector2 = Vector2(100, 100)
 @export_storage var scale: Vector2 = Vector2.ONE
 
+## Node-wide transform applied to all layers as a group.
+@export_storage var node_rotation: float = 0.0
+@export_storage var node_skew: Vector2 = Vector2.ZERO
+
 # ============================================================
 # GRAPH
 # ============================================================
@@ -294,6 +298,8 @@ func apply_design(design: BayterekNodeDesign) -> void:
 	design_size = design.design_size
 	scale = design.scale
 	copy_layers_from(design.layers)
+	# Node-wide transform (node_rotation, node_skew) is per-instance
+	# and is intentionally NOT reset here.
 
 func apply_defaults_from_tree(tree: BayterekTree) -> void:
 	if not tree:
@@ -380,11 +386,8 @@ func _make_visual_bounds_cache_key() -> String:
 	var parts: PackedStringArray = PackedStringArray()
 	parts.append("%d_%d" % [int(round(design_size.x)), int(round(design_size.y))])
 	parts.append("%d" % layers.size())
-
-	# Include design_id so bounds_layer_id changes are caught.
 	parts.append(design_id)
 
-	# Include bounds_layer_id from design if it exists.
 	var design: BayterekNodeDesign = _resolve_design()
 	if design:
 		parts.append(design.bounds_layer_id)
@@ -420,7 +423,6 @@ func get_visual_size() -> Vector2:
 # CACHE MANAGEMENT
 # ============================================================
 
-## Clears visual bounds and active states caches.
 func clear_render_cache() -> void:
 	_visual_bounds_cache_key = ""
 	_active_states_cache_key = ""
