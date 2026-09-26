@@ -86,6 +86,7 @@ func _build_ui() -> void:
 	tab_container.add_child(node_editor)
 	tab_container.set_tab_title(1, "Node Editor")
 	node_editor.design_category_changed.connect(_on_design_category_changed)
+	node_editor.dirty_changed.connect(_on_node_editor_dirty_changed)
 
 	save_confirmation = ConfirmationDialog.new()
 	save_confirmation.name = "SaveConfirmation"
@@ -107,6 +108,23 @@ func _on_design_category_changed() -> void:
 		if not editor.prefabs_bar:
 			continue
 		editor.prefabs_bar.refresh_categories()
+
+# ============================================================
+# NODE EDITOR DIRTY → TAB TITLE
+# ============================================================
+
+func _on_node_editor_dirty_changed(dirty: bool) -> void:
+	if not tab_container or not node_editor:
+		return
+
+	var idx: int = tab_container.get_tab_idx_from_control(node_editor)
+	if idx < 0:
+		return
+
+	var title: String = "Node Editor"
+	if dirty:
+		title = title + " (*)"
+	tab_container.set_tab_title(idx, title)
 
 # ============================================================
 # TAB SWITCHING
@@ -166,6 +184,11 @@ func open_tree(path: String) -> void:
 
 func _on_tab_close_pressed(tab_index: int) -> void:
 	if tab_index <= 1:
+		# Browser (0) and Node Editor (1) tabs are not closeable.
+		# For Node Editor, check dirty and prompt if needed.
+		var child: Node = tab_container.get_child(tab_index)
+		if child is BayterekNodeEditorScreen:
+			_handle_node_editor_close(child)
 		return
 
 	var child: Node = tab_container.get_child(tab_index)
@@ -177,6 +200,15 @@ func _on_tab_close_pressed(tab_index: int) -> void:
 			save_confirmation.popup_centered()
 		else:
 			editor.request_close()
+
+func _handle_node_editor_close(editor: BayterekNodeEditorScreen) -> void:
+	if not editor:
+		return
+	if not editor.is_dirty():
+		return
+	# Autosave already handles persistence, but show a "saved" confirmation.
+	editor.save_now()
+	print("[Bayterek] Node Editor: autosaved current design on close.")
 
 func _on_save_confirmed() -> void:
 	var editor: BayterekEditor = save_confirmation.get_meta("editor")

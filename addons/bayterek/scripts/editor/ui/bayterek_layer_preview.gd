@@ -2,13 +2,11 @@
 class_name BayterekLayerPreview
 extends Control
 ## Live preview of a design's layer stack.
-## Supports mouse-wheel zoom and middle-drag pan.
 ##
-## Each texture layer is rendered by its own child TextureRect so that
-## per-layer texture_filter overrides work correctly (Godot's
-## CanvasItem.texture_filter is fixed for the duration of a _draw()
-## call, so mixing filters inside one canvas item is impossible).
-## Shape layers are still drawn on this control's own _draw().
+## Shape layers are drawn in _draw().
+## Texture layers are rendered by child BayterekLayerNode instances so
+## that per-layer filter, transform (rotation/skew/scale/pivot) and
+## nine-patch modes all work correctly.
 
 signal zoom_changed(zoom: float)
 
@@ -34,12 +32,8 @@ var bg_color: Color = Color(0.08, 0.08, 0.10, 1.0) : set = set_bg_color
 
 var show_nine_patch_guides: bool = false
 
-## Container that holds the per-texture-layer TextureRects.
-## Created in _ready().
-var _texture_layer_root: Control
-
-## One TextureRect per BayterekTextureLayer, keyed by layer_id.
-var _texture_rects: Dictionary = {}   # layer_id -> TextureRect
+var _texture_layer_root: Node2D
+var _layer_nodes: Dictionary = {}
 
 func set_bg_color(c: Color) -> void:
 	bg_color = c
@@ -50,10 +44,8 @@ func _ready() -> void:
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
-	_texture_layer_root = Control.new()
+	_texture_layer_root = Node2D.new()
 	_texture_layer_root.name = "TextureLayerRoot"
-	_texture_layer_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_texture_layer_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_texture_layer_root)
 
 func set_design(d: BayterekNodeDesign) -> void:
@@ -63,7 +55,7 @@ func set_design(d: BayterekNodeDesign) -> void:
 	design = d
 	_reset_view()
 	_recompute_scale()
-	_rebuild_texture_rects()
+	_rebuild_layer_nodes()
 
 	if design:
 		design.layers_changed.connect(_on_design_changed)
@@ -72,7 +64,7 @@ func set_design(d: BayterekNodeDesign) -> void:
 
 func _on_design_changed(_d: BayterekNodeDesign, _change_type: String) -> void:
 	_recompute_scale()
-	_rebuild_texture_rects()
+	_rebuild_layer_nodes()
 	queue_redraw()
 
 func _reset_view() -> void:
@@ -82,7 +74,7 @@ func _reset_view() -> void:
 func reset_view() -> void:
 	_reset_view()
 	_recompute_scale()
-	_rebuild_texture_rects()
+	_rebuild_layer_nodes()
 	queue_redraw()
 	zoom_changed.emit(user_zoom)
 
@@ -98,14 +90,14 @@ func _set_user_zoom(z: float) -> void:
 		return
 	user_zoom = clamped
 	_recompute_scale()
-	_rebuild_texture_rects()
+	_rebuild_layer_nodes()
 	queue_redraw()
 	zoom_changed.emit(user_zoom)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		_recompute_scale()
-		_rebuild_texture_rects()
+		_rebuild_layer_nodes()
 		queue_redraw()
 
 # ============================================================
@@ -144,7 +136,7 @@ func _recompute_scale() -> void:
 	pan_offset = -content_center * preview_scale
 
 # ============================================================
-# INPUT — zoom & pan
+# INPUT
 # ============================================================
 
 func _gui_input(event: InputEvent) -> void:
@@ -163,97 +155,60 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 	elif event is InputEventMouseMotion and _panning:
 		pan_offset = _pan_start_offset + (event.position - _pan_start_mouse)
-		_rebuild_texture_rects()
+		_rebuild_layer_nodes()
 		queue_redraw()
 		accept_event()
 
 # ============================================================
-# TEXTURE RECT BUILDING (per-layer filter support)
+# LAYER NODES
 # ============================================================
 
-## Public wrapper — lets external code (e.g. BayterekLayerPreviewPanel)
-## trigger a rebuild after the design changes.
 func rebuild_texture_rects() -> void:
-	_rebuild_texture_rects()
+	_rebuild_layer_nodes()
 
-
-## Clears and rebuilds the per-texture-layer TextureRect children.
-## Called whenever the design, zoom, or pan changes.
-func _rebuild_texture_rects() -> void:
+func _rebuild_layer_nodes() -> void:
 	if not _texture_layer_root:
 		return
 
-	# Remove any TextureRects for layers that no longer exist.
 	var valid_ids: Dictionary = {}
 	if design:
 		for layer in design.layers:
-			if layer is BayterekTextureLayer:
+			if layer is BayterekTextureLayer and layer.visible:
 				valid_ids[layer.layer_id] = true
 
-	for layer_id in _texture_rects.keys():
+	# Remove obsolete.
+	for layer_id in _layer_nodes.keys():
 		if not valid_ids.has(layer_id):
-			var tr: TextureRect = _texture_rects[layer_id]
-			if is_instance_valid(tr):
-				tr.queue_free()
-			_texture_rects.erase(layer_id)
+			var ln: BayterekLayerNode = _layer_nodes[layer_id]
+			if is_instance_valid(ln):
+				ln.queue_free()
+			_layer_nodes.erase(layer_id)
 
-	# Build/update.
 	if not design:
 		return
-
-	var states := _get_simulated_states()
 
 	for layer in design.layers:
 		if not layer or not layer.visible:
 			continue
 		if not (layer is BayterekTextureLayer):
 			continue
-		_update_texture_rect(layer, states)
 
-func _update_texture_rect(layer: BayterekTextureLayer, states: Dictionary) -> void:
-	var state_key: String = layer.get_visual_state(states)
+		var ln: BayterekLayerNode = _layer_nodes.get(layer.layer_id, null)
+		if not ln or not is_instance_valid(ln):
+			ln = BayterekLayerNode.new()
+			ln.name = "LayerNode_%s" % layer.layer_id
+			_texture_layer_root.add_child(ln)
+			_layer_nodes[layer.layer_id] = ln
 
-	var tr: TextureRect = _texture_rects.get(layer.layer_id, null)
-	if not tr or not is_instance_valid(tr):
-		tr = TextureRect.new()
-		tr.name = "TexLayer_%s" % layer.layer_id
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tr.stretch_mode = TextureRect.STRETCH_SCALE
-		_texture_layer_root.add_child(tr)
-		_texture_rects[layer.layer_id] = tr
+		ln.set_layer(layer)
 
-	# --- Per-layer filter ---
-	var eff: int = layer.get_effective_texture_filter()
-	# eff: 0 = LINEAR, 1 = NEAREST
-	tr.texture_filter = (
-		CanvasItem.TEXTURE_FILTER_NEAREST if eff == 1
-		else CanvasItem.TEXTURE_FILTER_LINEAR
-	)
+	_update_layer_nodes()
 
-	# --- Texture + tint ---
-	var tex: Texture2D = null
-	var tint: Color = Color.WHITE
-	if layer.should_draw_icon(state_key):
-		tex = layer.get_icon_for_state(state_key)
-		tint = layer.get_tint_for_state(state_key)
-
-	tr.texture = tex
-	tr.modulate = tint
-
-	if not tex:
-		tr.visible = false
+func _update_layer_nodes() -> void:
+	if not design:
 		return
 
-	tr.visible = true
-
-	# --- Compute layout (matches what the old _draw() did) ---
-	var design_size: Vector2 = design.design_size
-	var effective_mode: int = layer.get_effective_render_mode()
-	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
-
-	var layer_matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
-	var effective_size: Vector2 = layer.get_size(design_size)
+	var states := _get_simulated_states()
 
 	var center: Vector2 = size * 0.5 + pan_offset
 	var base_xform := Transform2D(
@@ -261,20 +216,36 @@ func _update_texture_rect(layer: BayterekTextureLayer, states: Dictionary) -> vo
 		Vector2(0, preview_scale),
 		center
 	)
-	var combined: Transform2D = base_xform * layer_matrix
 
-	var half: Vector2 = effective_size * 0.5
+	var design_size: Vector2 = design.design_size
 
-	# Compute top-left / size in this control's coordinate space.
-	var tl: Vector2 = combined * (-half)
-	var br: Vector2 = combined * half
-	tr.position = tl
-	tr.size = br - tl
-	tr.pivot_offset = Vector2.ZERO
-	tr.rotation = 0.0
+	for layer_id in _layer_nodes.keys():
+		var ln: BayterekLayerNode = _layer_nodes[layer_id]
+		if not is_instance_valid(ln):
+			continue
+		var layer: BayterekTextureLayer = ln.layer
+		if not layer:
+			continue
+
+		var state_key: String = layer.get_visual_state(states)
+		ln.set_state(state_key)
+
+		var effective_mode: int = layer.get_effective_render_mode()
+		var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
+		ln.update(design_size, pixel_mode)
+
+		# Compose base preview transform with layer matrix.
+		ln.transform = base_xform * layer.get_matrix(design_size, pixel_mode)
+
+		# z-order
+		var layer_index: int = design.layers.find(layer)
+		if layer_index < 0:
+			layer_index = 0
+		ln.z_index = layer_index
 
 # ============================================================
-# DRAW (shapes only — textures live in child TextureRects)
+# DRAW (shapes only)
 # ============================================================
 
 func _draw() -> void:

@@ -7,7 +7,17 @@ const DEFAULT_MAIN_SPLIT := 220
 const DEFAULT_RIGHT_SPLIT := -280
 const COLLAPSED_MAIN_SPLIT := 0
 
+## Emitted whenever the user switches to a different design.
+signal design_changed(design: BayterekNodeDesign)
+
+## Emitted whenever a design category changes (rename, etc.).
 signal design_category_changed
+
+## Emitted whenever the *current* design becomes dirty or clean.
+signal dirty_changed(dirty: bool)
+
+## Delay before an autosave fires (ms).
+const AUTOSAVE_DEBOUNCE_MS := 600
 
 var _main_split: HSplitContainer
 var _right_split: HSplitContainer
@@ -19,6 +29,10 @@ var _current_design: BayterekNodeDesign = null
 
 var _last_expanded_offset: int = DEFAULT_MAIN_SPLIT
 
+# --- Dirty / autosave state ---
+var _dirty: bool = false
+var _autosave_timer: Timer = null
+
 func _ready() -> void:
 	add_theme_constant_override("margin_left", 4)
 	add_theme_constant_override("margin_top", 4)
@@ -26,6 +40,13 @@ func _ready() -> void:
 	add_theme_constant_override("margin_bottom", 4)
 	size_flags_horizontal = SIZE_EXPAND_FILL
 	size_flags_vertical = SIZE_EXPAND_FILL
+
+	_autosave_timer = Timer.new()
+	_autosave_timer.one_shot = true
+	_autosave_timer.wait_time = AUTOSAVE_DEBOUNCE_MS / 1000.0
+	_autosave_timer.timeout.connect(_on_autosave_timeout)
+	add_child(_autosave_timer)
+
 	_build_ui()
 
 func _build_ui() -> void:
@@ -59,7 +80,7 @@ func _build_ui() -> void:
 	_layer_editor.visible = false
 	middle_stack.add_child(_layer_editor)
 	_layer_editor.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_layer_editor.changed.connect(func(): _preview_panel.refresh())
+	_layer_editor.changed.connect(_on_layer_editor_changed)
 
 	_empty_label = Label.new()
 	_empty_label.text = "Select a design from the left, or create a new one."
@@ -81,11 +102,71 @@ func refresh() -> void:
 		_design_list.refresh()
 
 # ============================================================
+# DIRTY / AUTOSAVE
+# ============================================================
+
+## Marks the current design as dirty and (re)starts the autosave timer.
+## Called whenever the layer editor reports a change.
+func _on_layer_editor_changed() -> void:
+	if not _current_design:
+		return
+	mark_dirty()
+
+func mark_dirty() -> void:
+	if not _dirty:
+		_dirty = true
+		dirty_changed.emit(true)
+
+	# Restart debounced autosave.
+	if _autosave_timer:
+		_autosave_timer.stop()
+		_autosave_timer.start()
+
+## Returns true if the current design has unsaved changes.
+func is_dirty() -> bool:
+	return _dirty
+
+## Returns the currently-edited design (or null).
+func get_current_design() -> BayterekNodeDesign:
+	return _current_design
+
+## Forces an immediate save (bypasses the debounce).
+func save_now() -> void:
+	if _autosave_timer:
+		_autosave_timer.stop()
+	_flush_save()
+
+func _on_autosave_timeout() -> void:
+	_flush_save()
+
+func _flush_save() -> void:
+	if not _dirty:
+		return
+	if not _current_design:
+		_dirty = false
+		dirty_changed.emit(false)
+		return
+
+	var err: Error = BayterekDesignService.save_design(_current_design)
+	if err != OK:
+		push_warning("[Bayterek] Autosave failed for design '%s' (err=%d)" % [_current_design.name, err])
+		return
+
+	_dirty = false
+	dirty_changed.emit(false)
+
+# ============================================================
 # CALLBACKS
 # ============================================================
 
 func _on_design_selected(design: BayterekNodeDesign) -> void:
+	# If the current design has unsaved changes, save before switching.
+	if _dirty and _current_design and _current_design != design:
+		save_now()
+
 	_current_design = design
+	design_changed.emit(design)
+
 	if design:
 		_layer_editor.visible = true
 		_empty_label.visible = false
@@ -96,6 +177,10 @@ func _on_design_selected(design: BayterekNodeDesign) -> void:
 		_empty_label.visible = true
 		_layer_editor.set_design(null)
 		_preview_panel.set_design(null)
+
+	# Newly selected design starts clean.
+	_dirty = false
+	dirty_changed.emit(false)
 
 func _on_design_list_collapsed_changed(collapsed: bool) -> void:
 	if not _main_split:

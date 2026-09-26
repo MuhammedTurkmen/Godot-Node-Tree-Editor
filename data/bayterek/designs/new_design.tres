@@ -1,22 +1,23 @@
 [gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://cs1hc4ww5gsk6"]
 
 [ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="1_a6nu6"]
-[ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://assets/icon.svg" id="2_3ujw7"]
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="3_paddw"]
 [ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="3_u1mso"]
 [ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="4_u1mso"]
-[ext_resource type="Texture2D" uid="uid://bad5qhdfe60r3" path="res://assets/big_border.png" id="5_paddw"]
+[ext_resource type="Texture2D" uid="uid://ccrvoxhv3c5d0" path="res://assets/Icon.png" id="5_joamw"]
+[ext_resource type="Texture2D" uid="uid://c4dwqfi5il0dh" path="res://assets/Border1px.png" id="6_u1mso"]
+[ext_resource type="Texture2D" uid="uid://bkkoqrayg42dr" path="res://assets/BorderInner3px.png" id="7_joamw"]
 
-[sub_resource type="Resource" id="Resource_u1mso"]
+[sub_resource type="Resource" id="Resource_8ioaj"]
 script = ExtResource("3_paddw")
-size = Vector2(100, 100)
+size = Vector2(32, 32)
 
-[sub_resource type="Resource" id="Resource_pcukm"]
+[sub_resource type="Resource" id="Resource_wjuy6"]
 script = ExtResource("3_u1mso")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("5_paddw")
+"texture": ExtResource("7_joamw")
 }
 }
 tint_enabled = true
@@ -27,22 +28,22 @@ tint_configs = {
 },
 "clicked": {
 "color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": true
+"enabled": false
 },
 "hover": {
 "color": Color(1, 0.8509804, 0.4, 1),
-"enabled": true
+"enabled": false
 },
 "locked": {
 "color": Color(0.4, 0.4, 0.4, 1),
 "enabled": false
 },
 "max_level": {
-"color": Color(0.9930115, 0.10546875, 1, 1),
+"color": Color(1, 0.72448474, 0.13671875, 1),
 "enabled": true
 },
 "normal": {
-"color": Color(0.49803922, 0.72156864, 1, 1),
+"color": Color(0, 0.4453125, 1, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -58,21 +59,25 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "c2620033-590a-42d1-a3cb-737a4740b482"
-layer_name = "Border"
-transform = SubResource("Resource_u1mso")
+nine_patch_margin_left = 5
+nine_patch_margin_top = 5
+nine_patch_margin_right = 5
+nine_patch_margin_bottom = 5
+layer_id = "1debcfb8-b60f-4de4-aca5-d97499da13f0"
+layer_name = "InnerBorder"
+transform = SubResource("Resource_8ioaj")
 texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_joamw"]
 script = ExtResource("3_paddw")
-size = Vector2(85, 85)
+size = Vector2(32, 32)
 
 [sub_resource type="Resource" id="Resource_5qdsx"]
 script = ExtResource("3_u1mso")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("2_3ujw7")
+"texture": ExtResource("5_joamw")
 }
 }
 tint_configs = {
@@ -113,7 +118,6 @@ tint_configs = {
 "enabled": false
 }
 }
-stretch_mode = 3
 nine_patch_margin_left = 15
 nine_patch_margin_top = 15
 nine_patch_margin_right = 15
@@ -122,10 +126,70 @@ layer_id = "f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f"
 layer_name = "Icon"
 transform = SubResource("Resource_joamw")
 render_mode_override = 1
-texture_filter_override = 1
+texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_u1mso"]
+script = ExtResource("3_paddw")
+size = Vector2(32, 32)
+
+[sub_resource type="Resource" id="Resource_pcukm"]
+script = ExtResource("3_u1mso")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("6_u1mso")
+}
+}
+tint_enabled = true
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": true
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": true
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(0.9930115, 0.10546875, 1, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0, 0, 0, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+nine_patch_margin_left = 3
+nine_patch_margin_top = 3
+nine_patch_margin_right = 3
+nine_patch_margin_bottom = 3
+layer_id = "c2620033-590a-42d1-a3cb-737a4740b482"
+layer_name = "OuterBorder"
+transform = SubResource("Resource_u1mso")
+texture_filter_override = 2
 
 [resource]
 script = ExtResource("4_u1mso")
 id = "new_design"
 name = "TestButton"
-layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_pcukm"), SubResource("Resource_5qdsx")])
+layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_wjuy6"), SubResource("Resource_5qdsx"), SubResource("Resource_pcukm")])

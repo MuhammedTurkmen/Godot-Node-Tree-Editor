@@ -2,6 +2,11 @@
 class_name BayterekNodeButton
 extends BaseButton
 ## On-canvas visual representation of a node.
+##
+## Shape layers are drawn in _draw().
+## Texture layers are rendered by child BayterekLayerNode instances so
+## that per-layer filter, transform (rotation/skew/scale/pivot), and
+## nine-patch modes all work correctly.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -32,6 +37,10 @@ var is_allocatable: bool = false
 
 var _select_border: Panel
 var _crown_label: Label
+var _texture_layer_root: Node2D
+
+## layer_id -> BayterekLayerNode
+var _layer_nodes: Dictionary = {}
 
 var _is_dragging: bool = false
 var _press_pos: Vector2 = Vector2.ZERO
@@ -81,6 +90,10 @@ func _ready() -> void:
 	_build_children()
 
 func _build_children() -> void:
+	_texture_layer_root = Node2D.new()
+	_texture_layer_root.name = "TextureLayerRoot"
+	add_child(_texture_layer_root)
+
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -163,38 +176,32 @@ func refresh_visuals() -> void:
 	if _select_border:
 		_select_border.visible = selected
 
+	_rebuild_layer_nodes()
 	queue_redraw()
 
 func rebuild_from_design() -> void:
 	_design_applied = false
 	refresh_visuals()
 
-## Sadece hover durumu değiştiğinde çağrılır. Boyut, filter veya
-## design apply yapmaz — sadece state cache'ini günceller ve redraw eder.
 func refresh_hover_only() -> void:
 	if not node_data:
 		return
 	_recompute_active_states()
+	_update_layer_nodes()
 	queue_redraw()
 
-## Sadece selection değiştiğinde çağrılır. Border zaten ayrı bir Panel,
-## _draw()'ı etkilemez. Bu yüzden queue_redraw() çağrılmaz.
 func refresh_selection_only() -> void:
 	if _select_border:
 		_select_border.visible = selected
 
-## Sadece allocation state değiştiğinde çağrılır. Boyut ve filter
-## değişmez, sadece state cache'i ve redraw.
 func refresh_state_only() -> void:
 	if not node_data:
 		return
 	_recompute_active_states()
+	_update_layer_nodes()
 	queue_redraw()
 
 func _apply_texture_filter() -> void:
-	# Per-layer filter artık _draw_texture_layer() içinde çizim anında
-	# uygulanıyor. Burada sadece node'un DEFAULT filter'ını set ediyoruz;
-	# INHERIT olan layer'lar ve shape layer'lar bunu kullanır.
 	if not node_data:
 		return
 
@@ -207,7 +214,6 @@ func _sync_size_with_design() -> void:
 	if not node_data:
 		return
 
-	# Size the node to fit the LARGEST visible layer's bounding box.
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var target: Vector2 = visual_bounds.size * node_data.scale
 
@@ -230,7 +236,102 @@ func set_selected(value: bool) -> void:
 	refresh_selection_only()
 
 # ============================================================
-# DRAW
+# LAYER NODES
+# ============================================================
+
+func _rebuild_layer_nodes() -> void:
+	if not _texture_layer_root:
+		return
+	if not node_data:
+		for ln in _layer_nodes.values():
+			if is_instance_valid(ln):
+				ln.queue_free()
+		_layer_nodes.clear()
+		return
+
+	# Set of layer_ids that should have a live child node.
+	var valid_ids: Dictionary = {}
+	for layer in node_data.layers:
+		if layer is BayterekTextureLayer and layer.visible:
+			valid_ids[layer.layer_id] = true
+
+	# Remove obsolete.
+	for layer_id in _layer_nodes.keys():
+		if not valid_ids.has(layer_id):
+			var ln: BayterekLayerNode = _layer_nodes[layer_id]
+			if is_instance_valid(ln):
+				ln.queue_free()
+			_layer_nodes.erase(layer_id)
+
+	# Create/update.
+	for layer in node_data.layers:
+		if not layer or not layer.visible:
+			continue
+		if not (layer is BayterekTextureLayer):
+			continue
+
+		var ln: BayterekLayerNode = _layer_nodes.get(layer.layer_id, null)
+		if not ln or not is_instance_valid(ln):
+			ln = BayterekLayerNode.new()
+			ln.name = "LayerNode_%s" % layer.layer_id
+			_texture_layer_root.add_child(ln)
+			_layer_nodes[layer.layer_id] = ln
+
+		ln.set_layer(layer)
+
+	_update_layer_nodes()
+
+func _update_layer_nodes() -> void:
+	if not node_data:
+		return
+
+	# Base transform: center the node's visual bounds on the node's rect.
+	var design_size: Vector2 = node_data.design_size
+	var node_scale: Vector2 = node_data.scale
+
+	var visual_bounds: Rect2 = node_data.get_visual_bounds()
+	var bounds_center: Vector2 = visual_bounds.position + visual_bounds.size * 0.5
+
+	var node_rect_center: Vector2 = size * 0.5
+	var base_xform := Transform2D(
+		Vector2(node_scale.x, 0.0),
+		Vector2(0.0, node_scale.y),
+		node_rect_center - bounds_center * node_scale
+	)
+
+	for layer_id in _layer_nodes.keys():
+		var ln: BayterekLayerNode = _layer_nodes[layer_id]
+		if not is_instance_valid(ln):
+			continue
+		var layer: BayterekTextureLayer = ln.layer
+		if not layer:
+			continue
+
+		var state_key: String = layer.get_visual_state(_active_states)
+		ln.set_state(state_key)
+
+		var effective_mode: int = layer.get_effective_render_mode()
+		var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
+		# Set the layer node's transform to base_xform * layer_matrix
+		# This is done inside `update()`; but `update()` computes its
+		# own transform from layer_matrix only. We need to compose.
+		# Simplest: set _texture_layer_root's transform to base_xform,
+		# then each layer node's transform to layer_matrix.
+		# But base_xform is per-node, so we set it once on the root.
+		ln.update(design_size, pixel_mode)
+
+		# Apply base transform on top
+		ln.transform = base_xform * ln.layer.get_matrix(design_size, pixel_mode)
+
+		# z-order
+		var layer_index: int = node_data.layers.find(layer)
+		if layer_index < 0:
+			layer_index = 0
+		ln.z_index = layer_index
+
+# ============================================================
+# DRAW (shapes only — textures live in child nodes)
 # ============================================================
 
 func _draw() -> void:
@@ -240,7 +341,6 @@ func _draw() -> void:
 	var design_size: Vector2 = node_data.design_size
 	var node_scale: Vector2 = node_data.scale
 
-	# Recenter: shift the visual bounds' center to the node rect's center.
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var bounds_center: Vector2 = visual_bounds.position + visual_bounds.size * 0.5
 
@@ -254,9 +354,11 @@ func _draw() -> void:
 	for layer in node_data.layers:
 		if not layer or not layer.visible:
 			continue
-		_draw_layer(layer, design_size, scale_transform)
+		if not (layer is BayterekShapeLayer):
+			continue
+		_draw_shape_layer_by_state(layer, design_size, scale_transform)
 
-func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transform2D) -> void:
+func _draw_shape_layer_by_state(layer: BayterekShapeLayer, design_size: Vector2, base_xform: Transform2D) -> void:
 	var state_key: String = layer.get_visual_state(_active_states)
 
 	var effective_mode: int = layer.get_effective_render_mode()
@@ -265,23 +367,6 @@ func _draw_layer(layer: BayterekLayer, design_size: Vector2, base_xform: Transfo
 	var layer_matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
 	var effective_size: Vector2 = layer.get_size(design_size)
 
-	if layer is BayterekShapeLayer:
-		_draw_shape_layer(layer, state_key, effective_size, layer_matrix, base_xform, pixel_mode)
-	elif layer is BayterekTextureLayer:
-		_draw_texture_layer(layer, state_key, effective_size, layer_matrix, base_xform, pixel_mode)
-
-# ============================================================
-# SHAPE DRAWING
-# ============================================================
-
-func _draw_shape_layer(
-	layer: BayterekShapeLayer,
-	state_key: String,
-	effective_size: Vector2,
-	layer_matrix: Transform2D,
-	base_xform: Transform2D,
-	pixel_mode: bool
-) -> void:
 	if pixel_mode and layer.is_axis_aligned():
 		_draw_shape_pixel_scanline(layer, state_key, effective_size, layer_matrix, base_xform)
 		return
@@ -457,167 +542,6 @@ func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Arr
 			dir = dir.normalized()
 		out[i] = v + dir * offset
 	return out
-
-# ============================================================
-# TEXTURE DRAWING (icon layer)
-# ============================================================
-
-func _draw_texture_layer(
-	layer: BayterekTextureLayer,
-	state_key: String,
-	effective_size: Vector2,
-	layer_matrix: Transform2D,
-	base_xform: Transform2D,
-	pixel_mode: bool
-) -> void:
-
-	# --- DEBUG PRINT ---
-	if layer is BayterekTextureLayer:
-		var tint_cfg = layer.tint_configs
-		print(("[MAXLEVEL-CHECK] node_id=%d allocation_level=%d max_allocations=%d allocated=%s " +
-			"max_level_flag=%s " +
-			"tint_enabled=%s " +
-			"tint_max_enabled=%s tint_max_color=%s " +
-			"tint_normal_enabled=%s tint_normal_color=%s " +
-			"state_key=%s") % [
-			node_data.id if node_data else -1,
-			allocation_level,
-			node_data.max_allocations if node_data else -1,
-			str(allocated),
-			str(_active_states.get("max_level", false)),
-			str(layer.tint_enabled),
-			str(tint_cfg.get("max_level", {}).get("enabled", false)),
-			str(tint_cfg.get("max_level", {}).get("color", Color.WHITE)),
-			str(tint_cfg.get("normal", {}).get("enabled", false)),
-			str(tint_cfg.get("normal", {}).get("color", Color.WHITE)),
-			state_key,
-		])
-	# --- END DEBUG PRINT ---
-
-	if not layer.should_draw_icon(state_key):
-		return
-
-	var tex: Texture2D = layer.get_icon_for_state(state_key)
-	if not tex:
-		return
-
-	var tint: Color = layer.get_tint_for_state(state_key)
-	var combined: Transform2D = base_xform * layer_matrix
-
-	var half: Vector2 = effective_size * 0.5
-
-	# --- Per-layer texture filter override ---
-	var saved_filter: int = texture_filter
-	if layer.texture_filter_override != BayterekLayer.TextureFilterOverride.INHERIT:
-		var eff: int = layer.get_effective_texture_filter()
-		texture_filter = (
-			CanvasItem.TEXTURE_FILTER_NEAREST if eff == 1
-			else CanvasItem.TEXTURE_FILTER_LINEAR
-		)
-
-	if pixel_mode and layer.is_axis_aligned():
-		var tl_world: Vector2 = combined * (-half)
-		var br_world: Vector2 = combined * half
-		var dst_pos: Vector2 = tl_world.floor()
-		var dst_size: Vector2 = (br_world - tl_world).floor()
-		draw_set_transform_matrix(Transform2D.IDENTITY)
-		draw_texture_rect(tex, Rect2(dst_pos, dst_size), false, tint)
-		texture_filter = saved_filter
-		return
-
-	draw_set_transform_matrix(combined)
-	_draw_texture_in_box(tex, Rect2(-half, effective_size), tint, layer)
-	draw_set_transform_matrix(Transform2D.IDENTITY)
-
-	texture_filter = saved_filter
-
-func _draw_texture_in_box(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
-	if not tex:
-		return
-
-	match layer.stretch_mode:
-		BayterekTextureLayer.StretchMode.NINE_PATCH:
-			_draw_nine_patch(tex, target, tint, layer)
-		BayterekTextureLayer.StretchMode.TILE:
-			draw_texture_rect(tex, target, true, tint)
-		BayterekTextureLayer.StretchMode.KEEP_ASPECT:
-			_draw_texture_keep_aspect(tex, target, tint)
-		_:
-			draw_texture_rect(tex, target, false, tint)
-
-func _draw_nine_patch(tex: Texture2D, target: Rect2, tint: Color, layer: BayterekTextureLayer) -> void:
-	var tex_size: Vector2 = tex.get_size()
-	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
-		return
-
-	var l: float = float(layer.nine_patch_margin_left)
-	var t: float = float(layer.nine_patch_margin_top)
-	var r: float = float(layer.nine_patch_margin_right)
-	var b: float = float(layer.nine_patch_margin_bottom)
-
-	if l + r > tex_size.x:
-		var sx: float = tex_size.x / (l + r)
-		l *= sx
-		r *= sx
-	if t + b > tex_size.y:
-		var sy: float = tex_size.y / (t + b)
-		t *= sy
-		b *= sy
-
-	var target_l: float = target.position.x
-	var target_t: float = target.position.y
-	var target_r: float = target.position.x + target.size.x
-	var target_b: float = target.position.y + target.size.y
-
-	var mid_x0: float = target_l + l
-	var mid_x1: float = target_r - r
-	var mid_y0: float = target_t + t
-	var mid_y1: float = target_b - b
-
-	var src_mid_x0: float = l
-	var src_mid_x1: float = tex_size.x - r
-	var src_mid_y0: float = t
-	var src_mid_y1: float = tex_size.y - b
-
-	_draw_patch(tex, Rect2(target_l, target_t, mid_x0 - target_l, mid_y0 - target_t),
-		Rect2(0, 0, src_mid_x0, src_mid_y0), tint)
-	_draw_patch(tex, Rect2(mid_x0, target_t, mid_x1 - mid_x0, mid_y0 - target_t),
-		Rect2(src_mid_x0, 0, src_mid_x1 - src_mid_x0, src_mid_y0), tint)
-	_draw_patch(tex, Rect2(mid_x1, target_t, target_r - mid_x1, mid_y0 - target_t),
-		Rect2(src_mid_x1, 0, tex_size.x - src_mid_x1, src_mid_y0), tint)
-
-	_draw_patch(tex, Rect2(target_l, mid_y0, mid_x0 - target_l, mid_y1 - mid_y0),
-		Rect2(0, src_mid_y0, src_mid_x0, src_mid_y1 - src_mid_y0), tint)
-	if layer.nine_patch_draw_center:
-		_draw_patch(tex, Rect2(mid_x0, mid_y0, mid_x1 - mid_x0, mid_y1 - mid_y0),
-			Rect2(src_mid_x0, src_mid_y0, src_mid_x1 - src_mid_x0, src_mid_y1 - src_mid_y0), tint)
-	_draw_patch(tex, Rect2(mid_x1, mid_y0, target_r - mid_x1, mid_y1 - mid_y0),
-		Rect2(src_mid_x1, src_mid_y0, tex_size.x - src_mid_x1, src_mid_y1 - src_mid_y0), tint)
-
-	_draw_patch(tex, Rect2(target_l, mid_y1, mid_x0 - target_l, target_b - mid_y1),
-		Rect2(0, src_mid_y1, src_mid_x0, tex_size.y - src_mid_y1), tint)
-	_draw_patch(tex, Rect2(mid_x0, mid_y1, mid_x1 - mid_x0, target_b - mid_y1),
-		Rect2(src_mid_x0, src_mid_y1, src_mid_x1 - src_mid_x0, tex_size.y - src_mid_y1), tint)
-	_draw_patch(tex, Rect2(mid_x1, mid_y1, target_r - mid_x1, target_b - mid_y1),
-		Rect2(src_mid_x1, src_mid_y1, tex_size.x - src_mid_x1, tex_size.y - src_mid_y1), tint)
-
-func _draw_patch(tex: Texture2D, target: Rect2, src: Rect2, tint: Color) -> void:
-	if target.size.x <= 0.0 or target.size.y <= 0.0:
-		return
-	if src.size.x <= 0.0 or src.size.y <= 0.0:
-		return
-	draw_texture_rect_region(tex, target, src, tint)
-
-func _draw_texture_keep_aspect(tex: Texture2D, target: Rect2, tint: Color) -> void:
-	var tex_size: Vector2 = tex.get_size()
-	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
-		return
-	var scale_x: float = target.size.x / tex_size.x
-	var scale_y: float = target.size.y / tex_size.y
-	var s: float = minf(scale_x, scale_y)
-	var draw_size: Vector2 = tex_size * s
-	var draw_pos: Vector2 = target.position + (target.size - draw_size) * 0.5
-	draw_texture_rect(tex, Rect2(draw_pos, draw_size), false, tint)
 
 # ============================================================
 # INPUT / DRAG
