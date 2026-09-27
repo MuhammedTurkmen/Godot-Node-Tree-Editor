@@ -4,9 +4,9 @@
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="3_paddw"]
 [ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="3_u1mso"]
 [ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="4_u1mso"]
-[ext_resource type="Texture2D" uid="uid://ccrvoxhv3c5d0" path="res://assets/Icon.png" id="5_joamw"]
-[ext_resource type="Texture2D" uid="uid://c4dwqfi5il0dh" path="res://assets/Border1px.png" id="6_u1mso"]
-[ext_resource type="Texture2D" uid="uid://bkkoqrayg42dr" path="res://assets/BorderInner3px.png" id="7_joamw"]
+[ext_resource type="Texture2D" uid="uid://ccrvoxhv3c5d0" path="res://assets/button_icon.png" id="5_joamw"]
+[ext_resource type="Texture2D" uid="uid://c4dwqfi5il0dh" path="res://assets/border1px.png" id="6_u1mso"]
+[ext_resource type="Texture2D" uid="uid://bkkoqrayg42dr" path="res://assets/border_inner3px.png" id="7_joamw"]
 
 [sub_resource type="Resource" id="Resource_8ioaj"]
 script = ExtResource("3_paddw")

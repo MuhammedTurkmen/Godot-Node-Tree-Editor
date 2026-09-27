@@ -5,11 +5,11 @@
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_k1nh3"]
 [ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="3_x1plc"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="4_ak1rv"]
-[ext_resource type="Texture2D" uid="uid://ccrvoxhv3c5d0" path="res://assets/Icon.png" id="4_qlprm"]
+[ext_resource type="Texture2D" uid="uid://bkkoqrayg42dr" path="res://assets/border_inner3px.png" id="4_x1plc"]
 [ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="5_qlprm"]
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="6_6p5mu"]
-[ext_resource type="Texture2D" uid="uid://bkkoqrayg42dr" path="res://assets/BorderInner3px.png" id="7_6p5mu"]
-[ext_resource type="Texture2D" uid="uid://c4dwqfi5il0dh" path="res://assets/Border1px.png" id="8_5lgyx"]
+[ext_resource type="Texture2D" uid="uid://ccrvoxhv3c5d0" path="res://assets/button_icon.png" id="7_royti"]
+[ext_resource type="Texture2D" uid="uid://c4dwqfi5il0dh" path="res://assets/border1px.png" id="8_qlprm"]
 
 [sub_resource type="Resource" id="Resource_safsq"]
 script = ExtResource("2_3oq2p")
@@ -26,7 +26,7 @@ script = ExtResource("5_qlprm")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("7_6p5mu")
+"texture": ExtResource("4_x1plc")
 }
 }
 tint_enabled = true
@@ -86,7 +86,7 @@ script = ExtResource("5_qlprm")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("4_qlprm")
+"texture": ExtResource("7_royti")
 }
 }
 tint_configs = {
@@ -146,7 +146,7 @@ script = ExtResource("5_qlprm")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("8_5lgyx")
+"texture": ExtResource("8_qlprm")
 }
 }
 tint_enabled = true
