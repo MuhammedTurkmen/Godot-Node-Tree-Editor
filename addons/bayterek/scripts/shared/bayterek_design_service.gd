@@ -101,26 +101,6 @@ static func create_design(base_name: String = "New Design", category: String = "
 	design.design_size = Vector2(100, 100)
 	design.scale = Vector2.ONE
 
-	var shape := BayterekShapeLayer.new()
-	shape.layer_name = "Background"
-	shape.shape_type = BayterekShapeLayer.ShapeType.SQUARE
-	shape.transform.size = design.design_size
-	shape.corner_radius = design.design_size.x * 0.15
-	shape.fill_enabled = true
-	shape.border_enabled = true
-	shape.border_width = 2.0
-
-	shape.fill_configs["normal"] = {
-		"enabled": true,
-		"color": Color(0.4, 0.7, 1.0, 1.0),
-	}
-	shape.border_configs["normal"] = {
-		"enabled": true,
-		"color": Color(1.0, 1.0, 1.0, 1.0),
-	}
-
-	design.add_layer(shape)
-
 	var err: Error = Bayterek.safe_save(design, file_path)
 	if err != OK:
 		BayterekLogger.error("Could not save design (%d): %s" % [err, file_path], "designs")

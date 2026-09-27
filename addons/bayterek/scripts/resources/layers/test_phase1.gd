@@ -55,27 +55,20 @@ static func run_all() -> void:
 	else:
 		push_error("Some tests failed — see above.")
 
-	# Clean up test artifacts so the editor's resource cache doesn't
-	# trip over a missing file on the next idle frame.
 	_cleanup_test_files()
 
 # ============================================================
 # CLEANUP
 # ============================================================
 
-## Removes temporary files created by the test suite and asks the
-## editor to re-scan so its resource cache evicts stale entries.
 static func _cleanup_test_files() -> void:
-	# Phase 1 round-trip file.
 	if FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
 
-	# UID sidecar if it was created.
 	var uid_path: String = SAVE_PATH + ".uid"
 	if FileAccess.file_exists(uid_path):
 		DirAccess.remove_absolute(uid_path)
 
-	# Serializer test fixture (created by test_serializer.gd).
 	var serializer_tree := "res://addons/bayterek/test_fixtures/serializer_test_tree.tres"
 	if FileAccess.file_exists(serializer_tree):
 		DirAccess.remove_absolute(serializer_tree)
@@ -83,12 +76,10 @@ static func _cleanup_test_files() -> void:
 	if FileAccess.file_exists(serializer_uid):
 		DirAccess.remove_absolute(serializer_uid)
 
-	# Serializer save file.
 	var serializer_save := "user://bayterek_serializer_test.tree"
 	if FileAccess.file_exists(serializer_save):
 		DirAccess.remove_absolute(serializer_save)
 
-	# Ask the editor to re-scan so its cache forgets the deleted .tres.
 	if Engine.is_editor_hint():
 		EditorInterface.get_resource_filesystem().scan()
 
@@ -131,7 +122,6 @@ static func _run_copy_paste() -> bool:
 # LEGACY ENTRY POINT
 # ============================================================
 
-## Old entry point — runs the master suite.
 static func run() -> void:
 	run_all()
 
@@ -144,7 +134,6 @@ static func _run_phase1_internal() -> bool:
 	var ok: bool = true
 
 	ok = _test_transform() and ok
-	ok = _test_shape_layer() and ok
 	ok = _test_texture_layer() and ok
 	ok = _test_node_layers() and ok
 	ok = _test_prefab_layers() and ok
@@ -190,54 +179,6 @@ static func _test_transform() -> bool:
 	return true
 
 # ============================================================
-# SHAPE LAYER
-# ============================================================
-
-static func _test_shape_layer() -> bool:
-	print("--- Shape Layer ---")
-	var layer := BayterekShapeLayer.new()
-	assert(layer.shape_type == BayterekShapeLayer.ShapeType.CIRCLE)
-	assert(layer.fill_enabled)
-	assert(layer.fill_configs.has("normal"))
-
-	var node_states := {
-		"normal": true, "hover": false, "locked": false,
-		"preallocated": false, "prerefund": false, "max_level": false,
-		"allocateable": false, "not_allocateable": false,
-	}
-
-	var key: String = layer.get_visual_state(node_states)
-	assert(key == "normal")
-	var c: Color = layer.get_fill_color_for_state(key)
-	assert(c.a > 0.0)
-
-	layer.set_fill_config("hover", true, Color.RED)
-	node_states["hover"] = true
-	key = layer.get_visual_state(node_states)
-	assert(key == "hover")
-	assert(layer.get_fill_color_for_state(key) == Color.RED)
-
-	# Circle polygon: segment count comes from Bayterek.CIRCLE_SEGMENTS.
-	var verts: PackedVector2Array = layer.get_polygon_vertices(Vector2(100, 100))
-	assert(verts.size() == Bayterek.CIRCLE_SEGMENTS)
-
-	# Square: exactly 4 corners (no corner radius by default).
-	layer.shape_type = BayterekShapeLayer.ShapeType.SQUARE
-	layer.corner_radius = 0.0
-	verts = layer.get_polygon_vertices(Vector2(100, 100))
-	assert(verts.size() == 4)
-
-	# Duplicate deep-copies fill_configs.
-	var copy = layer.duplicate_layer()
-	assert(copy is BayterekShapeLayer)
-	assert(copy.fill_configs.has("hover"))
-	copy.fill_configs["hover"]["color"] = Color.BLUE
-	assert(layer.fill_configs["hover"]["color"] == Color.RED)
-
-	print("  shape layer OK")
-	return true
-
-# ============================================================
 # TEXTURE LAYER
 # ============================================================
 
@@ -279,13 +220,13 @@ static func _test_node_layers() -> bool:
 	assert(node.get_layer_count() == 0)
 
 	for i in 6:
-		var s := BayterekShapeLayer.new()
-		s.layer_name = "L%d" % i
-		assert(node.add_layer(s))
+		var t := BayterekTextureLayer.new()
+		t.layer_name = "L%d" % i
+		assert(node.add_layer(t))
 	assert(node.get_layer_count() == 6)
 	assert(not node.can_add_layer())
 
-	var extra := BayterekShapeLayer.new()
+	var extra := BayterekTextureLayer.new()
 	assert(not node.add_layer(extra))
 
 	var removed = node.remove_layer(0)
@@ -327,9 +268,6 @@ static func _test_node_layers() -> bool:
 # ============================================================
 # PREFAB LAYERS
 # ============================================================
-# NOTE: BayterekPrefab does NOT emit `layers_changed` — that signal
-# lives on BayterekNodeDesign. This test verifies the prefab's
-# attribute side effects instead.
 
 static func _test_prefab_layers() -> bool:
 	print("--- Prefab Layers ---")
@@ -373,14 +311,6 @@ static func _test_round_trip() -> bool:
 	node.design_size = Vector2(200, 200)
 	node.scale = Vector2(0.5, 0.5)
 
-	var shape := BayterekShapeLayer.new()
-	shape.layer_name = "Background"
-	shape.shape_type = BayterekShapeLayer.ShapeType.HEXAGON
-	shape.set_fill_config("hover", true, Color(1, 0.5, 0.2, 1.0))
-	shape.transform.position = Vector2(15, -5)
-	shape.transform.rotation = 30.0
-	node.add_layer(shape)
-
 	var tex_layer := BayterekTextureLayer.new()
 	tex_layer.layer_name = "Icon"
 	tex_layer.tint_enabled = true
@@ -400,21 +330,13 @@ static func _test_round_trip() -> bool:
 	var n: BayterekNode = loaded
 	assert(n.design_size == Vector2(200, 200))
 	assert(n.scale == Vector2(0.5, 0.5))
-	assert(n.get_layer_count() == 2)
+	assert(n.get_layer_count() == 1)
 
 	var l0 = n.get_layer(0)
-	assert(l0 is BayterekShapeLayer)
-	assert(l0.layer_name == "Background")
-	assert(l0.shape_type == BayterekShapeLayer.ShapeType.HEXAGON)
-	assert(l0.fill_configs.has("hover"))
-	var hc: Color = l0.fill_configs["hover"]["color"]
-	assert(is_equal_approx(hc.r, 1.0) and is_equal_approx(hc.g, 0.5))
-	assert(l0.transform.rotation == 30.0)
-
-	var l1 = n.get_layer(1)
-	assert(l1 is BayterekTextureLayer)
-	assert(l1.tint_enabled)
-	var tc: Color = l1.tint_configs["normal"]["color"]
+	assert(l0 is BayterekTextureLayer)
+	assert(l0.layer_name == "Icon")
+	assert(l0.tint_enabled)
+	var tc: Color = l0.tint_configs["normal"]["color"]
 	assert(is_equal_approx(tc.r, 0.5))
 
 	print("  round-trip OK (saved to %s)" % SAVE_PATH)

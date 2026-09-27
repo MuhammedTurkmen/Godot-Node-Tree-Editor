@@ -75,30 +75,24 @@ static func _test_line_data_roundtrip() -> bool:
 static func _test_layer_roundtrip() -> bool:
 	print("--- Layer round-trip ---")
 
-	var layer := BayterekShapeLayer.new()
+	var layer := BayterekTextureLayer.new()
 	layer.layer_id = "layer-abc"
-	layer.layer_name = "Background"
-	layer.shape_type = BayterekShapeLayer.ShapeType.HEXAGON
-	layer.corner_radius = 8.0
-	layer.fill_configs["hover"] = {"enabled": true, "color": Color.RED}
-	layer.border_enabled = true
-	layer.border_width = 3.0
+	layer.layer_name = "Icon"
 	layer.transform.position = Vector2(10, 20)
 	layer.transform.rotation = 45.0
+	layer.tint_enabled = true
+	layer.set_tint_config("hover", true, Color.RED)
 
 	var dup = layer.duplicate_layer()
-	assert(dup is BayterekShapeLayer)
+	assert(dup is BayterekTextureLayer)
 	assert(dup.layer_id == layer.layer_id)
-	assert(dup.layer_name == "Background")
-	assert(dup.shape_type == BayterekShapeLayer.ShapeType.HEXAGON)
-	assert(dup.corner_radius == 8.0)
-	assert(dup.fill_configs["hover"]["enabled"] == true)
-	assert(dup.fill_configs["hover"]["color"] == Color.RED)
-	assert(dup.border_width == 3.0)
+	assert(dup.layer_name == "Icon")
+	assert(dup.tint_configs["hover"]["enabled"] == true)
+	assert(dup.tint_configs["hover"]["color"] == Color.RED)
 	assert(dup.transform.rotation == 45.0)
 
-	dup.fill_configs["hover"]["color"] = Color.BLUE
-	assert(layer.fill_configs["hover"]["color"] == Color.RED)
+	dup.tint_configs["hover"]["color"] = Color.BLUE
+	assert(layer.tint_configs["hover"]["color"] == Color.RED)
 
 	print("  layer OK")
 	return true

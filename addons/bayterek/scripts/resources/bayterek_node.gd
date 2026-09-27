@@ -426,9 +426,6 @@ func get_visual_size() -> Vector2:
 func clear_render_cache() -> void:
 	_visual_bounds_cache_key = ""
 	_active_states_cache_key = ""
-	for layer in layers:
-		if layer is BayterekShapeLayer:
-			layer.clear_render_cache()
 
 # ============================================================
 # ACTIVE STATE RESOLUTION

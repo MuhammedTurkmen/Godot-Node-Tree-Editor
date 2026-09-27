@@ -51,6 +51,9 @@ const STATE_PRIORITY: Array[String] = [
 @export_storage var animation_id: String = ""
 @export_storage var animated: bool = false
 
+## If true, this layer ignores the node-wide transform (rotation/skew).
+@export_storage var absolute: bool = false
+
 ## Per-layer render mode. INHERIT falls back to VECTOR.
 @export_storage var render_mode_override: RenderModeOverride = RenderModeOverride.INHERIT
 
@@ -120,6 +123,7 @@ func _copy_base_to(target: BayterekLayer) -> void:
 	target.transform = transform.duplicate_transform() if transform else BayterekLayerTransform.new()
 	target.animation_id = animation_id
 	target.animated = animated
+	target.absolute = absolute
 	target.render_mode_override = render_mode_override
 	target.texture_filter_override = texture_filter_override
 

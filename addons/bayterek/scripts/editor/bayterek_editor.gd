@@ -1914,32 +1914,14 @@ func _layer_to_dict(layer: BayterekLayer) -> Dictionary:
 	d["layer_id"] = layer.layer_id
 	d["layer_name"] = layer.layer_name
 	d["visible"] = layer.visible
+	d["absolute"] = layer.absolute
 	d["animation_id"] = layer.animation_id
 	d["animated"] = layer.animated
 	d["render_mode_override"] = int(layer.render_mode_override)
 	d["texture_filter_override"] = int(layer.texture_filter_override)
 	d["transform"] = _transform_to_dict(layer.transform)
 
-	if layer is BayterekShapeLayer:
-		d["_type"] = "shape"
-		d["shape_type"] = int(layer.shape_type)
-		d["corner_radius"] = layer.corner_radius
-		d["fill_enabled"] = layer.fill_enabled
-		d["fill_configs"] = _configs_to_dict(layer.fill_configs)
-		d["border_enabled"] = layer.border_enabled
-		d["border_width"] = layer.border_width
-		d["border_corner_gap"] = layer.border_corner_gap
-		d["border_top_enabled"] = layer.border_top_enabled
-		d["border_right_enabled"] = layer.border_right_enabled
-		d["border_bottom_enabled"] = layer.border_bottom_enabled
-		d["border_left_enabled"] = layer.border_left_enabled
-		d["border_configs"] = _configs_to_dict(layer.border_configs)
-		d["shadow_enabled"] = layer.shadow_enabled
-		d["shadow_color"] = _color_to_dict(layer.shadow_color)
-		d["shadow_size"] = {"x": layer.shadow_size.x, "y": layer.shadow_size.y}
-		d["shadow_blur"] = layer.shadow_blur
-
-	elif layer is BayterekTextureLayer:
+	if layer is BayterekTextureLayer:
 		d["_type"] = "texture"
 		d["icon_enabled"] = layer.icon_enabled
 		d["icon_configs"] = _icon_configs_to_dict(layer.icon_configs)
@@ -1998,9 +1980,7 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 	var type_str: String = d.get("_type", "")
 
 	var layer: BayterekLayer = null
-	if type_str == "shape":
-		layer = BayterekShapeLayer.new()
-	elif type_str == "texture":
+	if type_str == "texture":
 		layer = BayterekTextureLayer.new()
 	else:
 		return null
@@ -2011,6 +1991,7 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 
 	layer.layer_name = d.get("layer_name", "Layer")
 	layer.visible = d.get("visible", true)
+	layer.absolute = d.get("absolute", false)
 	layer.animation_id = d.get("animation_id", "")
 	layer.animated = d.get("animated", false)
 	var rmo = d.get("render_mode_override", int(BayterekLayer.RenderModeOverride.INHERIT))
@@ -2022,25 +2003,7 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 
 	layer.transform = _dict_to_transform(d.get("transform", {}))
 
-	if layer is BayterekShapeLayer:
-		layer.shape_type = int(d.get("shape_type", 0)) as BayterekShapeLayer.ShapeType
-		layer.corner_radius = float(d.get("corner_radius", 0.0))
-		layer.fill_enabled = d.get("fill_enabled", true)
-		layer.fill_configs = _dict_to_configs(d.get("fill_configs", {}))
-		layer.border_enabled = d.get("border_enabled", false)
-		layer.border_width = float(d.get("border_width", 2.0))
-		layer.border_corner_gap = bool(d.get("border_corner_gap", false))
-		layer.border_top_enabled = bool(d.get("border_top_enabled", true))
-		layer.border_right_enabled = bool(d.get("border_right_enabled", true))
-		layer.border_bottom_enabled = bool(d.get("border_bottom_enabled", true))
-		layer.border_left_enabled = bool(d.get("border_left_enabled", true))
-		layer.border_configs = _dict_to_configs(d.get("border_configs", {}))
-		layer.shadow_enabled = d.get("shadow_enabled", false)
-		layer.shadow_color = _dict_to_color(d.get("shadow_color", {}), Color(0, 0, 0, 0.5))
-		layer.shadow_size = _dict_to_vector2(d.get("shadow_size", {}), Vector2(4, 4))
-		layer.shadow_blur = float(d.get("shadow_blur", 0.0))
-
-	elif layer is BayterekTextureLayer:
+	if layer is BayterekTextureLayer:
 		layer.icon_enabled = d.get("icon_enabled", true)
 		layer.icon_configs = _dict_to_icon_configs(d.get("icon_configs", {}))
 		layer.tint_enabled = d.get("tint_enabled", false)

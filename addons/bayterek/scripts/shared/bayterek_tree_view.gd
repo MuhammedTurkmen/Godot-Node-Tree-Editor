@@ -19,6 +19,20 @@ signal node_deallocated(node: BayterekNode)
 signal prefab_created(prefab: BayterekPrefab)
 signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 
+# ============================================================
+# HOVER ANIMATION CONFIG
+# ============================================================
+## `hover_enter_preset` — preset played on mouse-enter (empty = disabled).
+## `hover_exit_preset`  — preset played on mouse-exit (empty = disabled).
+## `hover_animation_opts` — options forwarded to both presets.
+@export var hover_enter_preset: String = "hover_enter"
+@export var hover_exit_preset: String = "hover_exit"
+@export var hover_animation_opts: Dictionary = {
+	"lift": -8.0,
+	"rot_peak": 5.0,
+	"duration": 0.45,
+}
+
 var main_container: Control
 var background_container: Control
 var group_frames_container: Control
@@ -116,11 +130,9 @@ func scroll_to_node(node: BayterekNodeButton) -> void:
 	var viewport_size: Vector2 = size
 	var node_pos: Vector2 = node.node_data.position
 
-	# Where the node currently appears on screen (relative to view center).
 	var zoom: float = camera.get_zoom()
 	var centered_offset: Vector2 = node_pos * zoom
 
-	# If the node is well inside the viewport, do nothing.
 	var safe_margin: Vector2 = viewport_size * 0.15
 	var half: Vector2 = viewport_size * 0.5
 	var screen_pos: Vector2 = half + centered_offset
@@ -130,7 +142,6 @@ func scroll_to_node(node: BayterekNodeButton) -> void:
 	if inside_x and inside_y:
 		return
 
-	# Otherwise gently re-center on the node, preserving zoom.
 	camera.focus_on(node_pos, zoom)
 
 # ============================================================
@@ -231,10 +242,23 @@ func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
 	if is_hovered:
 		_hovered_node = node
 		_tooltip.inspect(node)
+
+		# Play hover-enter animation (lift + rotate, stays lifted).
+		if not hover_enter_preset.is_empty() and node.has_method("play_animation"):
+			node.play_animation(hover_enter_preset, hover_animation_opts)
 	else:
 		if _hovered_node == node:
 			_hovered_node = null
 		_tooltip.reset()
+
+		# Play hover-exit animation (descend, no rotation).
+		# NOTE: we deliberately call play_animation instead of
+		# stop_animation so the return-trip animation runs.
+		if not hover_exit_preset.is_empty() and node.has_method("play_animation"):
+			node.play_animation(hover_exit_preset, hover_animation_opts)
+		elif node.has_method("stop_animation"):
+			# Fallback: no exit preset configured → snap back.
+			node.stop_animation()
 
 func refresh_tooltip_position() -> void:
 	if _tooltip and _tooltip.visible and _hovered_node:
@@ -666,12 +690,6 @@ func _create_background() -> void:
 	texture_rect.visible = _tree_data.bg_texture != null
 	background_container.add_child(texture_rect)
 
-	# --- Grid ---
-	# Grid, background_container'ın İÇİNE eklenir. Böylece:
-	#   1. Grid, arka plan renginin ÜSTÜNDE çizilir (ColorRect'ten sonra).
-	#   2. Grid, node'ların ALTINDA kalır (background_container, node
-	#      container'larından önce eklenir).
-	# Bu, hem görünürlüğü hem doğru z-order'ı sağlar.
 	grid = BayterekProceduralGrid.new()
 	grid.name = "Grid"
 	grid.target = main_container

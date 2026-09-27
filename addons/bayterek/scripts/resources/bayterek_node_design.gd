@@ -11,6 +11,7 @@ signal exported_fields_changed(design: BayterekNodeDesign)
 ## Whitelist of layer fields that can be exported to prefabs.
 const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 	"visible",
+	"absolute",
 	"layer_name",
 	"render_mode_override",
 	"texture_filter_override",
@@ -24,21 +25,6 @@ const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 	"transform.pivot",
 	"transform.pivot_mode",
 	"transform.scale_from_pivot",
-	# Shape
-	"shape_type",
-	"corner_radius",
-	"fill_enabled",
-	"border_enabled",
-	"border_width",
-	"border_corner_gap",
-	"border_top_enabled",
-	"border_right_enabled",
-	"border_bottom_enabled",
-	"border_left_enabled",
-	"shadow_enabled",
-	"shadow_color",
-	"shadow_size",
-	"shadow_blur",
 	# Texture
 	"icon_enabled",
 	"tint_enabled",
@@ -272,7 +258,6 @@ func remove_layer(index: int) -> BayterekLayer:
 		return null
 	var removed: BayterekLayer = layers[index]
 
-	# Clear bounds reference if this layer was bounds.
 	if removed and bounds_layer_id == removed.layer_id:
 		bounds_layer_id = ""
 
@@ -312,9 +297,6 @@ func clear_layers() -> void:
 	layers_changed.emit(self, "reset")
 
 func notify_layer_modified() -> void:
-	for layer in layers:
-		if layer is BayterekShapeLayer:
-			layer.clear_render_cache()
 	layers_changed.emit(self, "modify")
 
 func copy_layers_from(source_layers: Array) -> void:

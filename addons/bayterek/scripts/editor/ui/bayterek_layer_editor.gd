@@ -13,7 +13,6 @@ var _layer_root: TreeItem
 var _detail_scroll: ScrollContainer
 var _detail_root: VBoxContainer
 
-var _add_shape_btn: Button
 var _add_texture_btn: Button
 var _delete_btn: Button
 var _up_btn: Button
@@ -36,6 +35,7 @@ const CM_DELETE := 3
 const CM_MOVE_UP := 4
 const CM_MOVE_DOWN := 5
 const CM_SET_BOUNDS := 6
+const CM_TOGGLE_ABSOLUTE := 7
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
@@ -52,12 +52,6 @@ func _build_ui() -> void:
 	var toolbar := HBoxContainer.new()
 	toolbar.add_theme_constant_override("separation", 4)
 	top_box.add_child(toolbar)
-
-	_add_shape_btn = Button.new()
-	_add_shape_btn.text = "+ Shape"
-	_add_shape_btn.tooltip_text = "Add a new shape layer"
-	_add_shape_btn.pressed.connect(_on_add_shape_pressed)
-	toolbar.add_child(_add_shape_btn)
 
 	_add_texture_btn = Button.new()
 	_add_texture_btn.text = "+ Texture"
@@ -122,6 +116,7 @@ func _build_context_menu() -> void:
 	_context_menu.add_item("Move Down", CM_MOVE_DOWN)
 	_context_menu.add_separator()
 	_context_menu.add_item("Set as Bounds", CM_SET_BOUNDS)
+	_context_menu.add_item("Set as Absolute", CM_TOGGLE_ABSOLUTE)
 	_context_menu.add_separator()
 	_context_menu.add_item("Delete", CM_DELETE)
 	_context_menu.id_pressed.connect(_on_context_menu_pressed)
@@ -169,13 +164,15 @@ func _rebuild_layer_list() -> void:
 
 		var item := _layer_root.create_child()
 		var display_name: String = layer.layer_name
+		if layer.absolute:
+			display_name = "⬚ " + display_name
 		if design.bounds_layer_id == layer.layer_id:
 			display_name = "◆ " + display_name
 		item.set_text(0, display_name)
 		item.set_metadata(0, i)
 		item.set_selectable(0, true)
 
-		var icon_name: String = "CircleShape2D" if layer is BayterekShapeLayer else "ImageTexture"
+		var icon_name: String = "ImageTexture"
 		if theme and theme.has_icon(icon_name, Bayterek.ICON_THEME):
 			item.set_icon(0, theme.get_icon(icon_name, Bayterek.ICON_THEME))
 
@@ -291,7 +288,6 @@ func _delete_layer_by_index(idx: int) -> void:
 	if idx < 0 or idx >= design.get_layer_count():
 		return
 
-	# Bounds reference is cleared inside design.remove_layer().
 	design.remove_layer(idx)
 
 	var new_idx: int = -1
@@ -329,6 +325,7 @@ func _show_layer_context_menu(pos: Vector2) -> void:
 	var up_i: int = _context_menu.get_item_index(CM_MOVE_UP)
 	var down_i: int = _context_menu.get_item_index(CM_MOVE_DOWN)
 	var bounds_i: int = _context_menu.get_item_index(CM_SET_BOUNDS)
+	var abs_i: int = _context_menu.get_item_index(CM_TOGGLE_ABSOLUTE)
 
 	_context_menu.set_item_disabled(rename_i, false)
 	_context_menu.set_item_disabled(dup_i, false)
@@ -336,10 +333,19 @@ func _show_layer_context_menu(pos: Vector2) -> void:
 	_context_menu.set_item_disabled(up_i, idx <= 0)
 	_context_menu.set_item_disabled(down_i, idx >= count - 1)
 	_context_menu.set_item_disabled(bounds_i, false)
+	_context_menu.set_item_disabled(abs_i, false)
 
 	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+
+	# Bounds label + checkmark
 	var is_bounds: bool = (layer and design.bounds_layer_id == layer.layer_id)
+	_context_menu.set_item_text(bounds_i, "Remove from Bounds" if is_bounds else "Set as Bounds")
 	_context_menu.set_item_checked(bounds_i, is_bounds)
+
+	# Absolute label + checkmark
+	var is_abs: bool = (layer and layer.absolute)
+	_context_menu.set_item_text(abs_i, "Remove Absolute" if is_abs else "Set as Absolute")
+	_context_menu.set_item_checked(abs_i, is_abs)
 
 	_context_menu.position = Vector2i(_layer_tree.get_screen_position() + pos)
 	_context_menu.popup()
@@ -352,6 +358,7 @@ func _on_context_menu_pressed(id: int) -> void:
 		CM_MOVE_UP: _on_up_pressed()
 		CM_MOVE_DOWN: _on_down_pressed()
 		CM_SET_BOUNDS: _toggle_bounds_for_selected()
+		CM_TOGGLE_ABSOLUTE: _toggle_absolute_for_selected()
 
 func _toggle_bounds_for_selected() -> void:
 	if not design or _selected_layer_index < 0:
@@ -364,6 +371,20 @@ func _toggle_bounds_for_selected() -> void:
 		design.bounds_layer_id = ""
 	else:
 		design.bounds_layer_id = layer.layer_id
+
+	design.notify_layer_modified()
+	_rebuild_layer_list()
+	_rebuild_detail_form()
+	changed.emit()
+
+func _toggle_absolute_for_selected() -> void:
+	if not design or _selected_layer_index < 0:
+		return
+	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not layer:
+		return
+
+	layer.absolute = not layer.absolute
 
 	design.notify_layer_modified()
 	_rebuild_layer_list()
@@ -444,21 +465,6 @@ func _duplicate_selected_layer() -> void:
 # ADD / DELETE / MOVE (toolbar handlers)
 # ============================================================
 
-func _on_add_shape_pressed() -> void:
-	if not design:
-		return
-	if not design.can_add_layer():
-		BayterekToast.warning(_layer_tree, "Maximum 6 layers")
-		return
-	var layer := BayterekShapeLayer.new()
-	layer.layer_name = "Shape %d" % (design.get_layer_count() + 1)
-	layer.transform.size = design.get_computed_size()
-	design.add_layer(layer)
-	_selected_layer_index = design.get_layer_count() - 1
-	_rebuild_layer_list()
-	_rebuild_detail_form()
-	changed.emit()
-
 func _on_add_texture_pressed() -> void:
 	if not design:
 		return
@@ -501,7 +507,6 @@ func _update_buttons_state() -> void:
 	if _delete_btn: _delete_btn.disabled = not has_selection
 	if _up_btn: _up_btn.disabled = not can_up
 	if _down_btn: _down_btn.disabled = not can_down
-	if _add_shape_btn: _add_shape_btn.disabled = not can_add
 	if _add_texture_btn: _add_texture_btn.disabled = not can_add
 
 # ============================================================
@@ -580,6 +585,36 @@ func _rebuild_detail_form() -> void:
 	BayterekExportHelper.make_exportable(
 		vis_row,
 		"layers.%s.visible" % layer.layer_id,
+		design,
+		_on_export_changed
+	)
+
+	# --- Absolute (ignore node transform) ---
+	var abs_row := HBoxContainer.new()
+	abs_row.add_theme_constant_override("separation", 4)
+	_detail_root.add_child(abs_row)
+
+	var abs_label := Label.new()
+	abs_label.text = "Absolute"
+	abs_label.custom_minimum_size = Vector2(80, 0)
+	abs_label.tooltip_text = "If ON, this layer ignores the node's rotation/skew. Useful for backgrounds or decorations that should stay upright."
+	abs_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	abs_row.add_child(abs_label)
+
+	var abs_check := CheckBox.new()
+	abs_check.text = "On"
+	abs_check.button_pressed = layer.absolute
+	abs_check.toggled.connect(func(p: bool):
+		layer.absolute = p
+		design.notify_layer_modified()
+		_rebuild_layer_list()
+		changed.emit()
+	)
+	abs_row.add_child(abs_check)
+
+	BayterekExportHelper.make_exportable(
+		abs_row,
+		"layers.%s.absolute" % layer.layer_id,
 		design,
 		_on_export_changed
 	)
@@ -675,421 +710,8 @@ func _rebuild_detail_form() -> void:
 		changed.emit()
 	)
 
-	if layer is BayterekShapeLayer:
-		_build_shape_detail(layer)
-	elif layer is BayterekTextureLayer:
+	if layer is BayterekTextureLayer:
 		_build_texture_detail(layer)
-
-func _build_shape_detail(layer: BayterekShapeLayer) -> void:
-	var shape_fold := _make_fold("Shape")
-	_detail_root.add_child(shape_fold)
-
-	var shape_inner := VBoxContainer.new()
-	shape_inner.add_theme_constant_override("separation", 4)
-	shape_fold.add_child(shape_inner)
-
-	var type_row := HBoxContainer.new()
-	type_row.add_theme_constant_override("separation", 4)
-	shape_inner.add_child(type_row)
-
-	var type_label := Label.new()
-	type_label.text = "Type"
-	type_label.custom_minimum_size = Vector2(80, 0)
-	type_row.add_child(type_label)
-
-	var type_dropdown := OptionButton.new()
-	type_dropdown.size_flags_horizontal = SIZE_EXPAND_FILL
-	type_dropdown.add_item("Circle", BayterekShapeLayer.ShapeType.CIRCLE)
-	type_dropdown.add_item("Square", BayterekShapeLayer.ShapeType.SQUARE)
-	type_dropdown.add_item("Triangle", BayterekShapeLayer.ShapeType.TRIANGLE)
-	type_dropdown.add_item("Pentagon", BayterekShapeLayer.ShapeType.PENTAGON)
-	type_dropdown.add_item("Hexagon", BayterekShapeLayer.ShapeType.HEXAGON)
-	type_dropdown.select(int(layer.shape_type))
-	type_dropdown.item_selected.connect(func(i: int):
-		layer.shape_type = i as BayterekShapeLayer.ShapeType
-		design.notify_layer_modified()
-		_rebuild_detail_form_deferred()
-		changed.emit()
-	)
-	type_row.add_child(type_dropdown)
-
-	BayterekExportHelper.make_exportable(
-		type_row,
-		"layers.%s.shape_type" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-	var cr_row := HBoxContainer.new()
-	cr_row.add_theme_constant_override("separation", 4)
-	shape_inner.add_child(cr_row)
-
-	var cr_label := Label.new()
-	cr_label.text = "Corner R"
-	cr_label.custom_minimum_size = Vector2(80, 0)
-	cr_row.add_child(cr_label)
-
-	var cr_input := SpinBox.new()
-	cr_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	cr_input.min_value = 0.0
-	cr_input.max_value = 9999.0
-	cr_input.step = 0.5
-	cr_input.value = layer.corner_radius
-	cr_input.value_changed.connect(func(v: float):
-		layer.corner_radius = v
-		design.notify_layer_modified()
-		changed.emit()
-		_sync_corner_radius_ui(layer, cr_input, cr_label)
-	)
-	cr_row.add_child(cr_input)
-
-	_update_corner_radius_tooltip(layer, cr_label, cr_input)
-	_sync_corner_radius_ui(layer, cr_input, cr_label)
-
-	BayterekExportHelper.make_exportable(
-		cr_row,
-		"layers.%s.corner_radius" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-	var fill_fold := _make_fold("Fill")
-	_detail_root.add_child(fill_fold)
-
-	var fill_inner := VBoxContainer.new()
-	fill_inner.add_theme_constant_override("separation", 4)
-	fill_fold.add_child(fill_inner)
-
-	var fill_check_row := HBoxContainer.new()
-	fill_check_row.add_theme_constant_override("separation", 4)
-	fill_inner.add_child(fill_check_row)
-
-	var fill_check := CheckBox.new()
-	fill_check.text = "Enabled"
-	fill_check.size_flags_horizontal = SIZE_EXPAND_FILL
-	fill_check.button_pressed = layer.fill_enabled
-	fill_check.toggled.connect(func(p: bool):
-		layer.fill_enabled = p
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	fill_check_row.add_child(fill_check)
-
-	BayterekExportHelper.make_exportable(
-		fill_check_row,
-		"layers.%s.fill_enabled" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-	var fill_colors := BayterekLayerStateColors.new()
-	fill_inner.add_child(fill_colors)
-	fill_colors.bind(layer, "fill_configs")
-	fill_colors.bind_export(design, layer.layer_id, "fill_configs", _on_export_changed)
-	fill_colors.changed.connect(func():
-		design.notify_layer_modified()
-		changed.emit()
-	)
-
-	var border_fold := _make_fold("Border")
-	_detail_root.add_child(border_fold)
-
-	var border_inner := VBoxContainer.new()
-	border_inner.add_theme_constant_override("separation", 4)
-	border_fold.add_child(border_inner)
-
-	var border_check_row := HBoxContainer.new()
-	border_check_row.add_theme_constant_override("separation", 4)
-	border_inner.add_child(border_check_row)
-
-	var border_check := CheckBox.new()
-	border_check.text = "Enabled"
-	border_check.size_flags_horizontal = SIZE_EXPAND_FILL
-	border_check.button_pressed = layer.border_enabled
-	border_check.toggled.connect(func(p: bool):
-		layer.border_enabled = p
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	border_check_row.add_child(border_check)
-
-	BayterekExportHelper.make_exportable(
-		border_check_row,
-		"layers.%s.border_enabled" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-	var bw_row := HBoxContainer.new()
-	bw_row.add_theme_constant_override("separation", 4)
-	border_inner.add_child(bw_row)
-	var bw_label := Label.new()
-	bw_label.text = "Width"
-	bw_label.custom_minimum_size = Vector2(80, 0)
-	bw_row.add_child(bw_label)
-	var bw_input := SpinBox.new()
-	bw_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	bw_input.min_value = 0.0
-	bw_input.max_value = 100.0
-	bw_input.step = 0.5
-	bw_input.value = layer.border_width
-	bw_input.value_changed.connect(func(v: float):
-		layer.border_width = v
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	bw_row.add_child(bw_input)
-
-	BayterekExportHelper.make_exportable(
-		bw_row,
-		"layers.%s.border_width" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-	var gap_row := HBoxContainer.new()
-	gap_row.add_theme_constant_override("separation", 4)
-	border_inner.add_child(gap_row)
-
-	var gap_label := Label.new()
-	gap_label.text = "Corner Gap"
-	gap_label.custom_minimum_size = Vector2(80, 0)
-	gap_label.tooltip_text = "Skip corner segments — only straight edges are drawn. Useful for pixel art frames."
-	gap_row.add_child(gap_label)
-
-	var gap_check := CheckBox.new()
-	gap_check.text = "On"
-	gap_check.size_flags_horizontal = SIZE_EXPAND_FILL
-	gap_check.button_pressed = layer.border_corner_gap
-	gap_check.toggled.connect(func(p: bool):
-		layer.border_corner_gap = p
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	gap_row.add_child(gap_check)
-
-	BayterekExportHelper.make_exportable(
-		gap_row,
-		"layers.%s.border_corner_gap" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-	var edges_label := Label.new()
-	edges_label.text = "Edges"
-	edges_label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	border_inner.add_child(edges_label)
-
-	if layer.shape_type == BayterekShapeLayer.ShapeType.CIRCLE:
-		var note := Label.new()
-		note.text = "  (Circle always draws a full ring)"
-		note.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-		note.add_theme_font_size_override("font_size", 11)
-		border_inner.add_child(note)
-
-	_build_edge_checkbox(border_inner, layer, "Top", "border_top_enabled")
-	_build_edge_checkbox(border_inner, layer, "Right", "border_right_enabled")
-	_build_edge_checkbox(border_inner, layer, "Bottom", "border_bottom_enabled")
-	_build_edge_checkbox(border_inner, layer, "Left", "border_left_enabled")
-
-	var border_colors := BayterekLayerStateColors.new()
-	border_inner.add_child(border_colors)
-	border_colors.bind(layer, "border_configs")
-	border_colors.bind_export(design, layer.layer_id, "border_configs", _on_export_changed)
-	border_colors.changed.connect(func():
-		design.notify_layer_modified()
-		changed.emit()
-	)
-
-	var shadow_fold := _make_fold("Shadow")
-	_detail_root.add_child(shadow_fold)
-
-	var shadow_inner := VBoxContainer.new()
-	shadow_inner.add_theme_constant_override("separation", 4)
-	shadow_fold.add_child(shadow_inner)
-
-	var shadow_check_row := HBoxContainer.new()
-	shadow_check_row.add_theme_constant_override("separation", 4)
-	shadow_inner.add_child(shadow_check_row)
-
-	var shadow_check := CheckBox.new()
-	shadow_check.text = "Enabled"
-	shadow_check.size_flags_horizontal = SIZE_EXPAND_FILL
-	shadow_check.button_pressed = layer.shadow_enabled
-	shadow_check.toggled.connect(func(p: bool):
-		layer.shadow_enabled = p
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	shadow_check_row.add_child(shadow_check)
-
-	BayterekExportHelper.make_exportable(
-		shadow_check_row,
-		"layers.%s.shadow_enabled" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-	var shadow_color_row := HBoxContainer.new()
-	shadow_color_row.add_theme_constant_override("separation", 4)
-	shadow_inner.add_child(shadow_color_row)
-	var sc_label := Label.new()
-	sc_label.text = "Color"
-	sc_label.custom_minimum_size = Vector2(80, 0)
-	shadow_color_row.add_child(sc_label)
-	var sc_picker := ColorPickerButton.new()
-	sc_picker.size_flags_horizontal = SIZE_EXPAND_FILL
-	sc_picker.color = layer.shadow_color
-	sc_picker.color_changed.connect(func(c: Color):
-		layer.shadow_color = c
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	shadow_color_row.add_child(sc_picker)
-
-	BayterekExportHelper.make_exportable(
-		shadow_color_row,
-		"layers.%s.shadow_color" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-	var shadow_offset_row := HBoxContainer.new()
-	shadow_offset_row.add_theme_constant_override("separation", 4)
-	shadow_inner.add_child(shadow_offset_row)
-	var so_label := Label.new()
-	so_label.text = "Offset"
-	so_label.custom_minimum_size = Vector2(80, 0)
-	shadow_offset_row.add_child(so_label)
-
-	var so_x := SpinBox.new()
-	so_x.size_flags_horizontal = SIZE_EXPAND_FILL
-	so_x.min_value = -100
-	so_x.max_value = 100
-	so_x.step = 1
-	so_x.value = layer.shadow_size.x
-	so_x.value_changed.connect(func(v: float):
-		layer.shadow_size.x = v
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	shadow_offset_row.add_child(so_x)
-
-	var so_y := SpinBox.new()
-	so_y.size_flags_horizontal = SIZE_EXPAND_FILL
-	so_y.min_value = -100
-	so_y.max_value = 100
-	so_y.step = 1
-	so_y.value = layer.shadow_size.y
-	so_y.value_changed.connect(func(v: float):
-		layer.shadow_size.y = v
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	shadow_offset_row.add_child(so_y)
-
-	BayterekExportHelper.make_exportable(
-		shadow_offset_row,
-		"layers.%s.shadow_size" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-	var shadow_blur_row := HBoxContainer.new()
-	shadow_blur_row.add_theme_constant_override("separation", 4)
-	shadow_inner.add_child(shadow_blur_row)
-	var sb_label := Label.new()
-	sb_label.text = "Blur"
-	sb_label.custom_minimum_size = Vector2(80, 0)
-	sb_label.tooltip_text = "Soft shadow spread (0 = hard edge)"
-	shadow_blur_row.add_child(sb_label)
-
-	var sb_input := SpinBox.new()
-	sb_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	sb_input.min_value = 0.0
-	sb_input.max_value = 50.0
-	sb_input.step = 0.5
-	sb_input.value = layer.shadow_blur
-	sb_input.value_changed.connect(func(v: float):
-		layer.shadow_blur = v
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	shadow_blur_row.add_child(sb_input)
-
-	BayterekExportHelper.make_exportable(
-		shadow_blur_row,
-		"layers.%s.shadow_blur" % layer.layer_id,
-		design,
-		_on_export_changed
-	)
-
-func _build_edge_checkbox(parent: Control, layer: BayterekShapeLayer, label_text: String, prop_name: String) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
-	parent.add_child(row)
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(20, 0)
-	row.add_child(spacer)
-
-	var check := CheckBox.new()
-	check.text = label_text
-	check.size_flags_horizontal = SIZE_EXPAND_FILL
-	check.button_pressed = layer.get(prop_name)
-
-	if layer.shape_type == BayterekShapeLayer.ShapeType.CIRCLE:
-		check.disabled = true
-
-	check.toggled.connect(func(p: bool):
-		layer.set(prop_name, p)
-		design.notify_layer_modified()
-		changed.emit()
-	)
-	row.add_child(check)
-
-	BayterekExportHelper.make_exportable(
-		row,
-		"layers.%s.%s" % [layer.layer_id, prop_name],
-		design,
-		_on_export_changed
-	)
-
-func _update_corner_radius_tooltip(
-	layer: BayterekShapeLayer,
-	label: Label,
-	input: SpinBox
-) -> void:
-	var effective_size: Vector2 = design.get_computed_size() if design else Vector2(100, 100)
-	var limit: float = layer._corner_radius_limit(effective_size)
-	var effective: float = layer.get_clamped_corner_radius(effective_size)
-
-	var text: String = (
-		"Corner rounding radius in pixels.\n" +
-		"Auto-clamped to min(w,h)/2 * 0.99 = %.2f for this shape.\n" % limit +
-		"Effective value: %.2f" % effective
-	)
-
-	if label:
-		label.tooltip_text = text
-	if input:
-		input.tooltip_text = text
-
-func _sync_corner_radius_ui(
-	layer: BayterekShapeLayer,
-	input: SpinBox,
-	label: Label
-) -> void:
-	if not layer or not input:
-		return
-
-	var effective_size: Vector2 = design.get_computed_size() if design else Vector2(100, 100)
-	var effective: float = layer.get_clamped_corner_radius(effective_size)
-
-	if not is_equal_approx(input.value, effective):
-		input.set_value_no_signal(effective)
-
-	_update_corner_radius_tooltip(layer, label, input)
 
 func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	var icon_fold := _make_fold("Icon")

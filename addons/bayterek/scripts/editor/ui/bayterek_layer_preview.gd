@@ -2,11 +2,6 @@
 class_name BayterekLayerPreview
 extends Control
 ## Live preview of a design's layer stack.
-##
-## Shape layers are drawn in _draw().
-## Texture layers are rendered by child BayterekLayerNode instances so
-## that per-layer filter, transform (rotation/skew/scale/pivot) and
-## nine-patch modes all work correctly.
 
 signal zoom_changed(zoom: float)
 
@@ -107,7 +102,6 @@ func _notification(what: int) -> void:
 func _compute_content_bounds() -> Rect2:
 	if not design:
 		return Rect2()
-	# Use bounds rect if a bounds layer is set.
 	if not design.bounds_layer_id.is_empty():
 		return design.get_bounds_rect()
 	return design.get_computed_bounds()
@@ -179,7 +173,6 @@ func _rebuild_layer_nodes() -> void:
 			if layer is BayterekTextureLayer and layer.visible:
 				valid_ids[layer.layer_id] = true
 
-	# Remove obsolete.
 	for layer_id in _layer_nodes.keys():
 		if not valid_ids.has(layer_id):
 			var ln: BayterekLayerNode = _layer_nodes[layer_id]
@@ -238,17 +231,17 @@ func _update_layer_nodes() -> void:
 
 		ln.update(design_size, pixel_mode)
 
-		# Compose base preview transform with layer matrix.
+		# Preview doesn't apply node-wide transform (no rotation/skew),
+		# so both branches use the same base_xform.
 		ln.transform = base_xform * layer.get_matrix(design_size, pixel_mode)
 
-		# z-order
 		var layer_index: int = design.layers.find(layer)
 		if layer_index < 0:
 			layer_index = 0
 		ln.z_index = layer_index
 
 # ============================================================
-# DRAW (shapes only)
+# DRAW
 # ============================================================
 
 func _draw() -> void:
@@ -267,15 +260,6 @@ func _draw() -> void:
 	)
 
 	_draw_design_center_marker(center)
-
-	var states := _get_simulated_states()
-
-	for layer in design.layers:
-		if not layer or not layer.visible:
-			continue
-		if not (layer is BayterekShapeLayer):
-			continue
-		_draw_shape_layer(layer, states, base_xform)
 
 	if show_nine_patch_guides:
 		for layer in design.layers:
@@ -339,76 +323,8 @@ func _draw_background_grid() -> void:
 		py += primary_step
 
 # ============================================================
-# SHAPE DRAWING
+# SIMULATED STATES
 # ============================================================
-
-func _draw_shape_layer(layer: BayterekShapeLayer, states: Dictionary, base_xform: Transform2D) -> void:
-	var state_key: String = layer.get_visual_state(states)
-	var design_size: Vector2 = design.design_size
-
-	var effective_mode: int = layer.get_effective_render_mode()
-	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
-
-	var layer_matrix: Transform2D = layer.get_matrix(design_size, pixel_mode)
-	var effective_size: Vector2 = layer.get_size(design_size)
-
-	var combined: Transform2D = base_xform * layer_matrix
-
-	if pixel_mode and layer.is_axis_aligned():
-		_draw_shape_pixel(layer, state_key, effective_size, combined)
-	else:
-		_draw_shape(layer, state_key, effective_size, combined, pixel_mode)
-
-	if show_pivot_markers and layer.transform:
-		_draw_pivot_marker(layer, combined, effective_size, pixel_mode)
-
-func _draw_shape_pixel(layer: BayterekShapeLayer, state_key: String, effective_size: Vector2, combined: Transform2D) -> void:
-	var spans: Dictionary = layer.get_pixel_spans(effective_size)
-	var fill_spans: Array = spans.get("fill", [])
-	var border_spans: Array = spans.get("border", [])
-
-	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
-		var offset: Vector2 = (layer.shadow_size * preview_scale).floor()
-		var shadow_xform := Transform2D(combined.x, combined.y, combined.origin + offset)
-		for rect_v in fill_spans:
-			var r: Rect2i = rect_v
-			var tl: Vector2 = shadow_xform * Vector2(r.position.x, r.position.y)
-			var br: Vector2 = shadow_xform * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
-			draw_rect(Rect2(tl, br - tl), layer.shadow_color, true)
-
-	if layer.should_draw_fill(state_key):
-		var fill_color: Color = layer.get_fill_color_for_state(state_key)
-		if fill_color.a > 0.0:
-			for rect_v in fill_spans:
-				var r: Rect2i = rect_v
-				var tl: Vector2 = combined * Vector2(r.position.x, r.position.y)
-				var br: Vector2 = combined * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
-				draw_rect(Rect2(tl, br - tl), fill_color, true)
-
-	if layer.should_draw_border(state_key):
-		var border_color: Color = layer.get_border_color_for_state(state_key)
-		if border_color.a > 0.0 and layer.border_width > 0.0:
-			for rect_v in border_spans:
-				var r: Rect2i = rect_v
-				var tl: Vector2 = combined * Vector2(r.position.x, r.position.y)
-				var br: Vector2 = combined * Vector2(r.position.x + r.size.x, r.position.y + r.size.y)
-				draw_rect(Rect2(tl, br - tl), border_color, true)
-
-func _draw_pivot_marker(layer: BayterekLayer, combined: Transform2D, effective_size: Vector2, pixel_mode: bool) -> void:
-	var t: BayterekLayerTransform = layer.transform
-	if not t:
-		return
-
-	var pivot_local: Vector2 = t.get_pivot_local(effective_size, pixel_mode)
-	var pivot_screen: Vector2 = combined * pivot_local
-
-	var cross_color := Color(1.0, 0.2, 0.2, 0.9)
-	var arm := 6.0
-	draw_line(pivot_screen - Vector2(arm, 0), pivot_screen + Vector2(arm, 0), cross_color, 1.5)
-	draw_line(pivot_screen - Vector2(0, arm), pivot_screen + Vector2(0, arm), cross_color, 1.5)
-
-	draw_circle(pivot_screen, 3.0, cross_color)
-	draw_arc(pivot_screen, 3.0, 0.0, TAU, 16, Color(0, 0, 0, 0.9), 1.0, true)
 
 func _get_simulated_states() -> Dictionary:
 	return {
@@ -422,110 +338,6 @@ func _get_simulated_states() -> Dictionary:
 		"allocateable": false,
 		"not_allocateable": false,
 	}
-
-func _draw_shape(layer: BayterekShapeLayer, state_key: String, effective_size: Vector2, xform: Transform2D, pixel_mode: bool) -> void:
-	if layer.shadow_enabled and layer.shadow_color.a > 0.0:
-		var full_verts: PackedVector2Array = layer.get_polygon_vertices(effective_size, pixel_mode)
-		if not full_verts.is_empty():
-			_draw_shape_shadow(layer, full_verts, xform, pixel_mode)
-
-	var draw_border: bool = layer.should_draw_border(state_key)
-	var draw_fill: bool = layer.should_draw_fill(state_key)
-
-	if draw_fill:
-		var fill_color: Color = layer.get_fill_color_for_state(state_key)
-		if fill_color.a > 0.0:
-			var fill_verts: PackedVector2Array = layer.get_fill_vertices(effective_size, pixel_mode)
-			if fill_verts.is_empty():
-				fill_verts = layer.get_polygon_vertices(effective_size, pixel_mode)
-			if not fill_verts.is_empty():
-				_draw_fill(fill_verts, xform, fill_color)
-
-	if draw_border:
-		var border_color: Color = layer.get_border_color_for_state(state_key)
-		if border_color.a > 0.0 and layer.border_width > 0.0:
-			var layer_avg: float = 1.0
-			if layer.transform:
-				layer_avg = layer.transform.get_avg_scale()
-			var scaled_width: float = layer.border_width * preview_scale * layer_avg
-			var use_caps: bool = not layer.border_corner_gap
-			var antialiased: bool = not pixel_mode
-
-			var segments: Array = layer.get_border_segments(effective_size, pixel_mode)
-			for seg in segments:
-				if not (seg is PackedVector2Array):
-					continue
-				var pts: PackedVector2Array = seg
-				if pts.size() < 2:
-					continue
-
-				var transformed := PackedVector2Array()
-				transformed.resize(pts.size())
-				for i in pts.size():
-					transformed[i] = xform * pts[i]
-
-				if transformed.size() == 2:
-					draw_line(transformed[0], transformed[1], border_color, scaled_width, antialiased)
-					if use_caps:
-						_draw_cap(transformed[0], border_color, scaled_width)
-						_draw_cap(transformed[1], border_color, scaled_width)
-				else:
-					draw_polyline(transformed, border_color, scaled_width, antialiased)
-					if use_caps:
-						_draw_cap(transformed[0], border_color, scaled_width)
-						_draw_cap(transformed[transformed.size() - 1], border_color, scaled_width)
-
-func _draw_cap(pos: Vector2, color: Color, width: float) -> void:
-	var radius: float = width * 0.5
-	if radius < 0.5:
-		return
-	draw_circle(pos, radius, color)
-
-func _draw_shape_shadow(layer: BayterekShapeLayer, verts: PackedVector2Array, xform: Transform2D, pixel_mode: bool) -> void:
-	var offset: Vector2 = layer.shadow_size * preview_scale
-	var blur: float = layer.shadow_blur * preview_scale
-	var base_color: Color = layer.shadow_color
-
-	if pixel_mode or blur <= 0.01:
-		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + offset)
-		_draw_fill(verts, shadow_xform, base_color)
-		return
-
-	var passes: int = 4
-	var alpha_per_pass: float = base_color.a / float(passes)
-	var color_per_pass := Color(base_color.r, base_color.g, base_color.b, alpha_per_pass)
-
-	var dir: Vector2 = offset
-	if dir.length_squared() > 0.0001:
-		dir = dir.normalized()
-	else:
-		dir = Vector2.ZERO
-
-	for i in passes:
-		var spread: float = blur * (float(i) / float(passes - 1))
-		var pass_offset: Vector2 = offset - dir * spread * 0.5
-		var expanded: PackedVector2Array = _expand_verts(verts, spread)
-
-		var shadow_xform := Transform2D(xform.x, xform.y, xform.origin + pass_offset)
-		_draw_fill(expanded, shadow_xform, color_per_pass)
-
-func _draw_fill(verts: PackedVector2Array, xform: Transform2D, color: Color) -> void:
-	var transformed := PackedVector2Array()
-	transformed.resize(verts.size())
-	for i in verts.size():
-		transformed[i] = xform * verts[i]
-	draw_colored_polygon(transformed, color)
-
-func _expand_verts(verts: PackedVector2Array, offset: float) -> PackedVector2Array:
-	var out := PackedVector2Array()
-	out.resize(verts.size())
-	for i in verts.size():
-		var v: Vector2 = verts[i]
-		var dir: Vector2 = v
-		if dir.length_squared() > 0.0001:
-			dir = dir.normalized()
-		out[i] = v + dir * offset
-	return out
 
 # ============================================================
 # NINE PATCH GUIDES

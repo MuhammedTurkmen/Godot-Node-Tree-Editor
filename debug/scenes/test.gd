@@ -23,6 +23,8 @@ var _browser_status: Label
 
 ## --- Tree View UI ----------------------------------------------
 var _top_bar: HBoxContainer
+var _anim_enter_bar: HBoxContainer
+var _anim_exit_bar: HBoxContainer
 var _tree_container: Control
 var _tree_view: BayterekTreeView
 var _refund_btn: Button
@@ -35,6 +37,20 @@ var _hud_label: RichTextLabel
 ## --- State -----------------------------------------------------
 var _current_group_name: String = ""
 var _current_tree_name: String = ""
+
+## --- Hover animation config ------------------------------------
+## Enter: played on mouse-over. Exit: played on mouse-out.
+var _hover_enter_preset: String = "hover_enter"
+var _hover_exit_preset: String = "hover_exit"
+var _hover_anim_opts: Dictionary = {
+	"lift": -8.0,
+	"rot_peak": 5.0,
+	"duration": 0.45,
+}
+
+const TOP_BAR_HEIGHT := 42
+const ANIM_BAR_HEIGHT := 34
+const ANIM_BAR_GAP := 4
 
 # ============================================================
 # READY
@@ -72,7 +88,6 @@ func _build_screens() -> void:
 	_build_browser_screen()
 	_build_tree_screen()
 
-	# Start with the browser visible
 	_browser_screen.visible = true
 	_tree_screen.visible = false
 
@@ -93,27 +108,23 @@ func _build_browser_screen() -> void:
 	vbox.offset_bottom = -20
 	_browser_screen.add_child(vbox)
 
-	# Header
 	var header := Label.new()
 	header.text = "Bayterek Runtime Test — Tree Browser"
 	header.add_theme_font_size_override("font_size", 18)
 	header.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
 	vbox.add_child(header)
 
-	# Hint
 	var hint := Label.new()
 	hint.text = "Double-click a tree to open it in the runtime view."
 	hint.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 	hint.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(hint)
 
-	# Refresh button
 	var refresh_btn := Button.new()
 	refresh_btn.text = "Refresh List"
 	refresh_btn.pressed.connect(_populate_browser_tree)
 	vbox.add_child(refresh_btn)
 
-	# Tree list
 	_browser_tree = Tree.new()
 	_browser_tree.hide_root = true
 	_browser_tree.size_flags_vertical = SIZE_EXPAND_FILL
@@ -122,7 +133,6 @@ func _build_browser_screen() -> void:
 	_browser_tree.item_activated.connect(_on_browser_item_activated)
 	vbox.add_child(_browser_tree)
 
-	# Status label
 	_browser_status = Label.new()
 	_browser_status.text = ""
 	_browser_status.add_theme_color_override("font_color", Color(0.6, 0.8, 1.0))
@@ -137,21 +147,20 @@ func _build_tree_screen() -> void:
 	_tree_screen.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	add_child(_tree_screen)
 
-	# Toolbar
+	# --- TOP BAR (row 1) ---
 	_top_bar = HBoxContainer.new()
 	_top_bar.name = "TopBar"
-	_top_bar.position = Vector2(10, 10)
-	_top_bar.add_theme_constant_override("separation", 8)
+	_top_bar.position = Vector2(10, 8)
+	_top_bar.add_theme_constant_override("separation", 6)
 	_tree_screen.add_child(_top_bar)
 
 	var back_btn := Button.new()
 	back_btn.name = "BackButton"
-	back_btn.text = "← Back to Browser"
+	back_btn.text = "← Back"
 	back_btn.pressed.connect(_show_browser)
 	_top_bar.add_child(back_btn)
 
-	var sep1 := VSeparator.new()
-	_top_bar.add_child(sep1)
+	_top_bar.add_child(VSeparator.new())
 
 	_refund_btn = Button.new()
 	_refund_btn.name = "RefundButton"
@@ -186,8 +195,7 @@ func _build_tree_screen() -> void:
 	reset_save_btn.pressed.connect(_on_reset_save_pressed)
 	_top_bar.add_child(reset_save_btn)
 
-	var sep2 := VSeparator.new()
-	_top_bar.add_child(sep2)
+	_top_bar.add_child(VSeparator.new())
 
 	var center_btn := Button.new()
 	center_btn.name = "CenterButton"
@@ -207,8 +215,7 @@ func _build_tree_screen() -> void:
 	load_btn.pressed.connect(_on_load_pressed)
 	_top_bar.add_child(load_btn)
 
-	var sep3 := VSeparator.new()
-	_top_bar.add_child(sep3)
+	_top_bar.add_child(VSeparator.new())
 
 	var reload_btn := Button.new()
 	reload_btn.name = "ReloadButton"
@@ -216,15 +223,129 @@ func _build_tree_screen() -> void:
 	reload_btn.pressed.connect(_on_reload_pressed)
 	_top_bar.add_child(reload_btn)
 
-	# Tree render container
+	# --- ANIMATION BAR — ROW 1 (Enter / Mouse Over) ---
+	_anim_enter_bar = HBoxContainer.new()
+	_anim_enter_bar.name = "AnimEnterBar"
+	_anim_enter_bar.position = Vector2(10, 8 + TOP_BAR_HEIGHT)
+	_anim_enter_bar.add_theme_constant_override("separation", 6)
+	_tree_screen.add_child(_anim_enter_bar)
+
+	var enter_label := Label.new()
+	enter_label.text = "🖱️ Mouse Enter:"
+	enter_label.add_theme_color_override("font_color", Color(0.6, 1.0, 0.7))
+	enter_label.custom_minimum_size = Vector2(120, 0)
+	_anim_enter_bar.add_child(enter_label)
+
+	_build_enter_dropdown(_anim_enter_bar)
+
+	_anim_enter_bar.add_child(VSeparator.new())
+
+	var enter_test_label := Label.new()
+	enter_test_label.text = "Test:"
+	enter_test_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	enter_test_label.add_theme_font_size_override("font_size", 11)
+	_anim_enter_bar.add_child(enter_test_label)
+
+	_add_manual_anim_button_to(_anim_enter_bar, "Hover Enter", "hover_enter")
+	_add_manual_anim_button_to(_anim_enter_bar, "Lift+Rotate", "lift_rotate")
+	_add_manual_anim_button_to(_anim_enter_bar, "Pop", "pop")
+	_add_manual_anim_button_to(_anim_enter_bar, "Shake", "shake")
+
+	# --- ANIMATION BAR — ROW 2 (Exit / Mouse Out) ---
+	_anim_exit_bar = HBoxContainer.new()
+	_anim_exit_bar.name = "AnimExitBar"
+	_anim_exit_bar.position = Vector2(10, 8 + TOP_BAR_HEIGHT + ANIM_BAR_HEIGHT + ANIM_BAR_GAP)
+	_anim_exit_bar.add_theme_constant_override("separation", 6)
+	_tree_screen.add_child(_anim_exit_bar)
+
+	var exit_label := Label.new()
+	exit_label.text = "🚪 Mouse Exit:"
+	exit_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.6))
+	exit_label.custom_minimum_size = Vector2(120, 0)
+	_anim_exit_bar.add_child(exit_label)
+
+	_build_exit_dropdown(_anim_exit_bar)
+
+	_anim_exit_bar.add_child(VSeparator.new())
+
+	var exit_test_label := Label.new()
+	exit_test_label.text = "Test:"
+	exit_test_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	exit_test_label.add_theme_font_size_override("font_size", 11)
+	_anim_exit_bar.add_child(exit_test_label)
+
+	_add_manual_anim_button_to(_anim_exit_bar, "Hover Exit", "hover_exit")
+
+	_anim_exit_bar.add_child(VSeparator.new())
+
+	var stop_anim_btn := Button.new()
+	stop_anim_btn.name = "StopAnimButton"
+	stop_anim_btn.text = "Stop All"
+	stop_anim_btn.tooltip_text = "Stop all running animations and snap back."
+	stop_anim_btn.pressed.connect(_on_stop_animation_pressed)
+	_anim_exit_bar.add_child(stop_anim_btn)
+
+	# --- TREE RENDER CONTAINER ---
+	var bars_height: float = TOP_BAR_HEIGHT + ANIM_BAR_HEIGHT * 2 + ANIM_BAR_GAP
 	_tree_container = Control.new()
 	_tree_container.name = "TreeContainer"
 	_tree_container.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
-	_tree_container.offset_top = 50
+	_tree_container.offset_top = 8 + bars_height + 4
 	_tree_screen.add_child(_tree_container)
 
-	# --- HUD (selection counter toast) ---
 	_build_hud()
+
+func _build_enter_dropdown(parent: HBoxContainer) -> void:
+	var dropdown := OptionButton.new()
+	dropdown.name = "EnterPresetDropdown"
+	dropdown.tooltip_text = "Animation played when the mouse enters a node."
+	dropdown.add_item("None", 0)
+	dropdown.set_item_metadata(0, "")
+	dropdown.add_item("Hover Enter (lift + rotate)", 1)
+	dropdown.set_item_metadata(1, "hover_enter")
+	dropdown.add_item("Lift + Rotate (one-shot)", 2)
+	dropdown.set_item_metadata(2, "lift_rotate")
+	dropdown.add_item("Hover Lift (lift only)", 3)
+	dropdown.set_item_metadata(3, "hover_lift")
+	dropdown.add_item("Pop", 4)
+	dropdown.set_item_metadata(4, "pop")
+	dropdown.add_item("Shake", 5)
+	dropdown.set_item_metadata(5, "shake")
+
+	for i in dropdown.item_count:
+		if dropdown.get_item_metadata(i) == _hover_enter_preset:
+			dropdown.select(i)
+			break
+
+	dropdown.item_selected.connect(_on_enter_preset_changed)
+	parent.add_child(dropdown)
+
+func _build_exit_dropdown(parent: HBoxContainer) -> void:
+	var dropdown := OptionButton.new()
+	dropdown.name = "ExitPresetDropdown"
+	dropdown.tooltip_text = "Animation played when the mouse leaves a node."
+	dropdown.add_item("None", 0)
+	dropdown.set_item_metadata(0, "")
+	dropdown.add_item("Hover Exit (descend, no rotation)", 1)
+	dropdown.set_item_metadata(1, "hover_exit")
+	dropdown.add_item("Lift + Rotate (one-shot)", 2)
+	dropdown.set_item_metadata(2, "lift_rotate")
+
+	for i in dropdown.item_count:
+		if dropdown.get_item_metadata(i) == _hover_exit_preset:
+			dropdown.select(i)
+			break
+
+	dropdown.item_selected.connect(_on_exit_preset_changed)
+	parent.add_child(dropdown)
+
+func _add_manual_anim_button_to(parent: HBoxContainer, label: String, preset_name: String) -> void:
+	var btn := Button.new()
+	btn.name = "Anim_" + preset_name
+	btn.text = label
+	btn.tooltip_text = "Play '%s' on the selected nodes (or all if nothing selected)." % preset_name
+	btn.pressed.connect(func() -> void: _on_anim_button_pressed(preset_name))
+	parent.add_child(btn)
 
 # --- HUD --------------------------------------------------------
 
@@ -234,14 +355,16 @@ func _build_hud() -> void:
 	_hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_panel.visible = false
 
+	var bars_height: float = TOP_BAR_HEIGHT + ANIM_BAR_HEIGHT * 2 + ANIM_BAR_GAP
+
 	_hud_panel.anchor_left = 0.0
 	_hud_panel.anchor_top = 0.0
 	_hud_panel.anchor_right = 0.0
 	_hud_panel.anchor_bottom = 0.0
 	_hud_panel.offset_left = 12
-	_hud_panel.offset_top = 56
+	_hud_panel.offset_top = 8 + bars_height + 8
 	_hud_panel.offset_right = 12
-	_hud_panel.offset_bottom = 56
+	_hud_panel.offset_bottom = 8 + bars_height + 8
 	_hud_panel.grow_horizontal = Control.GROW_DIRECTION_END
 	_hud_panel.grow_vertical = Control.GROW_DIRECTION_END
 	_tree_screen.add_child(_hud_panel)
@@ -295,6 +418,36 @@ func _update_hud() -> void:
 	_hud_panel.visible = visible_state
 	if visible_state:
 		_hud_label.text = text
+
+# ============================================================
+# HOVER ANIMATION CONFIG
+# ============================================================
+
+func _on_enter_preset_changed(index: int) -> void:
+	var dropdown: OptionButton = _anim_enter_bar.get_node_or_null("EnterPresetDropdown")
+	if not dropdown:
+		return
+	var meta = dropdown.get_item_metadata(index)
+	_hover_enter_preset = "" if meta == null else String(meta)
+	print("Test: Enter preset → '%s'" % (_hover_enter_preset if not _hover_enter_preset.is_empty() else "(disabled)"))
+	_apply_hover_config_to_tree_view()
+
+func _on_exit_preset_changed(index: int) -> void:
+	var dropdown: OptionButton = _anim_exit_bar.get_node_or_null("ExitPresetDropdown")
+	if not dropdown:
+		return
+	var meta = dropdown.get_item_metadata(index)
+	_hover_exit_preset = "" if meta == null else String(meta)
+	print("Test: Exit preset → '%s'" % (_hover_exit_preset if not _hover_exit_preset.is_empty() else "(disabled)"))
+	_apply_hover_config_to_tree_view()
+
+## Pushes the current hover preset config to the active tree view.
+func _apply_hover_config_to_tree_view() -> void:
+	if not _tree_view:
+		return
+	_tree_view.hover_enter_preset = _hover_enter_preset
+	_tree_view.hover_exit_preset = _hover_exit_preset
+	_tree_view.hover_animation_opts = _hover_anim_opts
 
 # ============================================================
 # BROWSER LOGIC
@@ -421,6 +574,9 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 
 	_tree_view.set_tooltip_near_node_right()
 
+	# Apply hover animation config to the new tree view.
+	_apply_hover_config_to_tree_view()
+
 	_connect_allocation_signals()
 
 	print("Test: Opened tree '%s' (%d nodes)" % [tree_path, tree.nodes.size()])
@@ -431,6 +587,43 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 	_update_refund_button_text()
 	_update_hud()
 	_update_confirm_button_state()
+
+# ============================================================
+# MANUAL ANIMATION HANDLERS
+# ============================================================
+
+func _on_anim_button_pressed(preset_name: String) -> void:
+	if not _tree_view or not _tree_view.nodes_service:
+		return
+
+	var targets: Array = []
+	if not _tree_view.selected_nodes.is_empty():
+		targets = _tree_view.selected_nodes.duplicate()
+	else:
+		targets = _tree_view.nodes_service.get_all_nodes()
+
+	if targets.is_empty():
+		print("Test: No nodes to animate.")
+		return
+
+	var count: int = 0
+	for node in targets:
+		if not is_instance_valid(node):
+			continue
+		if not node.has_method("play_animation"):
+			continue
+		node.play_animation(preset_name, _hover_anim_opts)
+		count += 1
+
+	print("Test: Playing '%s' on %d node(s)" % [preset_name, count])
+
+func _on_stop_animation_pressed() -> void:
+	if not _tree_view or not _tree_view.nodes_service:
+		return
+	for node in _tree_view.nodes_service.get_all_nodes():
+		if is_instance_valid(node) and node.has_method("stop_animation"):
+			node.stop_animation()
+	print("Test: Stopped all animations")
 
 # ============================================================
 # ALLOCATION SIGNAL WIRING (event-driven HUD + confirm)
@@ -470,7 +663,7 @@ func _disconnect_allocation_signals() -> void:
 	if svc.node_preallocated.is_connected(_on_allocation_state_changed):
 		svc.node_preallocated.disconnect(_on_allocation_state_changed)
 	if svc.node_unpreallocated.is_connected(_on_allocation_state_changed):
-			svc.node_unpreallocated.disconnect(_on_allocation_state_changed)
+		svc.node_unpreallocated.disconnect(_on_allocation_state_changed)
 	if svc.node_refund_added.is_connected(_on_allocation_state_changed):
 		svc.node_refund_added.disconnect(_on_allocation_state_changed)
 	if svc.node_refund_removed.is_connected(_on_allocation_state_changed):
@@ -534,21 +727,17 @@ func _on_clear_pressed() -> void:
 	if not _tree_view:
 		return
 
-	# 1) Full allocation reset
 	if _tree_view.allocation_service:
 		_tree_view.allocation_service.clear_all_allocations()
 
-	# 2) UI selection state
 	_tree_view.clear_selection()
 	if _tree_view.group_frames_service:
 		_tree_view.group_frames_service.clear_selection()
 
-	# 3) Reset toolbar button visuals
 	if _refund_btn:
 		_refund_btn.button_pressed = false
 		_refund_btn.text = "Enter Refund Mode (R)"
 
-	# 4) Refresh HUD + confirm
 	_update_hud()
 	_update_confirm_button_state()
 
@@ -626,28 +815,21 @@ func _update_refund_button_text() -> void:
 # CONFIRM BUTTON VISIBILITY
 # ============================================================
 
-## Returns true if the current tree requires the Confirm button for the
-## active mode (allocation or refund). Returns false when both confirms
-## are disabled, meaning clicks act immediately.
 func _is_confirm_required() -> bool:
 	if not _tree_view or not _tree_view._tree_data:
 		return false
 
 	var tree = _tree_view._tree_data
 
-	# Refund mode → check refund_confirm
 	if _tree_view.allocation_service and _tree_view.allocation_service.is_refund_mode():
 		return tree.refund_confirm
 
-	# Normal allocation → check allocation_confirm
 	return tree.allocation_confirm
 
 func _update_confirm_button_state() -> void:
 	if not _confirm_btn:
 		return
 
-	# Hide the Confirm button entirely when the current mode doesn't
-	# require confirmation (immediate-click mode).
 	if not _is_confirm_required():
 		_confirm_btn.visible = false
 		_confirm_btn.disabled = true

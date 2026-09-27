@@ -6,7 +6,64 @@
 [ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="4_u1mso"]
 [ext_resource type="Texture2D" uid="uid://ccrvoxhv3c5d0" path="res://assets/button_icon.png" id="5_joamw"]
 [ext_resource type="Texture2D" uid="uid://c4dwqfi5il0dh" path="res://assets/border1px.png" id="6_u1mso"]
+[ext_resource type="Texture2D" uid="uid://fumij183xeqq" path="res://assets/square.png" id="7_5qdsx"]
 [ext_resource type="Texture2D" uid="uid://bkkoqrayg42dr" path="res://assets/border_inner3px.png" id="7_joamw"]
+
+[sub_resource type="Resource" id="Resource_ll7h2"]
+script = ExtResource("3_paddw")
+size = Vector2(32, 32)
+
+[sub_resource type="Resource" id="Resource_4im17"]
+script = ExtResource("3_u1mso")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("7_5qdsx")
+}
+}
+tint_enabled = true
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0, 0, 0, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "09baab2f-5552-4325-847d-b272f940b470"
+layer_name = "Shadow"
+transform = SubResource("Resource_ll7h2")
+absolute = true
 
 [sub_resource type="Resource" id="Resource_8ioaj"]
 script = ExtResource("3_paddw")
@@ -66,66 +123,6 @@ nine_patch_margin_bottom = 5
 layer_id = "1debcfb8-b60f-4de4-aca5-d97499da13f0"
 layer_name = "InnerBorder"
 transform = SubResource("Resource_8ioaj")
-texture_filter_override = 2
-
-[sub_resource type="Resource" id="Resource_joamw"]
-script = ExtResource("3_paddw")
-size = Vector2(32, 32)
-
-[sub_resource type="Resource" id="Resource_5qdsx"]
-script = ExtResource("3_u1mso")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("5_joamw")
-}
-}
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(1, 0.8784314, 0.4, 1),
-"enabled": false
-},
-"normal": {
-"color": Color(0.49803922, 0.72156864, 1, 1),
-"enabled": false
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-nine_patch_margin_left = 15
-nine_patch_margin_top = 15
-nine_patch_margin_right = 15
-nine_patch_margin_bottom = 15
-layer_id = "f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f"
-layer_name = "Icon"
-transform = SubResource("Resource_joamw")
-render_mode_override = 1
 texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_u1mso"]
@@ -188,9 +185,69 @@ layer_name = "OuterBorder"
 transform = SubResource("Resource_u1mso")
 texture_filter_override = 2
 
+[sub_resource type="Resource" id="Resource_joamw"]
+script = ExtResource("3_paddw")
+size = Vector2(32, 32)
+
+[sub_resource type="Resource" id="Resource_5qdsx"]
+script = ExtResource("3_u1mso")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("5_joamw")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+nine_patch_margin_left = 15
+nine_patch_margin_top = 15
+nine_patch_margin_right = 15
+nine_patch_margin_bottom = 15
+layer_id = "f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f"
+layer_name = "Icon"
+transform = SubResource("Resource_joamw")
+render_mode_override = 1
+texture_filter_override = 2
+
 [resource]
 script = ExtResource("4_u1mso")
 id = "new_design"
 name = "TestButton"
-layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_wjuy6"), SubResource("Resource_5qdsx"), SubResource("Resource_pcukm")])
+layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_4im17"), SubResource("Resource_wjuy6"), SubResource("Resource_pcukm"), SubResource("Resource_5qdsx")])
 bounds_layer_id = "f85e14fd-c5a7-4b7f-b69b-d7eceee7bf1f"
