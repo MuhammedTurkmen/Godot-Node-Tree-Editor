@@ -3,14 +3,19 @@ class_name BayterekNodeButton
 extends BaseButton
 ## On-canvas visual representation of a node.
 ##
-## Texture layers are rendered by child BayterekLayerNode instances so
-## that per-layer filter, transform (rotation/skew/scale/pivot), and
-## nine-patch modes all work correctly.
+## Two-layer structure:
+##   BayterekNodeButton (Control)     ← hitbox. position is STABLE.
+##     └── VisualRoot (Control)       ← animations move this, NOT the outer node.
+##           ├── SelectBorder (Panel)
+##           ├── Crown (Label)
+##           └── TextureLayerRoot (Node2D)
 ##
-## Size vs Scale:
-##   - Control.size  = design's natural size (never changes with animation).
-##   - Control.scale = visual multiplier, pivot-centered. Animations use this.
-##   - node_data.scale mirrors Control.scale so it persists.
+## Why two layers:
+##   Animations (lift, pop, shake) change the VISUAL position/scale/rotation.
+##   The outer Control's layout rect stays fixed, so:
+##     - Mouse input always hits the same place (no jitter).
+##     - Tooltips, drag, selection, connections are stable.
+##     - The user can click the node's "home" spot even while it's animating.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -39,7 +44,7 @@ var state: Bayterek.AllocationState = Bayterek.AllocationState.NORMAL
 
 var is_allocatable: bool = false
 
-## Node-wide transform, backed by node_data so it persists.
+## Node-wide transform data (persisted).
 var node_rotation: float:
 	get: return node_data.node_rotation if node_data else 0.0
 	set(v):
@@ -52,6 +57,8 @@ var node_skew: Vector2:
 		if node_data:
 			node_data.node_skew = v
 
+## --- Two-layer UI ---
+var _visual_root: Control             # animations target this
 var _select_border: Panel
 var _crown_label: Label
 var _texture_layer_root: Node2D
@@ -111,10 +118,19 @@ func _ready() -> void:
 	_build_animator()
 
 func _build_children() -> void:
+	# --- VisualRoot ---
+	_visual_root = Control.new()
+	_visual_root.name = "VisualRoot"
+	_visual_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_visual_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_visual_root)
+
+	# --- Texture layers (under VisualRoot) ---
 	_texture_layer_root = Node2D.new()
 	_texture_layer_root.name = "TextureLayerRoot"
-	add_child(_texture_layer_root)
+	_visual_root.add_child(_texture_layer_root)
 
+	# --- Selection border ---
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -131,8 +147,9 @@ func _build_children() -> void:
 	style.set_corner_radius_all(Bayterek.SELECTION_BORDER_RADIUS)
 	_select_border.add_theme_stylebox_override("panel", style)
 	_select_border.visible = false
-	add_child(_select_border)
+	_visual_root.add_child(_select_border)
 
+	# --- Crown label ---
 	_crown_label = Label.new()
 	_crown_label.name = "Crown"
 	_crown_label.text = "👑"
@@ -150,7 +167,7 @@ func _build_children() -> void:
 	_crown_label.offset_right = 20
 	_crown_label.offset_bottom = -6
 	_crown_label.visible = false
-	add_child(_crown_label)
+	_visual_root.add_child(_crown_label)
 
 func _build_animator() -> void:
 	if _animator and is_instance_valid(_animator):
@@ -180,12 +197,33 @@ func get_animator() -> BayterekNodeAnimator:
 	return _animator
 
 # ============================================================
-# VISUAL SCALE API
+# VISUAL TRANSFORM API (animations go through these)
 # ============================================================
+#
+# IMPORTANT: these only affect the VisualRoot child. The outer
+# BayterekNodeButton's layout rect is NEVER touched by animations,
+# so input hit-testing stays rock-solid.
 
-## Applies a visual scale to the node and mirrors it into node_data.
-## Pivot is always at the node's center, so growth/shrink happens
-## from the center.
+## Offsets the visual content from the node's layout position.
+## Positive Y = down, negative Y = up.
+func set_visual_offset(offset: Vector2) -> void:
+	if _visual_root:
+		_visual_root.position = offset
+
+func get_visual_offset() -> Vector2:
+	return _visual_root.position if _visual_root else Vector2.ZERO
+
+## Visual rotation in DEGREES. Pivots around the visual center.
+func set_visual_rotation(deg: float) -> void:
+	if not _visual_root:
+		return
+	_visual_root.pivot_offset = _visual_root.size * 0.5
+	_visual_root.rotation = deg_to_rad(deg)
+
+func get_visual_rotation() -> float:
+	return rad_to_deg(_visual_root.rotation) if _visual_root else 0.0
+
+## Visual scale. Pivots around the visual center (merkezden büyür).
 func set_visual_scale(v: Vector2) -> void:
 	if v.x <= 0.0:
 		v.x = 0.01
@@ -194,10 +232,22 @@ func set_visual_scale(v: Vector2) -> void:
 
 	if node_data:
 		node_data.scale = v
-	scale = v
+
+	if _visual_root:
+		_visual_root.pivot_offset = _visual_root.size * 0.5
+		_visual_root.scale = v
 
 func get_visual_scale() -> Vector2:
-	return scale
+	return _visual_root.scale if _visual_root else Vector2.ONE
+
+## Resets visual transform to identity. Called when animations end
+## without persisting.
+func reset_visual_transform() -> void:
+	if not _visual_root:
+		return
+	_visual_root.position = Vector2.ZERO
+	_visual_root.rotation = 0.0
+	_visual_root.scale = node_data.scale if node_data else Vector2.ONE
 
 # ============================================================
 # NODE TRANSFORM HELPERS
@@ -311,11 +361,12 @@ func _apply_texture_filter() -> void:
 	else:
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
+## The outer Control's size = design's natural size.
+## VisualRoot's size mirrors it and holds the visual pivot.
 func _sync_size_with_design() -> void:
 	if not node_data:
 		return
 
-	# Size is now the DESIGN's natural size — no scale multiplier.
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var target: Vector2 = visual_bounds.size
 
@@ -324,17 +375,21 @@ func _sync_size_with_design() -> void:
 	if target.x <= 0.0 or target.y <= 0.0:
 		target = Vector2(100, 100)
 
+	# Outer Control — the hitbox.
 	if size != target:
 		size = target
 	if custom_minimum_size != target:
 		custom_minimum_size = target
 
-	# Pivot at center — visual scale grows/shrinks from here.
-	pivot_offset = target * 0.5
+	# VisualRoot — same size as the hitbox, pivot at center.
+	if _visual_root:
+		_visual_root.position = Vector2.ZERO
+		_visual_root.size = target
+		_visual_root.custom_minimum_size = target
+		_visual_root.pivot_offset = target * 0.5
 
-	# Mirror node_data.scale into Control.scale so animations and
-	# persisted data stay in sync.
-	scale = node_data.scale
+		# Apply the persisted visual scale.
+		_visual_root.scale = node_data.scale
 
 func set_state(new_state: Bayterek.AllocationState) -> void:
 	state = new_state
@@ -393,30 +448,24 @@ func _update_layer_nodes() -> void:
 
 	var design_size: Vector2 = node_data.design_size
 
-	# NOTE: since Control.scale now handles the visual multiplier,
-	# the local coordinate space inside this node is UNSCALED.
-	# So we use Vector2.ONE for the design scale transform.
+	# VisualRoot is the coordinate space for layers. Use its size
+	# (same as the hitbox).
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var bounds_center: Vector2 = visual_bounds.position + visual_bounds.size * 0.5
 
-	var node_rect_center: Vector2 = size * 0.5
-	var base_xform := Transform2D(
-		Vector2.ONE,
-		Vector2(0.0, 1.0),
-		node_rect_center - bounds_center
-	)
-	# (Transform2D(x_axis, y_axis, origin) — we want identity basis + origin offset)
+	var root_size: Vector2 = _visual_root.size if _visual_root else size
+	var root_center: Vector2 = root_size * 0.5
 
-	base_xform = Transform2D(
+	var base_xform := Transform2D(
 		Vector2(1.0, 0.0),
 		Vector2(0.0, 1.0),
-		node_rect_center - bounds_center
+		root_center - bounds_center
 	)
 
 	var base_xform_no_node := base_xform
 
 	var node_transform: Transform2D = _build_node_transform()
-	var transform_with_center := _transform_around(node_transform, node_rect_center)
+	var transform_with_center := _transform_around(node_transform, root_center)
 	var base_xform_with_node = transform_with_center * base_xform
 
 	for layer_id in _layer_nodes.keys():

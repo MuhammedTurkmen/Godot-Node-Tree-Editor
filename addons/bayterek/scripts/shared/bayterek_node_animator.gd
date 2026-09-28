@@ -3,14 +3,14 @@ class_name BayterekNodeAnimator
 extends Node
 ## Modular, tween-based animator for BayterekNodeButton.
 ##
+## All animations write to the node's VISUAL layer (VisualRoot), never
+## to the outer Control's layout rect. Result: input stays fixed.
+##
 ## Usage:
 ##     var anim := BayterekNodeAnimator.new()
 ##     node.add_child(anim)
 ##     anim.bind(node)
 ##     anim.play("hover_enter")
-##
-## Presets are stored in a static registry so they can be extended
-## from anywhere without touching this file.
 
 signal animation_started(name: String)
 signal animation_finished(name: String)
@@ -22,8 +22,7 @@ var _active_name: String = ""
 var _snapshot: Dictionary = {}
 
 ## When true, cancel() does NOT restore the pre-play snapshot.
-## Used for "enter" animations that are meant to be persistent
-## (e.g. hover lift that stays lifted until an exit animation plays).
+## Used for "enter" animations that are meant to be persistent.
 var _persist_state: bool = false
 
 # ============================================================
@@ -48,7 +47,6 @@ static func _register_builtin_presets() -> void:
 # ------------------------------------------------------------
 
 ## Hover ENTER: lift + rotate, ends in the lifted position.
-## The exit animation (hover_exit) is expected to bring it back down.
 static func _preset_hover_enter(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var lift: float = opts.get("lift", -8.0)
 	var rot_peak: float = opts.get("rot_peak", 5.0)
@@ -60,9 +58,7 @@ static func _preset_hover_enter(anim: BayterekNodeAnimator, opts: Dictionary) ->
 	if not n or not n.node_data:
 		return null
 
-	var base_pos: Vector2 = n.node_data.position
-	var base_rot: float = n.node_data.node_rotation
-	var target_pos: Vector2 = base_pos + Vector2(0.0, lift)
+	var target_pos: Vector2 = Vector2(0.0, lift)
 
 	var t := n.create_tween()
 	t.set_trans(trans).set_ease(ease_type)
@@ -76,7 +72,7 @@ static func _preset_hover_enter(anim: BayterekNodeAnimator, opts: Dictionary) ->
 			pos_offset = lerpf(0.0, lift, p / 0.5)
 		else:
 			pos_offset = lift
-		anim._apply_position(base_pos + Vector2(0.0, pos_offset))
+		anim._apply_visual_offset(Vector2(0.0, pos_offset))
 
 		# Rotation: -peak at 25%, +peak at 75%, 0 at 100%.
 		var rot_offset: float
@@ -86,20 +82,20 @@ static func _preset_hover_enter(anim: BayterekNodeAnimator, opts: Dictionary) ->
 			rot_offset = lerpf(-rot_peak, rot_peak, (p - 0.25) / 0.5)
 		else:
 			rot_offset = lerpf(rot_peak, 0.0, (p - 0.75) / 0.25)
-		anim._apply_rotation(base_rot + rot_offset)
+		anim._apply_visual_rotation(rot_offset)
 
 	t.tween_method(driver, 0.0, 1.0, duration)
 
 	t.finished.connect(func() -> void:
-		anim._apply_position(target_pos)
-		anim._apply_rotation(base_rot)
+		anim._apply_visual_offset(target_pos)
+		anim._apply_visual_rotation(0.0)
 	)
 
 	anim._persist_state = true
 	return t
 
 
-## Hover EXIT: descend back to the original position, NO rotation.
+## Hover EXIT: descend back to the origin, NO rotation.
 static func _preset_hover_exit(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var duration: float = opts.get("duration", 0.3)
 	var trans: Tween.TransitionType = opts.get("trans", Tween.TRANS_SINE)
@@ -109,27 +105,18 @@ static func _preset_hover_exit(anim: BayterekNodeAnimator, opts: Dictionary) -> 
 	if not n or not n.node_data:
 		return null
 
-	var current_pos: Vector2 = n.node_data.position
-	var current_rot: float = n.node_data.node_rotation
-
-	var target_pos: Vector2 = current_pos
-	if anim._snapshot.has("position"):
-		target_pos = anim._snapshot["position"]
-	else:
-		var lift: float = opts.get("lift", -8.0)
-		target_pos = current_pos - Vector2(0.0, lift)
+	var current_offset: Vector2 = n.get_visual_offset()
+	var current_rot: float = n.get_visual_rotation()
 
 	var target_rot: float = 0.0
-	if anim._snapshot.has("rotation"):
-		target_rot = anim._snapshot["rotation"]
 
 	var t := n.create_tween()
 	t.set_trans(trans).set_ease(ease_type)
 
 	t.tween_method(
-		func(v: Vector2) -> void: anim._apply_position(v),
-		current_pos,
-		target_pos,
+		func(v: Vector2) -> void: anim._apply_visual_offset(v),
+		current_offset,
+		Vector2.ZERO,
 		duration
 	)
 
@@ -137,15 +124,15 @@ static func _preset_hover_exit(anim: BayterekNodeAnimator, opts: Dictionary) -> 
 		var rt := n.create_tween()
 		rt.set_trans(trans).set_ease(ease_type)
 		rt.tween_method(
-			func(v: float) -> void: anim._apply_rotation(v),
+			func(v: float) -> void: anim._apply_visual_rotation(v),
 			current_rot,
 			target_rot,
 			duration
 		)
 
 	t.finished.connect(func() -> void:
-		anim._apply_position(target_pos)
-		anim._apply_rotation(target_rot)
+		anim._apply_visual_offset(Vector2.ZERO)
+		anim._apply_visual_rotation(0.0)
 		anim._snapshot.clear()
 		anim._persist_state = false
 	)
@@ -165,9 +152,6 @@ static func _preset_lift_rotate(anim: BayterekNodeAnimator, opts: Dictionary) ->
 	if not n or not n.node_data:
 		return null
 
-	var base_pos: Vector2 = n.node_data.position
-	var base_rot: float = n.node_data.node_rotation
-
 	var t := n.create_tween()
 	t.set_trans(trans).set_ease(ease_type)
 
@@ -179,7 +163,7 @@ static func _preset_lift_rotate(anim: BayterekNodeAnimator, opts: Dictionary) ->
 			pos_offset = lerpf(0.0, lift, p / 0.5)
 		else:
 			pos_offset = lerpf(lift, 0.0, (p - 0.5) / 0.5)
-		anim._apply_position(base_pos + Vector2(0.0, pos_offset))
+		anim._apply_visual_offset(Vector2(0.0, pos_offset))
 
 		var rot_offset: float
 		if p <= 0.25:
@@ -188,18 +172,18 @@ static func _preset_lift_rotate(anim: BayterekNodeAnimator, opts: Dictionary) ->
 			rot_offset = lerpf(-rot_peak, rot_peak, (p - 0.25) / 0.5)
 		else:
 			rot_offset = lerpf(rot_peak, 0.0, (p - 0.75) / 0.25)
-		anim._apply_rotation(base_rot + rot_offset)
+		anim._apply_visual_rotation(rot_offset)
 
 	t.tween_method(driver, 0.0, 1.0, duration)
 
 	t.finished.connect(func() -> void:
-		anim._apply_position(base_pos)
-		anim._apply_rotation(base_rot)
+		anim._apply_visual_offset(Vector2.ZERO)
+		anim._apply_visual_rotation(0.0)
 	)
 	return t
 
 
-## POP: center-anchored scale in/out via Control.scale (pivot is centered).
+## POP: center-anchored scale via VisualRoot.scale (pivot is centered).
 static func _preset_pop(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var peak: float = opts.get("peak", 1.15)
 	var duration: float = opts.get("duration", 0.25)
@@ -213,19 +197,19 @@ static func _preset_pop(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var t := n.create_tween()
 	t.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	t.tween_method(
-		func(v: float) -> void: anim._apply_scale(Vector2(base_scale.x * v, base_scale.y * v)),
+		func(v: float) -> void: anim._apply_visual_scale(Vector2(base_scale.x * v, base_scale.y * v)),
 		1.0,
 		peak,
 		duration * 0.4
 	)
 	t.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	t.tween_method(
-		func(v: float) -> void: anim._apply_scale(Vector2(base_scale.x * v, base_scale.y * v)),
+		func(v: float) -> void: anim._apply_visual_scale(Vector2(base_scale.x * v, base_scale.y * v)),
 		peak,
 		1.0,
 		duration * 0.6
 	)
-	t.finished.connect(func() -> void: anim._apply_scale(base_scale))
+	t.finished.connect(func() -> void: anim._apply_visual_scale(base_scale))
 	return t
 
 
@@ -237,8 +221,6 @@ static func _preset_shake(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween
 	if not n or not n.node_data:
 		return null
 
-	var base_pos: Vector2 = n.node_data.position
-
 	var t := n.create_tween()
 	t.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
@@ -248,23 +230,23 @@ static func _preset_shake(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween
 	for i in steps:
 		var dir: float = 1.0 if i % 2 == 0 else -1.0
 		var falloff: float = 1.0 - (float(i) / float(steps))
-		var target: Vector2 = base_pos + Vector2(amplitude * dir * falloff, 0.0)
-		var start_v: Vector2 = base_pos if i == 0 else base_pos + Vector2(amplitude * -dir * falloff, 0.0)
+		var target: Vector2 = Vector2(amplitude * dir * falloff, 0.0)
+		var start_v: Vector2 = Vector2.ZERO if i == 0 else Vector2(amplitude * -dir * falloff, 0.0)
 		t.tween_method(
-			func(v: Vector2) -> void: anim._apply_position(v),
+			func(v: Vector2) -> void: anim._apply_visual_offset(v),
 			start_v,
 			target,
 			step_time
 		)
 
 	t.tween_method(
-		func(v: Vector2) -> void: anim._apply_position(v),
-		base_pos + Vector2(amplitude * -1.0 * 0.1, 0.0),
-		base_pos,
+		func(v: Vector2) -> void: anim._apply_visual_offset(v),
+		Vector2(amplitude * -1.0 * 0.1, 0.0),
+		Vector2.ZERO,
 		step_time
 	)
 
-	t.finished.connect(func() -> void: anim._apply_position(base_pos))
+	t.finished.connect(func() -> void: anim._apply_visual_offset(Vector2.ZERO))
 	return t
 
 
@@ -276,17 +258,15 @@ static func _preset_hover_lift(anim: BayterekNodeAnimator, opts: Dictionary) -> 
 	if not n or not n.node_data:
 		return null
 
-	var base_pos: Vector2 = n.node_data.position
-
 	var t := n.create_tween()
 	t.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	t.tween_method(
-		func(v: Vector2) -> void: anim._apply_position(v),
-		base_pos,
-		base_pos + Vector2(0, lift),
+		func(v: Vector2) -> void: anim._apply_visual_offset(v),
+		Vector2.ZERO,
+		Vector2(0, lift),
 		duration
 	)
-	t.finished.connect(func() -> void: anim._apply_position(base_pos + Vector2(0, lift)))
+	t.finished.connect(func() -> void: anim._apply_visual_offset(Vector2(0, lift)))
 	return t
 
 # ------------------------------------------------------------
@@ -374,63 +354,36 @@ func _capture_snapshot() -> Dictionary:
 	if not node or not node.node_data:
 		return {}
 	return {
-		"position": node.node_data.position,
-		"rotation": node.node_data.node_rotation,
-		"skew": node.node_data.node_skew,
-		"scale": node.node_data.scale,
+		"offset": node.get_visual_offset(),
+		"rotation": node.get_visual_rotation(),
+		"scale": node.get_visual_scale(),
 	}
 
 func _restore_snapshot() -> void:
 	if not node or not node.node_data:
 		return
-	if _snapshot.has("position"):
-		_apply_position(_snapshot["position"])
+	if _snapshot.has("offset"):
+		_apply_visual_offset(_snapshot["offset"])
 	if _snapshot.has("rotation"):
-		_apply_rotation(_snapshot["rotation"])
-	if _snapshot.has("skew"):
-		node.node_data.node_skew = _snapshot["skew"]
+		_apply_visual_rotation(_snapshot["rotation"])
 	if _snapshot.has("scale"):
-		_apply_scale(_snapshot["scale"])
+		_apply_visual_scale(_snapshot["scale"])
 
 # ============================================================
-# APPLY HELPERS
+# APPLY HELPERS — go through the node's visual layer
 # ============================================================
 
-func _apply_position(pos: Vector2) -> void:
-	if not node or not node.node_data:
+func _apply_visual_offset(offset: Vector2) -> void:
+	if not node:
 		return
-	node.node_data.position = pos
-	var tv := _find_tree_view()
-	if tv and tv.nodes_service:
-		tv.nodes_service.update_position(node, pos)
-		if tv.connections_service:
-			tv.connections_service.update_lines_of(node)
-	elif node.has_method("refresh_transform"):
-		node.refresh_transform()
+	node.set_visual_offset(offset)
 
-func _apply_rotation(rot: float) -> void:
-	if not node or not node.node_data:
+func _apply_visual_rotation(deg: float) -> void:
+	if not node:
 		return
-	node.node_data.node_rotation = rot
-	if node.has_method("refresh_transform"):
-		node.refresh_transform()
+	node.set_visual_rotation(deg)
 
-## Scale via Control.scale (pivot is centered). No position shifts.
-func _apply_scale(s: Vector2) -> void:
-	if not node or not node.node_data:
+func _apply_visual_scale(s: Vector2) -> void:
+	if not node:
 		return
-
-	if node.has_method("set_visual_scale"):
-		node.set_visual_scale(s)
-	else:
-		node.node_data.scale = s
-		if node is Control:
-			node.scale = s
-
-func _find_tree_view() -> BayterekTreeView:
-	var p: Node = node
-	while p:
-		if p is BayterekTreeView:
-			return p
-		p = p.get_parent()
-	return null
+	node.set_visual_scale(s)
