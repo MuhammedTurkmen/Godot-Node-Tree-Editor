@@ -1,16 +1,20 @@
 @tool
 class_name BayterekNodeAnimator
 extends Node
-## Modular, tween-based animator for BayterekNodeButton.
+## Presets — all built from the fluent builder DSL.
 ##
-## All animations write to the node's VISUAL layer (VisualRoot), never
-## to the outer Control's layout rect. Result: input stays fixed.
-##
-## Usage:
-##     var anim := BayterekNodeAnimator.new()
-##     node.add_child(anim)
-##     anim.bind(node)
-##     anim.play("hover_enter")
+## Example:
+##     anim.chain() \
+##         .parallel() \
+##             .move(Vector2(0, -8), 0.45) \
+##             .sequence() \
+##                 .rotate(-5, 0.1125) \
+##                 .rotate(10, 0.225) \
+##                 .rotate(-5, 0.1125) \
+##             .end_sequence() \
+##         .end_parallel() \
+##         .persist(true) \
+##         .play()
 
 signal animation_started(name: String)
 signal animation_finished(name: String)
@@ -20,10 +24,10 @@ var node: BayterekNodeButton = null
 var _active_tween: Tween = null
 var _active_name: String = ""
 var _snapshot: Dictionary = {}
-
-## When true, cancel() does NOT restore the pre-play snapshot.
-## Used for "enter" animations that are meant to be persistent.
 var _persist_state: bool = false
+
+## Child tweens spawned by the builder (one per step). Killed on cancel.
+var _child_tweens: Array = []
 
 # ============================================================
 # PRESET REGISTRY
@@ -42,236 +46,151 @@ static func _register_builtin_presets() -> void:
 	_presets["shake"] = _preset_shake
 	_presets["hover_lift"] = _preset_hover_lift
 
-# ------------------------------------------------------------
+# ============================================================
 # BUILT-IN PRESETS
-# ------------------------------------------------------------
+# ============================================================
 
-## Hover ENTER: lift + rotate, ends in the lifted position.
+## Hover ENTER.
+##
+## Timeline (D = duration):
+##   Both move and rotate finish at the SAME time (D).
+##   Move:   0 → lift over D.
+##   Rotate: 0 → -peak → +peak → 0 over D (three sequential sub-steps).
+##   Both run in parallel.
+##
+## persist = true → node stays lifted after the tween ends.
 static func _preset_hover_enter(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
-	var lift: float = opts.get("lift", -8.0)
+	var lift: float = opts.get("lift", -2.5)
 	var rot_peak: float = opts.get("rot_peak", 5.0)
 	var duration: float = opts.get("duration", 0.45)
-	var trans: Tween.TransitionType = opts.get("trans", Tween.TRANS_SINE)
-	var ease_type: Tween.EaseType = opts.get("ease", Tween.EASE_IN_OUT)
 
-	var n = anim.node
-	if not n or not n.node_data:
-		return null
+	var step: float = duration / 3
+	var quarter: float = duration * 0.25
+	var half: float = duration * 0.5
 
-	var target_pos: Vector2 = Vector2(0.0, lift)
-
-	var t := n.create_tween()
-	t.set_trans(trans).set_ease(ease_type)
-
-	var driver := func(progress: float) -> void:
-		var p: float = progress
-
-		# Position: lift up in FIRST half, stay there.
-		var pos_offset: float
-		if p <= 0.5:
-			pos_offset = lerpf(0.0, lift, p / 0.5)
-		else:
-			pos_offset = lift
-		anim._apply_visual_offset(Vector2(0.0, pos_offset))
-
-		# Rotation: -peak at 25%, +peak at 75%, 0 at 100%.
-		var rot_offset: float
-		if p <= 0.25:
-			rot_offset = lerpf(0.0, -rot_peak, p / 0.25)
-		elif p <= 0.75:
-			rot_offset = lerpf(-rot_peak, rot_peak, (p - 0.25) / 0.5)
-		else:
-			rot_offset = lerpf(rot_peak, 0.0, (p - 0.75) / 0.25)
-		anim._apply_visual_rotation(rot_offset)
-
-	t.tween_method(driver, 0.0, 1.0, duration)
-
-	t.finished.connect(func() -> void:
-		anim._apply_visual_offset(target_pos)
-		anim._apply_visual_rotation(0.0)
-	)
-
-	anim._persist_state = true
-	return t
+	var b: BayterekAnimatorBuilder = anim.chain()
+	b.parallel()
+	b.move(Vector2(0, lift), duration)
+	b.sequence()
+	b.rotate(-rot_peak, step)
+	b.rotate(rot_peak * 2.0, step)
+	b.rotate(-rot_peak, step)
+	b.end_sequence()
+	b.end_parallel()
+	b.persist(true)
+	return b.play()
 
 
-## Hover EXIT: descend back to the origin, NO rotation.
+## Hover EXIT — descend, no rotation.
 static func _preset_hover_exit(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var duration: float = opts.get("duration", 0.3)
-	var trans: Tween.TransitionType = opts.get("trans", Tween.TRANS_SINE)
-	var ease_type: Tween.EaseType = opts.get("ease", Tween.EASE_OUT)
-
 	var n = anim.node
-	if not n or not n.node_data:
+	if not n:
 		return null
 
-	var current_offset: Vector2 = n.get_visual_offset()
-	var current_rot: float = n.get_visual_rotation()
+	var cur_off: Vector2 = n.get_visual_offset()
+	var cur_rot: float = n.get_visual_rotation()
 
-	var target_rot: float = 0.0
+	if cur_off.length_squared() <= 0.0001 and is_equal_approx(cur_rot, 0.0):
+		n.set_visual_offset(Vector2.ZERO)
+		n.set_visual_rotation(0.0)
+		return null
 
-	var t := n.create_tween()
-	t.set_trans(trans).set_ease(ease_type)
-
-	t.tween_method(
-		func(v: Vector2) -> void: anim._apply_visual_offset(v),
-		current_offset,
-		Vector2.ZERO,
-		duration
-	)
-
-	if not is_equal_approx(current_rot, target_rot):
-		var rt := n.create_tween()
-		rt.set_trans(trans).set_ease(ease_type)
-		rt.tween_method(
-			func(v: float) -> void: anim._apply_visual_rotation(v),
-			current_rot,
-			target_rot,
-			duration
-		)
-
-	t.finished.connect(func() -> void:
-		anim._apply_visual_offset(Vector2.ZERO)
-		anim._apply_visual_rotation(0.0)
-		anim._snapshot.clear()
-		anim._persist_state = false
-	)
-
-	return t
+	var b: BayterekAnimatorBuilder = anim.chain()
+	b.parallel()
+	if cur_off.length_squared() > 0.0001:
+		b.move_to(cur_off, Vector2.ZERO, duration)
+	if not is_equal_approx(cur_rot, 0.0):
+		b.rotate_to(cur_rot, 0.0, duration)
+	b.end_parallel()
+	b.persist(false)
+	return b.play()
 
 
-## One-shot lift + rotate that returns to base when done.
+## Lift + rotate that returns to base.
 static func _preset_lift_rotate(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var lift: float = opts.get("lift", -8.0)
 	var rot_peak: float = opts.get("rot_peak", 5.0)
 	var duration: float = opts.get("duration", 0.45)
-	var trans: Tween.TransitionType = opts.get("trans", Tween.TRANS_SINE)
-	var ease_type: Tween.EaseType = opts.get("ease", Tween.EASE_IN_OUT)
 
-	var n = anim.node
-	if not n or not n.node_data:
-		return null
+	var quarter: float = duration * 0.25
+	var half: float = duration * 0.5
 
-	var t := n.create_tween()
-	t.set_trans(trans).set_ease(ease_type)
+	var b: BayterekAnimatorBuilder = anim.chain()
 
-	var driver := func(progress: float) -> void:
-		var p: float = progress
+	# Up + full rotation swing.
+	b.parallel()
+	b.move(Vector2(0, lift), duration)
+	b.sequence()
+	b.rotate(-rot_peak, quarter)
+	b.rotate(rot_peak * 2.0, half)
+	b.rotate(-rot_peak, quarter)
+	b.end_sequence()
+	b.end_parallel()
 
-		var pos_offset: float
-		if p <= 0.5:
-			pos_offset = lerpf(0.0, lift, p / 0.5)
-		else:
-			pos_offset = lerpf(lift, 0.0, (p - 0.5) / 0.5)
-		anim._apply_visual_offset(Vector2(0.0, pos_offset))
+	# Down + full rotation swing back.
+	b.parallel()
+	b.move(Vector2(0, -lift), duration)
+	b.sequence()
+	b.rotate(-rot_peak, quarter)
+	b.rotate(rot_peak * 2.0, half)
+	b.rotate(-rot_peak, quarter)
+	b.end_sequence()
+	b.end_parallel()
 
-		var rot_offset: float
-		if p <= 0.25:
-			rot_offset = lerpf(0.0, -rot_peak, p / 0.25)
-		elif p <= 0.75:
-			rot_offset = lerpf(-rot_peak, rot_peak, (p - 0.25) / 0.5)
-		else:
-			rot_offset = lerpf(rot_peak, 0.0, (p - 0.75) / 0.25)
-		anim._apply_visual_rotation(rot_offset)
-
-	t.tween_method(driver, 0.0, 1.0, duration)
-
-	t.finished.connect(func() -> void:
-		anim._apply_visual_offset(Vector2.ZERO)
-		anim._apply_visual_rotation(0.0)
-	)
-	return t
+	b.persist(false)
+	return b.play()
 
 
-## POP: center-anchored scale via VisualRoot.scale (pivot is centered).
+## POP — scale up and back.
 static func _preset_pop(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var peak: float = opts.get("peak", 1.15)
 	var duration: float = opts.get("duration", 0.25)
 
-	var n = anim.node
-	if not n or not n.node_data:
-		return null
-
-	var base_scale: Vector2 = n.node_data.scale
-
-	var t := n.create_tween()
-	t.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	t.tween_method(
-		func(v: float) -> void: anim._apply_visual_scale(Vector2(base_scale.x * v, base_scale.y * v)),
-		1.0,
-		peak,
-		duration * 0.4
-	)
-	t.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	t.tween_method(
-		func(v: float) -> void: anim._apply_visual_scale(Vector2(base_scale.x * v, base_scale.y * v)),
-		peak,
-		1.0,
-		duration * 0.6
-	)
-	t.finished.connect(func() -> void: anim._apply_visual_scale(base_scale))
-	return t
+	var b: BayterekAnimatorBuilder = anim.chain()
+	b.scale(peak, duration * 0.4)
+	b.scale(1.0 / peak, duration * 0.6)
+	b.persist(false)
+	return b.play()
 
 
+## SHAKE — alternating rotation, decays to base.
 static func _preset_shake(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
-	var amplitude: float = opts.get("amplitude", 6.0)
+	var amplitude: float = opts.get("amplitude", 5.0)
 	var duration: float = opts.get("duration", 0.35)
+	var bounces: int = int(opts.get("steps", 4))
+	if bounces < 1:
+		bounces = 1
 
-	var n = anim.node
-	if not n or not n.node_data:
-		return null
+	var step_t: float = duration / float(bounces + 1)
 
-	var t := n.create_tween()
-	t.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	var b: BayterekAnimatorBuilder = anim.chain()
 
-	var steps: int = 6
-	var step_time: float = duration / float(steps)
-
-	for i in steps:
+	for i in bounces:
+		var falloff: float = 1.0 - float(i) / float(bounces + 1)
 		var dir: float = 1.0 if i % 2 == 0 else -1.0
-		var falloff: float = 1.0 - (float(i) / float(steps))
-		var target: Vector2 = Vector2(amplitude * dir * falloff, 0.0)
-		var start_v: Vector2 = Vector2.ZERO if i == 0 else Vector2(amplitude * -dir * falloff, 0.0)
-		t.tween_method(
-			func(v: Vector2) -> void: anim._apply_visual_offset(v),
-			start_v,
-			target,
-			step_time
-		)
+		b.rotate(amplitude * dir * falloff, step_t)
 
-	t.tween_method(
-		func(v: Vector2) -> void: anim._apply_visual_offset(v),
-		Vector2(amplitude * -1.0 * 0.1, 0.0),
-		Vector2.ZERO,
-		step_time
-	)
+	# Settle back to 0.
+	b.rotate_to(b._cursor_rot, 0.0, step_t)
 
-	t.finished.connect(func() -> void: anim._apply_visual_offset(Vector2.ZERO))
-	return t
+	b.persist(false)
+	return b.play()
 
 
+## HOVER LIFT — lift only, stays lifted.
 static func _preset_hover_lift(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var lift: float = opts.get("lift", -6.0)
 	var duration: float = opts.get("duration", 0.18)
 
-	var n = anim.node
-	if not n or not n.node_data:
-		return null
+	var b: BayterekAnimatorBuilder = anim.chain()
+	b.move(Vector2(0, lift), duration)
+	b.persist(true)
+	return b.play()
 
-	var t := n.create_tween()
-	t.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	t.tween_method(
-		func(v: Vector2) -> void: anim._apply_visual_offset(v),
-		Vector2.ZERO,
-		Vector2(0, lift),
-		duration
-	)
-	t.finished.connect(func() -> void: anim._apply_visual_offset(Vector2(0, lift)))
-	return t
-
-# ------------------------------------------------------------
+# ============================================================
 # PUBLIC PRESET API
-# ------------------------------------------------------------
+# ============================================================
 
 static func register_preset(preset_name: String, fn: Callable) -> void:
 	_presets[preset_name] = fn
@@ -297,16 +216,8 @@ func play(preset_name: String, opts: Dictionary = {}) -> Tween:
 		push_warning("BayterekNodeAnimator: unknown preset '%s'." % preset_name)
 		return null
 
-	if _active_tween and _active_tween.is_valid():
-		_active_tween.kill()
-		_active_tween = null
-		if not _persist_state and not _snapshot.is_empty():
-			_restore_snapshot()
-			_snapshot.clear()
-
-	if not _persist_state or _snapshot.is_empty():
-		_snapshot = _capture_snapshot()
-
+	_hard_cancel()
+	_snapshot = _capture_snapshot()
 	_active_name = preset_name
 
 	var fn: Callable = _presets[preset_name]
@@ -321,24 +232,35 @@ func play(preset_name: String, opts: Dictionary = {}) -> Tween:
 	animation_started.emit(preset_name)
 
 	tween.finished.connect(func() -> void:
-		if _active_tween == tween:
-			_active_tween = null
-			_active_name = ""
+		if _active_tween != tween:
+			return
+		_active_tween = null
+		_active_name = ""
 		animation_finished.emit(preset_name)
 	)
 
 	return tween
 
-func cancel() -> void:
-	if _active_tween and _active_tween.is_valid():
-		_active_tween.kill()
-		_active_tween = null
+## Kills the running animation and all its child tweens.
+func _hard_cancel() -> void:
+	for tw in _child_tweens:
+		if tw and tw.is_valid():
+			tw.kill()
+	_child_tweens.clear()
 
+	var master: Tween = _active_tween
+	_active_tween = null
+	if master and master.is_valid():
+		master.kill()
+
+	_active_name = ""
+	_persist_state = false
+
+func cancel() -> void:
+	_hard_cancel()
 	if not _persist_state and not _snapshot.is_empty():
 		_restore_snapshot()
 		_snapshot.clear()
-
-	_active_name = ""
 
 func is_playing() -> bool:
 	return _active_tween != null and _active_tween.is_valid()
@@ -370,7 +292,23 @@ func _restore_snapshot() -> void:
 		_apply_visual_scale(_snapshot["scale"])
 
 # ============================================================
-# APPLY HELPERS — go through the node's visual layer
+# FLUENT BUILDER FACTORY
+# ============================================================
+
+func chain() -> BayterekAnimatorBuilder:
+	var b: BayterekAnimatorBuilder = BayterekAnimatorBuilder.new(self)
+	return b.chain()
+
+func parallel() -> BayterekAnimatorBuilder:
+	var b: BayterekAnimatorBuilder = BayterekAnimatorBuilder.new(self)
+	return b.parallel()
+
+func sequence() -> BayterekAnimatorBuilder:
+	var b: BayterekAnimatorBuilder = BayterekAnimatorBuilder.new(self)
+	return b.sequence()
+
+# ============================================================
+# APPLY HELPERS
 # ============================================================
 
 func _apply_visual_offset(offset: Vector2) -> void:
