@@ -42,15 +42,29 @@ var _current_tree_name: String = ""
 ## Enter: played on mouse-over. Exit: played on mouse-out.
 var _hover_enter_preset: String = "hover_enter"
 var _hover_exit_preset: String = "hover_exit"
-var _hover_anim_opts: Dictionary = {
+
+## Base options — duration here is the "1.0×" reference.
+## The final options sent to the tree view are scaled by `_hover_anim_speed`.
+const BASE_HOVER_OPTS := {
 	"lift": -8.0,
 	"rot_peak": 5.0,
 	"duration": 0.45,
 }
 
+## Global speed multiplier for BOTH enter and exit animations.
+## 1.0 = normal speed, 2.0 = twice as fast, 0.5 = half speed.
+var _hover_anim_speed: float = 1.0
+
+## UI handles so we can update the labels live.
+var _enter_speed_label: Label
+var _exit_speed_label: Label
+
 const TOP_BAR_HEIGHT := 42
 const ANIM_BAR_HEIGHT := 34
 const ANIM_BAR_GAP := 4
+
+const MIN_SPEED := 0.1
+const MAX_SPEED := 3.0
 
 # ============================================================
 # READY
@@ -285,8 +299,57 @@ func _build_tree_screen() -> void:
 	stop_anim_btn.pressed.connect(_on_stop_animation_pressed)
 	_anim_exit_bar.add_child(stop_anim_btn)
 
+	# --- ANIMATION BAR — ROW 3 (Speed) ---
+	var anim_speed_bar := HBoxContainer.new()
+	anim_speed_bar.name = "AnimSpeedBar"
+	anim_speed_bar.position = Vector2(
+		10,
+		8 + TOP_BAR_HEIGHT + (ANIM_BAR_HEIGHT + ANIM_BAR_GAP) * 2
+	)
+	anim_speed_bar.add_theme_constant_override("separation", 6)
+	_tree_screen.add_child(anim_speed_bar)
+
+	var speed_title := Label.new()
+	speed_title.text = "⚡ Speed:"
+	speed_title.add_theme_color_override("font_color", Color(1.0, 0.9, 0.5))
+	speed_title.custom_minimum_size = Vector2(120, 0)
+	anim_speed_bar.add_child(speed_title)
+
+	var speed_slider := HSlider.new()
+	speed_slider.name = "SpeedSlider"
+	speed_slider.min_value = MIN_SPEED
+	speed_slider.max_value = MAX_SPEED
+	speed_slider.step = 0.05
+	speed_slider.value = _hover_anim_speed
+	speed_slider.custom_minimum_size = Vector2(200, 0)
+	speed_slider.tooltip_text = "Animation speed multiplier for both enter and exit animations.\n1.0× = normal, 2.0× = twice as fast, 0.5× = half speed."
+	speed_slider.value_changed.connect(_on_speed_changed)
+	anim_speed_bar.add_child(speed_slider)
+
+	# --- Live speed value label ---
+	_enter_speed_label = Label.new()
+	_enter_speed_label.name = "SpeedValueLabel"
+	_enter_speed_label.text = "%.2f×" % _hover_anim_speed
+	_enter_speed_label.custom_minimum_size = Vector2(60, 0)
+	_enter_speed_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.5))
+	anim_speed_bar.add_child(_enter_speed_label)
+
+	# Reuse the same label for exit (they share the same speed).
+	_exit_speed_label = _enter_speed_label
+
+	anim_speed_bar.add_child(VSeparator.new())
+
+	var reset_speed_btn := Button.new()
+	reset_speed_btn.name = "ResetSpeedButton"
+	reset_speed_btn.text = "Reset (1.0×)"
+	reset_speed_btn.pressed.connect(func() -> void:
+		speed_slider.value = 1.0
+	)
+	anim_speed_bar.add_child(reset_speed_btn)
+
 	# --- TREE RENDER CONTAINER ---
-	var bars_height: float = TOP_BAR_HEIGHT + ANIM_BAR_HEIGHT * 2 + ANIM_BAR_GAP
+	# Now there are THREE bars stacked: top + enter + exit + speed.
+	var bars_height: float = TOP_BAR_HEIGHT + (ANIM_BAR_HEIGHT + ANIM_BAR_GAP) * 3
 	_tree_container = Control.new()
 	_tree_container.name = "TreeContainer"
 	_tree_container.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -346,6 +409,29 @@ func _add_manual_anim_button_to(parent: HBoxContainer, label: String, preset_nam
 	btn.tooltip_text = "Play '%s' on the selected nodes (or all if nothing selected)." % preset_name
 	btn.pressed.connect(func() -> void: _on_anim_button_pressed(preset_name))
 	parent.add_child(btn)
+
+# ============================================================
+# SPEED CONTROL (shared between enter + exit)
+# ============================================================
+
+## Called when the user drags the speed slider.
+## The base duration is divided by the speed multiplier:
+##   speed = 2.0  →  duration halves  →  animation plays twice as fast.
+##   speed = 0.5  →  duration doubles →  animation plays half as fast.
+func _on_speed_changed(value: float) -> void:
+	_hover_anim_speed = clampf(value, MIN_SPEED, MAX_SPEED)
+
+	_update_speed_labels()
+	_apply_hover_config_to_tree_view()
+
+	print("Test: Animation speed set to %.2f×" % _hover_anim_speed)
+
+func _update_speed_labels() -> void:
+	var text := "%.2f×" % _hover_anim_speed
+	if _enter_speed_label:
+		_enter_speed_label.text = text
+	if _exit_speed_label:
+		_exit_speed_label.text = text
 
 # --- HUD --------------------------------------------------------
 
@@ -442,12 +528,27 @@ func _on_exit_preset_changed(index: int) -> void:
 	_apply_hover_config_to_tree_view()
 
 ## Pushes the current hover preset config to the active tree view.
+##
+## Duration is divided by the speed multiplier so speed=2.0 doubles
+## animation speed (halves duration).
 func _apply_hover_config_to_tree_view() -> void:
 	if not _tree_view:
 		return
+
+	var scaled_opts: Dictionary = BASE_HOVER_OPTS.duplicate()
+	var base_duration: float = float(scaled_opts.get("duration", 0.45))
+	scaled_opts["duration"] = base_duration / _hover_anim_speed
+
 	_tree_view.hover_enter_preset = _hover_enter_preset
 	_tree_view.hover_exit_preset = _hover_exit_preset
-	_tree_view.hover_animation_opts = _hover_anim_opts
+	_tree_view.hover_animation_opts = scaled_opts
+
+## Builds the scaled options for manual test buttons.
+func _get_scaled_opts() -> Dictionary:
+	var scaled_opts: Dictionary = BASE_HOVER_OPTS.duplicate()
+	var base_duration: float = float(scaled_opts.get("duration", 0.45))
+	scaled_opts["duration"] = base_duration / _hover_anim_speed
+	return scaled_opts
 
 # ============================================================
 # BROWSER LOGIC
@@ -606,16 +707,17 @@ func _on_anim_button_pressed(preset_name: String) -> void:
 		print("Test: No nodes to animate.")
 		return
 
+	var opts: Dictionary = _get_scaled_opts()
 	var count: int = 0
 	for node in targets:
 		if not is_instance_valid(node):
 			continue
 		if not node.has_method("play_animation"):
 			continue
-		node.play_animation(preset_name, _hover_anim_opts)
+		node.play_animation(preset_name, opts)
 		count += 1
 
-	print("Test: Playing '%s' on %d node(s)" % [preset_name, count])
+	print("Test: Playing '%s' on %d node(s) @ %.2f×" % [preset_name, count, _hover_anim_speed])
 
 func _on_stop_animation_pressed() -> void:
 	if not _tree_view or not _tree_view.nodes_service:

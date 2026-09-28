@@ -6,6 +6,11 @@ extends BaseButton
 ## Texture layers are rendered by child BayterekLayerNode instances so
 ## that per-layer filter, transform (rotation/skew/scale/pivot), and
 ## nine-patch modes all work correctly.
+##
+## Size vs Scale:
+##   - Control.size  = design's natural size (never changes with animation).
+##   - Control.scale = visual multiplier, pivot-centered. Animations use this.
+##   - node_data.scale mirrors Control.scale so it persists.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -159,19 +164,11 @@ func _build_animator() -> void:
 # ANIMATION API
 # ============================================================
 
-## Plays a named animation preset. Presets are registered in
-## BayterekNodeAnimator. Built-ins: "lift_rotate", "pop", "shake",
-## "hover_lift".
-##
-## Example:
-##     node.play_animation("lift_rotate", {"lift": -10.0, "rot_peak": 6.0})
 func play_animation(preset_name: String, opts: Dictionary = {}) -> Tween:
 	if not _animator:
 		return null
 	return _animator.play(preset_name, opts)
 
-## Stops the currently running animation and snaps back to the
-## pre-play state.
 func stop_animation() -> void:
 	if _animator:
 		_animator.cancel()
@@ -181,6 +178,26 @@ func is_animating() -> bool:
 
 func get_animator() -> BayterekNodeAnimator:
 	return _animator
+
+# ============================================================
+# VISUAL SCALE API
+# ============================================================
+
+## Applies a visual scale to the node and mirrors it into node_data.
+## Pivot is always at the node's center, so growth/shrink happens
+## from the center.
+func set_visual_scale(v: Vector2) -> void:
+	if v.x <= 0.0:
+		v.x = 0.01
+	if v.y <= 0.0:
+		v.y = 0.01
+
+	if node_data:
+		node_data.scale = v
+	scale = v
+
+func get_visual_scale() -> Vector2:
+	return scale
 
 # ============================================================
 # NODE TRANSFORM HELPERS
@@ -298,11 +315,12 @@ func _sync_size_with_design() -> void:
 	if not node_data:
 		return
 
+	# Size is now the DESIGN's natural size — no scale multiplier.
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
-	var target: Vector2 = visual_bounds.size * node_data.scale
+	var target: Vector2 = visual_bounds.size
 
 	if target.x <= 0.0 or target.y <= 0.0:
-		target = node_data.design_size * node_data.scale
+		target = node_data.design_size
 	if target.x <= 0.0 or target.y <= 0.0:
 		target = Vector2(100, 100)
 
@@ -310,6 +328,13 @@ func _sync_size_with_design() -> void:
 		size = target
 	if custom_minimum_size != target:
 		custom_minimum_size = target
+
+	# Pivot at center — visual scale grows/shrinks from here.
+	pivot_offset = target * 0.5
+
+	# Mirror node_data.scale into Control.scale so animations and
+	# persisted data stay in sync.
+	scale = node_data.scale
 
 func set_state(new_state: Bayterek.AllocationState) -> void:
 	state = new_state
@@ -367,16 +392,25 @@ func _update_layer_nodes() -> void:
 		return
 
 	var design_size: Vector2 = node_data.design_size
-	var design_scale: Vector2 = node_data.scale
 
+	# NOTE: since Control.scale now handles the visual multiplier,
+	# the local coordinate space inside this node is UNSCALED.
+	# So we use Vector2.ONE for the design scale transform.
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var bounds_center: Vector2 = visual_bounds.position + visual_bounds.size * 0.5
 
 	var node_rect_center: Vector2 = size * 0.5
 	var base_xform := Transform2D(
-		Vector2(design_scale.x, 0.0),
-		Vector2(0.0, design_scale.y),
-		node_rect_center - bounds_center * design_scale
+		Vector2.ONE,
+		Vector2(0.0, 1.0),
+		node_rect_center - bounds_center
+	)
+	# (Transform2D(x_axis, y_axis, origin) — we want identity basis + origin offset)
+
+	base_xform = Transform2D(
+		Vector2(1.0, 0.0),
+		Vector2(0.0, 1.0),
+		node_rect_center - bounds_center
 	)
 
 	var base_xform_no_node := base_xform

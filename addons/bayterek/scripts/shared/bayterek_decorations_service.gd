@@ -69,11 +69,15 @@ func _create_decoration_from_data(node_data: BayterekNode) -> BayterekNodeButton
 	node.tree_data = _tree_data
 	node.name = "Decoration_%d" % node_data.id
 
-	var node_size: Vector2 = node_data.design_size * node_data.scale
+	# Size = design's natural size (no scale multiplier).
+	# Scale = visual multiplier via Control.scale (pivot-centered).
+	var node_size: Vector2 = node_data.design_size
 	if node_size.x <= 0.0 or node_size.y <= 0.0:
 		node_size = Vector2(100, 100)
 	node.size = node_size
 	node.custom_minimum_size = node_size
+	node.pivot_offset = node_size * 0.5
+	node.scale = node_data.scale
 
 	_position_decoration(node, node_data.position)
 
@@ -183,5 +187,6 @@ func restore_decoration(node: BayterekNodeButton, node_data: BayterekNode, index
 func _position_decoration(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
 	if not _tree_data:
 		return
+	# Layout position is based on SIZE, not scale.
 	var local_pos: Vector2 = pos_in_tree + (_tree_data.size * 0.5) - (node.size * 0.5)
 	node.position = local_pos

@@ -403,23 +403,30 @@ func _compute_allocatable(node: BayterekNodeButton, active_ids: Array) -> bool:
 # ============================================================
 
 ## Creates a node button sized to fit the largest visible layer.
+##
+## Size = design's natural size (no scale multiplier).
+## Scale = visual multiplier via Control.scale (pivot-centered).
 func _create_node_button(node_data: BayterekNode) -> BayterekNodeButton:
 	var node := BayterekNodeButton.new()
 
-	# Size to the largest visible layer, not design_size.
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
-	var node_size: Vector2 = visual_bounds.size * node_data.scale
+	var node_size: Vector2 = visual_bounds.size
 
 	if node_size.x <= 0.0 or node_size.y <= 0.0:
-		node_size = node_data.design_size * node_data.scale
+		node_size = node_data.design_size
 	if node_size.x <= 0.0 or node_size.y <= 0.0:
 		node_size = Vector2(100, 100)
 
 	node.size = node_size
 	node.custom_minimum_size = node_size
+	node.pivot_offset = node_size * 0.5
+	node.scale = node_data.scale
 	return node
 
 func _position_node(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
+	# Layout position is based on SIZE, not scale.
+	# Control.scale only affects rendering — position stays at the
+	# top-left of the layout rect.
 	var local_pos: Vector2 = pos_in_tree + (_tree_data.size * 0.5) - (node.size * 0.5)
 	node.position = local_pos
 

@@ -7,7 +7,7 @@ extends Node
 ##     var anim := BayterekNodeAnimator.new()
 ##     node.add_child(anim)
 ##     anim.bind(node)
-##     anim.play("lift_rotate")
+##     anim.play("hover_enter")
 ##
 ## Presets are stored in a static registry so they can be extended
 ## from anywhere without touching this file.
@@ -36,32 +36,11 @@ static func _static_init() -> void:
 	_register_builtin_presets()
 
 static func _register_builtin_presets() -> void:
-	# --- hover_enter -------------------------------------------------
-	# The "mouse entered" animation:
-	#   - Node lifts up (parallel with rotation).
-	#   - Rotation: 0° → -5° → +5° → 0°.
-	#   - Node STAYS at the lifted position (persistent).
-	# No snap-back on finish.
 	_presets["hover_enter"] = _preset_hover_enter
-
-	# --- hover_exit --------------------------------------------------
-	# The "mouse exited" animation:
-	#   - Node descends back to its original position.
-	#   - No rotation at all.
 	_presets["hover_exit"] = _preset_hover_exit
-
-	# --- lift_rotate (one-shot legacy) -------------------------------
-	# Same as hover_enter but auto-returns to the original position
-	# when the tween completes. Useful for click feedback, etc.
 	_presets["lift_rotate"] = _preset_lift_rotate
-
-	# --- pop ---------------------------------------------------------
 	_presets["pop"] = _preset_pop
-
-	# --- shake -------------------------------------------------------
 	_presets["shake"] = _preset_shake
-
-	# --- hover_lift --------------------------------------------------
 	_presets["hover_lift"] = _preset_hover_lift
 
 # ------------------------------------------------------------
@@ -91,13 +70,12 @@ static func _preset_hover_enter(anim: BayterekNodeAnimator, opts: Dictionary) ->
 	var driver := func(progress: float) -> void:
 		var p: float = progress
 
-		# Position: lift up in the FIRST half of the animation and
-		# STAY there for the second half (while rotation continues).
+		# Position: lift up in FIRST half, stay there.
 		var pos_offset: float
 		if p <= 0.5:
 			pos_offset = lerpf(0.0, lift, p / 0.5)
 		else:
-			pos_offset = lift  # <- stays lifted
+			pos_offset = lift
 		anim._apply_position(base_pos + Vector2(0.0, pos_offset))
 
 		# Rotation: -peak at 25%, +peak at 75%, 0 at 100%.
@@ -113,13 +91,10 @@ static func _preset_hover_enter(anim: BayterekNodeAnimator, opts: Dictionary) ->
 	t.tween_method(driver, 0.0, 1.0, duration)
 
 	t.finished.connect(func() -> void:
-		# Snap to exact resting values (avoid float drift). The node
-		# is INTENTIONALLY left at the lifted position.
 		anim._apply_position(target_pos)
 		anim._apply_rotation(base_rot)
 	)
 
-	# This animation is meant to persist after it finishes.
 	anim._persist_state = true
 	return t
 
@@ -134,17 +109,13 @@ static func _preset_hover_exit(anim: BayterekNodeAnimator, opts: Dictionary) -> 
 	if not n or not n.node_data:
 		return null
 
-	# Where we are now (the lifted position, presumably).
 	var current_pos: Vector2 = n.node_data.position
 	var current_rot: float = n.node_data.node_rotation
 
-	# Compute the target position from the most recent snapshot, if
-	# one exists. The snapshot was captured when hover_enter started.
 	var target_pos: Vector2 = current_pos
 	if anim._snapshot.has("position"):
 		target_pos = anim._snapshot["position"]
 	else:
-		# Fallback: assume we just need to remove `lift` from Y.
 		var lift: float = opts.get("lift", -8.0)
 		target_pos = current_pos - Vector2(0.0, lift)
 
@@ -162,9 +133,6 @@ static func _preset_hover_exit(anim: BayterekNodeAnimator, opts: Dictionary) -> 
 		duration
 	)
 
-	# If the rotation is not already at target, ease it there too.
-	# (In the normal flow it will already be at target because
-	# hover_enter ends at 0°.)
 	if not is_equal_approx(current_rot, target_rot):
 		var rt := n.create_tween()
 		rt.set_trans(trans).set_ease(ease_type)
@@ -178,7 +146,6 @@ static func _preset_hover_exit(anim: BayterekNodeAnimator, opts: Dictionary) -> 
 	t.finished.connect(func() -> void:
 		anim._apply_position(target_pos)
 		anim._apply_rotation(target_rot)
-		# Clear the snapshot now that we're back to the base state.
 		anim._snapshot.clear()
 		anim._persist_state = false
 	)
@@ -187,7 +154,6 @@ static func _preset_hover_exit(anim: BayterekNodeAnimator, opts: Dictionary) -> 
 
 
 ## One-shot lift + rotate that returns to base when done.
-## Useful for click feedback.
 static func _preset_lift_rotate(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var lift: float = opts.get("lift", -8.0)
 	var rot_peak: float = opts.get("rot_peak", 5.0)
@@ -233,6 +199,7 @@ static func _preset_lift_rotate(anim: BayterekNodeAnimator, opts: Dictionary) ->
 	return t
 
 
+## POP: center-anchored scale in/out via Control.scale (pivot is centered).
 static func _preset_pop(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var peak: float = opts.get("peak", 1.15)
 	var duration: float = opts.get("duration", 0.25)
@@ -246,16 +213,16 @@ static func _preset_pop(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween:
 	var t := n.create_tween()
 	t.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	t.tween_method(
-		func(v: float) -> void: anim._apply_scale(Vector2(v, v)),
-		base_scale.x,
-		base_scale.x * peak,
+		func(v: float) -> void: anim._apply_scale(Vector2(base_scale.x * v, base_scale.y * v)),
+		1.0,
+		peak,
 		duration * 0.4
 	)
 	t.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	t.tween_method(
-		func(v: float) -> void: anim._apply_scale(Vector2(v, v)),
-		base_scale.x * peak,
-		base_scale.x,
+		func(v: float) -> void: anim._apply_scale(Vector2(base_scale.x * v, base_scale.y * v)),
+		peak,
+		1.0,
 		duration * 0.6
 	)
 	t.finished.connect(func() -> void: anim._apply_scale(base_scale))
@@ -326,8 +293,6 @@ static func _preset_hover_lift(anim: BayterekNodeAnimator, opts: Dictionary) -> 
 # PUBLIC PRESET API
 # ------------------------------------------------------------
 
-## Register a new preset from outside this file.
-## `fn` must be `Callable(anim: BayterekNodeAnimator, opts: Dictionary) -> Tween`.
 static func register_preset(preset_name: String, fn: Callable) -> void:
 	_presets[preset_name] = fn
 
@@ -344,12 +309,6 @@ static func get_preset_names() -> Array:
 func bind(p: BayterekNodeButton) -> void:
 	node = p
 
-## Plays a named preset. Cancels any currently running animation on
-## this node first.
-##
-## NOTE on cancel(): if the currently running animation is marked
-## "persistent" (hover_enter), it will NOT snap the node back — the
-## next animation (hover_exit) is responsible for the return trip.
 func play(preset_name: String, opts: Dictionary = {}) -> Tween:
 	if not node:
 		push_warning("BayterekNodeAnimator: not bound to a node.")
@@ -358,8 +317,6 @@ func play(preset_name: String, opts: Dictionary = {}) -> Tween:
 		push_warning("BayterekNodeAnimator: unknown preset '%s'." % preset_name)
 		return null
 
-	# Kill the previous tween WITHOUT restoring the snapshot if we're
-	# transitioning from a persistent animation to another one.
 	if _active_tween and _active_tween.is_valid():
 		_active_tween.kill()
 		_active_tween = null
@@ -367,7 +324,6 @@ func play(preset_name: String, opts: Dictionary = {}) -> Tween:
 			_restore_snapshot()
 			_snapshot.clear()
 
-	# Capture a fresh snapshot for the new animation.
 	if not _persist_state or _snapshot.is_empty():
 		_snapshot = _capture_snapshot()
 
@@ -393,11 +349,6 @@ func play(preset_name: String, opts: Dictionary = {}) -> Tween:
 
 	return tween
 
-## Cancels the running animation.
-##
-## If the running animation was NOT persistent, the node snaps back
-## to the pre-play snapshot. If it WAS persistent (hover_enter), the
-## node stays where it is; you should explicitly play "hover_exit".
 func cancel() -> void:
 	if _active_tween and _active_tween.is_valid():
 		_active_tween.kill()
@@ -464,12 +415,17 @@ func _apply_rotation(rot: float) -> void:
 	if node.has_method("refresh_transform"):
 		node.refresh_transform()
 
+## Scale via Control.scale (pivot is centered). No position shifts.
 func _apply_scale(s: Vector2) -> void:
 	if not node or not node.node_data:
 		return
-	node.node_data.scale = s
-	if node.has_method("refresh_visuals"):
-		node.refresh_visuals()
+
+	if node.has_method("set_visual_scale"):
+		node.set_visual_scale(s)
+	else:
+		node.node_data.scale = s
+		if node is Control:
+			node.scale = s
 
 func _find_tree_view() -> BayterekTreeView:
 	var p: Node = node

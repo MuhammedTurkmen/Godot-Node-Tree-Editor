@@ -185,7 +185,7 @@ func _build_ui() -> void:
 	var scale_label := Label.new()
 	scale_label.text = "Scale"
 	scale_label.custom_minimum_size = Vector2(60, 0)
-	scale_label.tooltip_text = "Multiplier applied to design_size. Final node size = design_size × scale."
+	scale_label.tooltip_text = "Visual multiplier. Pivot is centered, so the node grows/shrinks from its center."
 	scale_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	_scale_row.add_child(scale_label)
 
@@ -559,7 +559,6 @@ func _refresh_design_size_label() -> void:
 	var node_data: BayterekNode = _current_node.node_data
 	var ds: Vector2 = node_data.design_size
 
-	# If the design has a bounds layer, show that instead.
 	if not node_data.design_id.is_empty():
 		var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(node_data.design_id)
 		if design:
@@ -650,8 +649,11 @@ func _on_scale_changed(_value: float) -> void:
 	if new_scale.y <= 0.0:
 		new_scale.y = 0.05
 
-	_current_node.node_data.scale = new_scale
-	_current_node.refresh_visuals()
+	if _current_node.has_method("set_visual_scale"):
+		_current_node.set_visual_scale(new_scale)
+	else:
+		_current_node.node_data.scale = new_scale
+		_current_node.refresh_visuals()
 
 	if editor and editor.tree_view and editor.tree_view.connections_service:
 		editor.tree_view.connections_service.update_lines_of(_current_node)
