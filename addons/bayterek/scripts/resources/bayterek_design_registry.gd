@@ -35,8 +35,12 @@ func add_design(design: BayterekNodeDesign) -> void:
 	if not design:
 		return
 	if designs.has(design):
+		print("[add_design] SKIP — instance already in registry. instance=", design.get_instance_id(), " id=", design.id)
 		return
 	designs.append(design)
+
+	# --- DEBUG ---
+	print("[add_design] ADDED instance=", design.get_instance_id(), " id=", design.id, " name=", design.name, " layers=", design.layers.size(), " total_designs=", designs.size())
 
 func remove_design(design: BayterekNodeDesign) -> void:
 	designs.erase(design)
@@ -46,3 +50,22 @@ func clear() -> void:
 
 func get_design_count() -> int:
 	return designs.size()
+
+# ============================================================
+# DEBUG — dump all
+# ============================================================
+
+func dump_registry() -> void:
+	print("=== DESIGN REGISTRY DUMP ===")
+	print("Total designs: ", designs.size())
+	for i in designs.size():
+		var d = designs[i]
+		if not d:
+			print("  [", i, "] NULL")
+			continue
+		print("  [", i, "] instance=", d.get_instance_id(), " id=", d.id, " name=", d.name, " path=", d.resource_path, " layers=", d.layers.size())
+		for j in d.layers.size():
+			var l = d.layers[j]
+			if l:
+				print("      layer[", j, "] instance=", l.get_instance_id(), " name=", l.layer_name, " type=", l.get_class())
+	print("============================")

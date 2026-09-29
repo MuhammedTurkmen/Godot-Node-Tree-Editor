@@ -5,6 +5,12 @@
 [ext_resource type="Script" uid="uid://de6ng2pbq3gss" path="res://addons/bayterek/scripts/resources/bayterek_node_group.gd" id="2_3oq2p"]
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_k1nh3"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="4_ak1rv"]
+[ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="4_x1plc"]
+[ext_resource type="Texture2D" uid="uid://ccrvoxhv3c5d0" path="res://assets/button_icon.png" id="5_royti"]
+[ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="6_qlprm"]
+[ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="7_6p5mu"]
+[ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://assets/icon.svg" id="8_5lgyx"]
+[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="8_royti"]
 
 [sub_resource type="Resource" id="Resource_lrons"]
 script = ExtResource("1_6p5mu")
@@ -20,22 +26,293 @@ name = "New Attribute"
 effect = "Effect #"
 value_count = 1
 
-[sub_resource type="Resource" id="Resource_6p5mu"]
-script = ExtResource("2_3oq2p")
-id = "99c4f104-149b-411a-820a-872938f0dab9"
-color = Color(1, 0.39999998, 0.39999998, 1)
-node_ids = Array[int]([14, 15, 16, 17, 18, 19, 20, 21])
+[sub_resource type="Resource" id="Resource_j5a67"]
+script = ExtResource("7_6p5mu")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_wfhhu"]
+script = ExtResource("6_qlprm")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("5_royti")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "399f39f2-8896-43d0-b0ec-da56edeb21f4"
+layer_name = "Texture 1"
+transform = SubResource("Resource_j5a67")
+texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_qlprm"]
+script = ExtResource("8_royti")
+
+[sub_resource type="Resource" id="Resource_nrko7"]
+script = ExtResource("1_immpc")
+is_root = true
+id = 31
+name = "Icon"
+design_id = "new_design_2"
+position = Vector2(256, 368)
+line_data = {
+32: SubResource("Resource_qlprm")
+}
+out_nodes = Array[int]([32])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_wfhhu")])
+
+[sub_resource type="Resource" id="Resource_53451"]
+script = ExtResource("7_6p5mu")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_l2tvo"]
+script = ExtResource("6_qlprm")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("8_5lgyx")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "9d4b5fdc-75ab-4179-bf1d-4e79dc5a4cff"
+layer_name = "Texture 1"
+transform = SubResource("Resource_53451")
+texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_5lgyx"]
+script = ExtResource("8_royti")
+
+[sub_resource type="Resource" id="Resource_k0kgc"]
+script = ExtResource("1_immpc")
+id = 32
+name = "Godot"
+design_id = "new_design"
+position = Vector2(736, 128)
+line_data = {
+33: SubResource("Resource_5lgyx")
+}
+out_nodes = Array[int]([33])
+in_nodes = Array[int]([31])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_l2tvo")])
+
+[sub_resource type="Resource" id="Resource_x2q8f"]
+script = ExtResource("7_6p5mu")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_tmiro"]
+script = ExtResource("6_qlprm")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("8_5lgyx")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "9d4b5fdc-75ab-4179-bf1d-4e79dc5a4cff"
+layer_name = "Texture 1"
+transform = SubResource("Resource_x2q8f")
+texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_3cysg"]
+script = ExtResource("8_royti")
+
+[sub_resource type="Resource" id="Resource_mklcx"]
+script = ExtResource("1_immpc")
+id = 33
+name = "Godot"
+design_id = "new_design"
+position = Vector2(752, -224)
+line_data = {
+34: SubResource("Resource_3cysg")
+}
+out_nodes = Array[int]([34])
+in_nodes = Array[int]([32])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_tmiro")])
+
+[sub_resource type="Resource" id="Resource_safsq"]
+script = ExtResource("7_6p5mu")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_ss5fq"]
+script = ExtResource("6_qlprm")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("8_5lgyx")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "9d4b5fdc-75ab-4179-bf1d-4e79dc5a4cff"
+layer_name = "Texture 1"
+transform = SubResource("Resource_safsq")
+texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_botrw"]
+script = ExtResource("1_immpc")
+id = 34
+name = "Godot"
+design_id = "new_design"
+position = Vector2(894.22217, -472.66675)
+in_nodes = Array[int]([33])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_ss5fq")])
 
 [resource]
 script = ExtResource("4_ak1rv")
 id = "tree_1"
 name = "Tree 1"
 show_group_frames = true
-id_counter = 30
+id_counter = 34
+nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_nrko7"), SubResource("Resource_k0kgc"), SubResource("Resource_mklcx"), SubResource("Resource_botrw")])
 attributes = {
 "new_attribute": SubResource("Resource_lrons"),
 "new_attribute_2": SubResource("Resource_5mdwv")
 }
-node_groups = Array[ExtResource("2_3oq2p")]([SubResource("Resource_6p5mu")])
 hierarchy_split_offset = -536
 prefabs_bar_visible = false

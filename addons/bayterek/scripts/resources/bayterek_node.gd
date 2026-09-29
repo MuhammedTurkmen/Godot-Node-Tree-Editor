@@ -283,13 +283,21 @@ func clear_layers() -> void:
 func copy_layers_from(source_layers: Array) -> void:
 	layers.clear()
 	for layer in source_layers:
-		if layer is BayterekLayer:
-			layers.append(layer.duplicate_layer())
+		if not layer:
+			continue
+		var dup: BayterekLayer = layer.duplicate_layer()
+		if dup:
+			layers.append(dup)
+	print("[copy_layers_from] src=", source_layers.size(), " dst=", layers.size())
+	for i in layers.size():
+		var l = layers[i]
+		print("  layer[", i, "] type=", l.get_class(), " script=", l.get_script().resource_path.get_file() if l.get_script() else "none")
 	clear_render_cache()
 
 # ============================================================
 # DESIGN APPLICATION
 # ============================================================
+
 
 func apply_design(design: BayterekNodeDesign) -> void:
 	if not design:
@@ -298,8 +306,7 @@ func apply_design(design: BayterekNodeDesign) -> void:
 	design_size = design.design_size
 	scale = design.scale
 	copy_layers_from(design.layers)
-	# Node-wide transform (node_rotation, node_skew) is per-instance
-	# and is intentionally NOT reset here.
+	print("[apply_design] design.id=", design.id, " design.layers=", design.layers.size(), " -> node_data.design_id=", design_id)
 
 func apply_defaults_from_tree(tree: BayterekTree) -> void:
 	if not tree:

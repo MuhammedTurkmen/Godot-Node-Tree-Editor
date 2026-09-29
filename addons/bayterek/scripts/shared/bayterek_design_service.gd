@@ -29,9 +29,6 @@ static func get_design(design_id: String) -> BayterekNodeDesign:
 static func has_design(design_id: String) -> bool:
 	return get_design(design_id) != null
 
-## Returns a Dictionary mapping category_name -> Array[BayterekNodeDesign].
-## Empty category is grouped under "Uncategorized".
-## Categories are sorted alphabetically, "Uncategorized" always LAST.
 static func get_designs_grouped_by_category() -> Dictionary:
 	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
 	if not reg:
@@ -94,12 +91,18 @@ static func create_design(base_name: String = "New Design", category: String = "
 	var snake: String = Bayterek.to_snake_case(unique_name)
 	var file_path: String = "%s/%s.tres" % [Bayterek.get_designs_dir(), snake]
 
+	# --- DEBUG ---
+	print("[create_design] REQUEST name=", unique_name, " snake=", snake, " path=", file_path)
+
 	var design := BayterekNodeDesign.new()
 	design.id = snake
 	design.name = unique_name
 	design.category = category
 	design.design_size = Vector2(100, 100)
 	design.scale = Vector2.ONE
+
+	# --- DEBUG ---
+	print("[create_design] NEW instance=", design.get_instance_id(), " design.id=", design.id, " design.layers=", design.layers.size())
 
 	var err: Error = Bayterek.safe_save(design, file_path)
 	if err != OK:
@@ -110,6 +113,9 @@ static func create_design(base_name: String = "New Design", category: String = "
 	if not saved:
 		BayterekLogger.error("Could not reload design after save: %s" % file_path, "designs")
 		return null
+
+	# --- DEBUG ---
+	print("[create_design] LOADED instance=", saved.get_instance_id(), " saved.id=", saved.id, " saved.name=", saved.name, " saved.resource_path=", saved.resource_path, " saved.layers=", saved.layers.size())
 
 	saved.resource_path = file_path
 
@@ -132,9 +138,16 @@ static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 	var snake: String = Bayterek.to_snake_case(unique_name)
 	var file_path: String = "%s/%s.tres" % [Bayterek.get_designs_dir(), snake]
 
+	# --- DEBUG ---
+	print("[duplicate_design] SOURCE instance=", source.get_instance_id(), " source.id=", source.id, " source.layers=", source.layers.size())
+	print("[duplicate_design] TARGET name=", unique_name, " path=", file_path)
+
 	var copy: BayterekNodeDesign = source.duplicate_design()
 	copy.id = snake
 	copy.name = unique_name
+
+	# --- DEBUG ---
+	print("[duplicate_design] COPY instance=", copy.get_instance_id(), " copy.id=", copy.id, " copy.layers=", copy.layers.size())
 
 	var err: Error = Bayterek.safe_save(copy, file_path)
 	if err != OK:
@@ -144,6 +157,9 @@ static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 	var saved: BayterekNodeDesign = ResourceLoader.load(file_path, "BayterekNodeDesign", ResourceLoader.CACHE_MODE_IGNORE)
 	if not saved:
 		return null
+
+	# --- DEBUG ---
+	print("[duplicate_design] LOADED instance=", saved.get_instance_id(), " saved.id=", saved.id, " saved.layers=", saved.layers.size())
 
 	saved.resource_path = file_path
 
@@ -166,11 +182,11 @@ static func save_design(design: BayterekNodeDesign) -> Error:
 		BayterekLogger.error("Cannot save design with empty resource_path.", "designs")
 		return FAILED
 
+	# --- DEBUG ---
+	print("[save_design] instance=", design.get_instance_id(), " id=", design.id, " name=", design.name, " path=", design.resource_path, " layers=", design.layers.size())
+
 	return Bayterek.safe_save(design, design.resource_path)
 
-## Renames a design — only the visible name changes.
-## The `id` (and therefore the file on disk) stays the same, so
-## prefabs and nodes that reference this design by id keep working.
 static func rename_design(design: BayterekNodeDesign, new_name: String) -> bool:
 	if not design:
 		return false
@@ -210,6 +226,35 @@ static func delete_design(design: BayterekNodeDesign) -> bool:
 	EditorInterface.get_resource_filesystem().scan()
 
 	return true
+
+## Deletes multiple designs at once. Returns the number of designs
+## actually deleted.
+static func delete_multiple_designs(designs: Array) -> int:
+	if designs.is_empty():
+		return 0
+
+	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
+	if not reg:
+		return 0
+
+	var count: int = 0
+	for design in designs:
+		if not design:
+			continue
+		if not (design is BayterekNodeDesign):
+			continue
+
+		var path: String = design.resource_path
+		reg.remove_design(design)
+
+		if not path.is_empty():
+			Bayterek.delete_resource_with_sidecar(path)
+
+		count += 1
+
+	Bayterek.save_designs_registry()
+	EditorInterface.get_resource_filesystem().scan()
+	return count
 
 # ============================================================
 # RELOAD

@@ -37,20 +37,7 @@ code = "tr"
 name = "Türkçe"
 regions = Array[ExtResource("2_na31a")]([SubResource("Resource_2ypsp")])
 
-[sub_resource type="Resource" id="Resource_kqv3v"]
-script = ExtResource("2_na31a")
-code = "DE"
-name = "Deutschland"
-language_code = "de"
-file_path = "res://data/localization/languages/de-DE.json"
-
-[sub_resource type="Resource" id="Resource_ikgdi"]
-script = ExtResource("1_h0r5q")
-code = "de"
-name = "Deutsch"
-regions = Array[ExtResource("2_na31a")]([SubResource("Resource_kqv3v")])
-
 [resource]
 script = ExtResource("1_8qjge")
-languages = Array[ExtResource("1_h0r5q")]([SubResource("Resource_5wenj"), SubResource("Resource_lok7u"), SubResource("Resource_ikgdi")])
+languages = Array[ExtResource("1_h0r5q")]([SubResource("Resource_5wenj"), SubResource("Resource_lok7u")])
 original_locale = "en-US"

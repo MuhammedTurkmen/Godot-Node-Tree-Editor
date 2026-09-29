@@ -194,6 +194,28 @@ func _show_chain_mode_notification() -> void:
 		BayterekToast.error(tree_view, message)
 
 # ============================================================
+# HOVER ANIMATIONS TOGGLE
+# ============================================================
+
+func _toggle_hover_animations() -> void:
+	if not tree_view:
+		return
+
+	tree_view.hover_animations_enabled = not tree_view.hover_animations_enabled
+
+	# Update the checkmark in the View menu.
+	for child in menu_bar.get_children():
+		if child is MenuButton and child.text == "View":
+			var popup: PopupMenu = child.get_popup()
+			var idx: int = popup.get_item_index(2)
+			if idx >= 0:
+				popup.set_item_checked(idx, tree_view.hover_animations_enabled)
+			break
+
+	var state: String = "ON" if tree_view.hover_animations_enabled else "OFF"
+	BayterekToast.info(tree_view, "Hover Animations: [b]%s[/b]" % state)
+
+# ============================================================
 # UI SETUP
 # ============================================================
 
@@ -251,6 +273,10 @@ func _build_ui() -> void:
 	view_btn.text = "View"
 	var view_popup: PopupMenu = view_btn.get_popup()
 	view_popup.add_item("Center Camera", 0)
+	view_popup.add_separator()
+	view_popup.add_check_item("Hover Animations", 2)
+	view_popup.set_item_checked(view_popup.get_item_index(2), true)
+	view_popup.set_item_tooltip(view_popup.get_item_index(2), "Play hover enter/exit animations on nodes.")
 	view_popup.add_separator()
 	_build_tooltip_submenu(view_popup)
 	view_popup.id_pressed.connect(_on_view_menu_pressed)
@@ -2222,6 +2248,8 @@ func _on_view_menu_pressed(id: int) -> void:
 		0:
 			if tree_view:
 				tree_view.center_camera_on_content()
+		2:
+			_toggle_hover_animations()
 
 func do_undo() -> void:
 	if undo_redo and undo_redo.has_undo():

@@ -41,16 +41,11 @@ const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 @export_storage var description: String = ""
 @export_storage var category: String = ""
 
-## Fallback size for layers that don't specify their own size.
 @export_storage var design_size: Vector2 = Vector2(100, 100)
 @export_storage var scale: Vector2 = Vector2.ONE
 
 @export_storage var layers: Array[BayterekLayer] = []
-
-## If non-empty, this layer_id determines the design's effective bounds.
-## If empty, falls back to design_size.
 @export_storage var bounds_layer_id: String = ""
-
 @export_storage var exported_fields: Dictionary = {}
 
 # ============================================================
@@ -310,9 +305,6 @@ func copy_layers_from(source_layers: Array) -> void:
 # COMPUTED SIZE
 # ============================================================
 
-## Returns the effective bounds size.
-## If bounds_layer_id is set and the layer exists, uses that layer's
-## effective size. Otherwise falls back to design_size.
 func get_bounds_size() -> Vector2:
 	if bounds_layer_id.is_empty():
 		return design_size
@@ -330,7 +322,6 @@ func get_bounds_size() -> Vector2:
 		return design_size
 	return sz
 
-## Returns the effective bounds as a Rect2 centered at origin.
 func get_bounds_rect() -> Rect2:
 	var sz: Vector2 = get_bounds_size()
 	return Rect2(-sz * 0.5, sz)
@@ -415,6 +406,17 @@ func duplicate_design() -> BayterekNodeDesign:
 	copy.copy_layers_from(layers)
 	copy.exported_fields = exported_fields.duplicate(true)
 	copy.bounds_layer_id = bounds_layer_id
+
+	# --- DEBUG ---
+	print("[duplicate_design] SRC instance=", get_instance_id(), " layers=", layers.size())
+	for i in layers.size():
+		if layers[i]:
+			print("  SRC layer[", i, "] instance=", layers[i].get_instance_id(), " name=", layers[i].layer_name)
+	print("[duplicate_design] DST instance=", copy.get_instance_id(), " layers=", copy.layers.size())
+	for i in copy.layers.size():
+		if copy.layers[i]:
+			print("  DST layer[", i, "] instance=", copy.layers[i].get_instance_id(), " name=", copy.layers[i].layer_name)
+
 	return copy
 
 func _to_string() -> String:

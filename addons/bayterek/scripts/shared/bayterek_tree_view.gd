@@ -12,7 +12,6 @@ signal design_dropped(design: BayterekNodeDesign, at_tree_position: Vector2)
 signal changed
 signal node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 
-# Runtime / high-level signals (used by BayterekBuilder)
 signal tree_version_mismatch(tree: BayterekTree, saved_version: int)
 signal node_allocated(node: BayterekNode)
 signal node_deallocated(node: BayterekNode)
@@ -22,9 +21,10 @@ signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 # ============================================================
 # HOVER ANIMATION CONFIG
 # ============================================================
-## `hover_enter_preset` — preset played on mouse-enter (empty = disabled).
-## `hover_exit_preset`  — preset played on mouse-exit (empty = disabled).
-## Separate opts per direction, so enter/exit can use different easings.
+## Master switch — when false, hover enter/exit do NOT play any animation.
+## Tooltips still work.
+@export var hover_animations_enabled: bool = true
+
 @export var hover_enter_preset: String = "hover_enter"
 @export var hover_exit_preset: String = "hover_exit"
 @export var hover_enter_opts: Dictionary = {
@@ -60,7 +60,6 @@ var selected_nodes: Array[BayterekNodeButton] = []
 
 var _tree_data: BayterekTree
 
-# Tooltip
 var _tooltip: BayterekTooltip
 var _hovered_node: BayterekNodeButton = null
 
@@ -68,7 +67,6 @@ var _dragging: bool = false
 var _drag_start_mouse_tree: Vector2 = Vector2.ZERO
 var _drag_start_positions: Dictionary = {}
 
-# Group frame drag state (manual hit-test)
 var _group_frame_dragging: BayterekGroupFrame = null
 var _group_frame_drag_start_mc_local: Vector2 = Vector2.ZERO
 
@@ -242,11 +240,21 @@ func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
 	if node and node.node_data and node.node_data.is_decoration:
 		return
 
+	# Master switch — if disabled, skip visual animations but keep tooltip.
+	if not hover_animations_enabled:
+		if is_hovered:
+			_hovered_node = node
+			_tooltip.inspect(node)
+		else:
+			if _hovered_node == node:
+				_hovered_node = null
+			_tooltip.reset()
+		return
+
 	if is_hovered:
 		_hovered_node = node
 		_tooltip.inspect(node)
 
-		# Play hover-enter animation (if configured).
 		if not hover_enter_preset.is_empty() and node.has_method("play_animation"):
 			node.play_animation(hover_enter_preset, hover_enter_opts)
 	else:
@@ -254,7 +262,6 @@ func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
 			_hovered_node = null
 		_tooltip.reset()
 
-		# Play hover-exit animation (if configured).
 		if not hover_exit_preset.is_empty() and node.has_method("play_animation"):
 			node.play_animation(hover_exit_preset, hover_exit_opts)
 		elif node.has_method("stop_animation"):

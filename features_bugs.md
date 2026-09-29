@@ -10,15 +10,9 @@
 [] node editorde node'u kayıt edip etmediğimi anlayamıyorum
 
 ## HARD
-[] yetenek ağacındaki çerçeve tipleri
+[] yetenek ağacındaki çerçeve (frame) tipleri
 	[] başlıklı dikdörtgen
 	[] başlık altı çizili
-[] shape layer  border için stiller 
-	[] solid
-	[] dashed
-	[] dotted
-	[] dash dot
-[] design lar değişmiyor 
 
 # Bugs 
 

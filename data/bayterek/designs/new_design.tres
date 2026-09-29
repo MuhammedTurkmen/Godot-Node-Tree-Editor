@@ -56,15 +56,13 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "cadf173e-28cd-4515-9d24-1fbd7de72621"
+layer_id = "9d4b5fdc-75ab-4179-bf1d-4e79dc5a4cff"
 layer_name = "Texture 1"
 transform = SubResource("Resource_a6nu6")
+texture_filter_override = 2
 
 [resource]
 script = ExtResource("4_u1mso")
 id = "new_design"
-name = "TestButton"
+name = "Godot"
 layers = Array[ExtResource("1_a6nu6")]([SubResource("Resource_3ujw7")])
-exported_fields = {
-"layers.09baab2f-5552-4325-847d-b272f940b470.transform.skew": true
-}
