@@ -24,13 +24,18 @@ signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 # ============================================================
 ## `hover_enter_preset` — preset played on mouse-enter (empty = disabled).
 ## `hover_exit_preset`  — preset played on mouse-exit (empty = disabled).
-## `hover_animation_opts` — options forwarded to both presets.
+## Separate opts per direction, so enter/exit can use different easings.
 @export var hover_enter_preset: String = "hover_enter"
 @export var hover_exit_preset: String = "hover_exit"
-@export var hover_animation_opts: Dictionary = {
+@export var hover_enter_opts: Dictionary = {
 	"lift": -8.0,
 	"rot_peak": 5.0,
 	"duration": 0.45,
+	"easing": "smooth",
+}
+@export var hover_exit_opts: Dictionary = {
+	"duration": 0.3,
+	"easing": "smooth",
 }
 
 var main_container: Control
@@ -121,8 +126,6 @@ func center_camera_on_content() -> void:
 # SCROLL / FOCUS HELPERS
 # ============================================================
 
-## Ensures the given node is visible on screen by nudging the camera
-## if it's outside the current viewport. Does not change the zoom.
 func scroll_to_node(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data or not camera:
 		return
@@ -243,21 +246,18 @@ func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
 		_hovered_node = node
 		_tooltip.inspect(node)
 
-		# Play hover-enter animation (lift + rotate, stays lifted).
+		# Play hover-enter animation (if configured).
 		if not hover_enter_preset.is_empty() and node.has_method("play_animation"):
-			node.play_animation(hover_enter_preset, hover_animation_opts)
+			node.play_animation(hover_enter_preset, hover_enter_opts)
 	else:
 		if _hovered_node == node:
 			_hovered_node = null
 		_tooltip.reset()
 
-		# Play hover-exit animation (descend, no rotation).
-		# NOTE: we deliberately call play_animation instead of
-		# stop_animation so the return-trip animation runs.
+		# Play hover-exit animation (if configured).
 		if not hover_exit_preset.is_empty() and node.has_method("play_animation"):
-			node.play_animation(hover_exit_preset, hover_animation_opts)
+			node.play_animation(hover_exit_preset, hover_exit_opts)
 		elif node.has_method("stop_animation"):
-			# Fallback: no exit preset configured → snap back.
 			node.stop_animation()
 
 func refresh_tooltip_position() -> void:

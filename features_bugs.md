@@ -3,6 +3,7 @@
 
 ## EASY
 [] validator'a yeni uyarı ve hata mesajları eklenecek 
+[] 
 
 ## MEDIUM
 [] bağlantı çizgileri düzenlenecek 
@@ -17,8 +18,7 @@
 	[] dashed
 	[] dotted
 	[] dash dot
-[] tree sekmesindeki nodeların boyute design'dan gelecek designdan bir katman seçilir onun boyutları baz alınır bunun sebebi bazı bazı katmanlar süs gibi olacak tıklanılacak alana katmamıza gerek yok
-[] tree sekmesindeki nodelara skew rotation özellikleri ekleyelim bütün bir node'a animasyon efekt yapmak için
+[] design lar değişmiyor 
 
 # Bugs 
 

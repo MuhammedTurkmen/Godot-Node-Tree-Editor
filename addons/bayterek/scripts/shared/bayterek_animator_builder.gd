@@ -5,8 +5,10 @@ extends RefCounted
 ##
 ## Usage:
 ##     animator.chain() \
+##         .ease("smooth") \
 ##         .parallel() \
 ##             .move(Vector2(0, -8), 0.45) \
+##             .ease("bounce") \
 ##             .sequence() \
 ##                 .rotate(-5, 0.1125) \
 ##                 .rotate(10, 0.225) \
@@ -17,15 +19,61 @@ extends RefCounted
 ##         .play()
 ##
 ## Each step becomes its OWN Godot Tween, delayed by a tween_interval.
-## This sidesteps Godot's buggy set_parallel() + tween_method combos.
 
 enum Mode { SEQUENTIAL, PARALLEL }
 
-var _animator: BayterekNodeAnimator
-var _steps: Array = []           # top-level steps (sequential by default)
-var _stack: Array = []           # nested groups (parallel / sequence)
+## Easing preset table: name -> [transition, ease]
+const EASING_PRESETS := {
+	"linear":           [Tween.TRANS_LINEAR, Tween.EASE_IN_OUT],
 
-## Cursor: current state. Relative calls advance from here.
+	"ease_in":          [Tween.TRANS_QUAD, Tween.EASE_IN],
+	"ease_out":         [Tween.TRANS_QUAD, Tween.EASE_OUT],
+	"ease_in_out":      [Tween.TRANS_QUAD, Tween.EASE_IN_OUT],
+
+	"smooth_in":        [Tween.TRANS_SINE, Tween.EASE_IN],
+	"smooth_out":       [Tween.TRANS_SINE, Tween.EASE_OUT],
+	"smooth":           [Tween.TRANS_SINE, Tween.EASE_IN_OUT],
+	"smooth_in_out":    [Tween.TRANS_SINE, Tween.EASE_IN_OUT],
+
+	"strong_in":        [Tween.TRANS_CUBIC, Tween.EASE_IN],
+	"strong_out":       [Tween.TRANS_CUBIC, Tween.EASE_OUT],
+	"strong_in_out":    [Tween.TRANS_CUBIC, Tween.EASE_IN_OUT],
+
+	"sharper_in":       [Tween.TRANS_QUART, Tween.EASE_IN],
+	"sharper_out":      [Tween.TRANS_QUART, Tween.EASE_OUT],
+	"sharper_in_out":   [Tween.TRANS_QUART, Tween.EASE_IN_OUT],
+
+	"sharp_in":         [Tween.TRANS_QUINT, Tween.EASE_IN],
+	"sharp_out":        [Tween.TRANS_QUINT, Tween.EASE_OUT],
+	"sharp_in_out":     [Tween.TRANS_QUINT, Tween.EASE_IN_OUT],
+
+	"expo_in":          [Tween.TRANS_EXPO, Tween.EASE_IN],
+	"expo_out":         [Tween.TRANS_EXPO, Tween.EASE_OUT],
+	"expo_in_out":      [Tween.TRANS_EXPO, Tween.EASE_IN_OUT],
+
+	"circ_in":          [Tween.TRANS_CIRC, Tween.EASE_IN],
+	"circ_out":         [Tween.TRANS_CIRC, Tween.EASE_OUT],
+	"circ_in_out":      [Tween.TRANS_CIRC, Tween.EASE_IN_OUT],
+
+	"bounce_in":        [Tween.TRANS_BOUNCE, Tween.EASE_IN],
+	"bounce_out":       [Tween.TRANS_BOUNCE, Tween.EASE_OUT],
+	"bounce":           [Tween.TRANS_BOUNCE, Tween.EASE_OUT],
+	"bounce_in_out":    [Tween.TRANS_BOUNCE, Tween.EASE_IN_OUT],
+
+	"elastic_in":       [Tween.TRANS_ELASTIC, Tween.EASE_IN],
+	"elastic_out":      [Tween.TRANS_ELASTIC, Tween.EASE_OUT],
+	"elastic":          [Tween.TRANS_ELASTIC, Tween.EASE_OUT],
+	"elastic_in_out":   [Tween.TRANS_ELASTIC, Tween.EASE_IN_OUT],
+
+	"back_in":          [Tween.TRANS_BACK, Tween.EASE_IN],
+	"back_out":         [Tween.TRANS_BACK, Tween.EASE_OUT],
+	"back":             [Tween.TRANS_BACK, Tween.EASE_OUT],
+	"back_in_out":      [Tween.TRANS_BACK, Tween.EASE_IN_OUT],
+}
+
+var _animator: BayterekNodeAnimator
+var _steps: Array = []
+var _stack: Array = []
 var _cursor_off: Vector2 = Vector2.ZERO
 var _cursor_rot: float = 0.0
 var _cursor_scl: Vector2 = Vector2.ONE
@@ -41,6 +89,38 @@ func _init(animator: BayterekNodeAnimator) -> void:
 		_cursor_off = animator.node.get_visual_offset()
 		_cursor_rot = animator.node.get_visual_rotation()
 		_cursor_scl = animator.node.get_visual_scale()
+
+# ============================================================
+# EASING
+# ============================================================
+
+## Sets the easing for SUBSEQUENT steps. Chainable.
+##
+##   .ease("bounce").move(...)   → move uses bounce easing
+##   .ease("smooth").rotate(...) → rotate uses smooth
+##
+## Valid names are the keys of EASING_PRESETS (see top of file).
+func ease(easing_name: String) -> BayterekAnimatorBuilder:
+	if not EASING_PRESETS.has(easing_name):
+		push_warning("BayterekAnimatorBuilder: unknown easing '%s'." % easing_name)
+		return self
+
+	var pair: Array = EASING_PRESETS[easing_name]
+	_def_trans = pair[0]
+	_def_ease = pair[1]
+	return self
+
+## Manually set transition + ease.
+func ease_raw(trans: Tween.TransitionType, ease_type: Tween.EaseType) -> BayterekAnimatorBuilder:
+	_def_trans = trans
+	_def_ease = ease_type
+	return self
+
+## Returns the list of all easing preset names.
+static func get_easing_names() -> Array:
+	var names: Array = EASING_PRESETS.keys()
+	names.sort()
+	return names
 
 # ============================================================
 # GROUPING
@@ -195,7 +275,6 @@ func persist(persist_state: bool = true) -> BayterekAnimatorBuilder:
 # ============================================================
 
 func play() -> Tween:
-	# Close any dangling groups.
 	while not _stack.is_empty():
 		_stack.pop_back()
 
@@ -209,26 +288,21 @@ func play() -> Tween:
 	_animator._persist_state = not _reset_on_end
 	_animator._snapshot = _animator._capture_snapshot()
 
-	# Flatten the tree into a timeline of absolute (start, duration) entries.
 	var timeline: Array = []
 	_flatten(_steps, 0.0, timeline)
 
-	# Compute total duration.
 	var total_dur: float = 0.0
 	for e in timeline:
 		var e_end: float = float(e["abs_start"]) + float(e["duration"])
 		if e_end > total_dur:
 			total_dur = e_end
-
 	if total_dur <= 0.0:
 		total_dur = 0.001
 
-	# Spawn one tween per step.
 	_animator._child_tweens.clear()
 	for e in timeline:
 		_spawn_step_tween(e)
 
-	# Master tween waits for the total duration and fires finished.
 	var master: Tween = _animator.node.create_tween()
 	master.tween_interval(total_dur)
 
@@ -258,13 +332,12 @@ func play() -> Tween:
 	return master
 
 # ============================================================
-# FLATTEN (build absolute timeline)
+# FLATTEN
 # ============================================================
 
 func _flatten(steps: Array, start: float, out: Array) -> void:
 	var t: float = start
 	for s in steps:
-		# Check BOTH "kind" (leaf) and "type" (group) keys.
 		var kind: String = String(s.get("kind", ""))
 		if kind.is_empty():
 			kind = String(s.get("type", ""))
@@ -309,7 +382,7 @@ func _duration_of(s: Dictionary) -> float:
 	return total
 
 # ============================================================
-# SPAWN ONE STEP AS ITS OWN TWEEN
+# SPAWN
 # ============================================================
 
 func _spawn_step_tween(entry: Dictionary) -> void:

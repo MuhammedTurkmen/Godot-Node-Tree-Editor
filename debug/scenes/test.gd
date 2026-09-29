@@ -1,27 +1,18 @@
 extends Control
 ## Bayterek Runtime Test — two-screen flow.
-##
-## Screen 1 (Browser):  lists all groups/trees from the registry.
-## Screen 2 (Tree View): renders the selected tree with runtime controls.
-##
-## The whole scene parses and runs safely even when the plugin is disabled;
-## autoloads are resolved at runtime.
-##
-## HUD + Confirm button are event-driven: they update only when the
-## allocation service emits a state-change signal (no per-frame polling).
 
 var _loader: Node = null
 var _serializer: Node = null
 
-## --- Screen containers ------------------------------------------
+## --- Screen containers ---
 var _browser_screen: Control
 var _tree_screen: Control
 
-## --- Browser UI -------------------------------------------------
+## --- Browser UI ---
 var _browser_tree: Tree
 var _browser_status: Label
 
-## --- Tree View UI ----------------------------------------------
+## --- Tree View UI ---
 var _top_bar: HBoxContainer
 var _anim_enter_bar: HBoxContainer
 var _anim_exit_bar: HBoxContainer
@@ -30,34 +21,27 @@ var _tree_view: BayterekTreeView
 var _refund_btn: Button
 var _confirm_btn: Button
 
-## --- HUD (selection counter toast) -----------------------------
+## --- HUD ---
 var _hud_panel: PanelContainer
 var _hud_label: RichTextLabel
 
-## --- State -----------------------------------------------------
+## --- State ---
 var _current_group_name: String = ""
 var _current_tree_name: String = ""
 
-## --- Hover animation config ------------------------------------
-## Enter: played on mouse-over. Exit: played on mouse-out.
+## --- Hover animation config ---
 var _hover_enter_preset: String = "hover_enter"
 var _hover_exit_preset: String = "hover_exit"
+var _hover_enter_easing: String = "smooth"
+var _hover_exit_easing: String = "smooth"
 
-## Base options — duration here is the "1.0×" reference.
-## The final options sent to the tree view are scaled by `_hover_anim_speed`.
 const BASE_HOVER_OPTS := {
 	"lift": -8.0,
 	"rot_peak": 5.0,
 	"duration": 0.45,
 }
 
-## Global speed multiplier for BOTH enter and exit animations.
-## 1.0 = normal speed, 2.0 = twice as fast, 0.5 = half speed.
 var _hover_anim_speed: float = 1.0
-
-## UI handles so we can update the labels live.
-var _enter_speed_label: Label
-var _exit_speed_label: Label
 
 const TOP_BAR_HEIGHT := 42
 const ANIM_BAR_HEIGHT := 34
@@ -105,7 +89,7 @@ func _build_screens() -> void:
 	_browser_screen.visible = true
 	_tree_screen.visible = false
 
-# --- BROWSER SCREEN ---------------------------------------------
+# --- BROWSER SCREEN ---
 
 func _build_browser_screen() -> void:
 	_browser_screen = Control.new()
@@ -153,7 +137,7 @@ func _build_browser_screen() -> void:
 	_browser_status.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(_browser_status)
 
-# --- TREE SCREEN ------------------------------------------------
+# --- TREE SCREEN ---
 
 func _build_tree_screen() -> void:
 	_tree_screen = Control.new()
@@ -161,7 +145,7 @@ func _build_tree_screen() -> void:
 	_tree_screen.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	add_child(_tree_screen)
 
-	# --- TOP BAR (row 1) ---
+	# --- TOP BAR ---
 	_top_bar = HBoxContainer.new()
 	_top_bar.name = "TopBar"
 	_top_bar.position = Vector2(10, 8)
@@ -169,7 +153,6 @@ func _build_tree_screen() -> void:
 	_tree_screen.add_child(_top_bar)
 
 	var back_btn := Button.new()
-	back_btn.name = "BackButton"
 	back_btn.text = "← Back"
 	back_btn.pressed.connect(_show_browser)
 	_top_bar.add_child(back_btn)
@@ -177,54 +160,45 @@ func _build_tree_screen() -> void:
 	_top_bar.add_child(VSeparator.new())
 
 	_refund_btn = Button.new()
-	_refund_btn.name = "RefundButton"
 	_refund_btn.text = "Enter Refund Mode (R)"
 	_refund_btn.toggle_mode = true
 	_refund_btn.pressed.connect(_on_refund_button_pressed)
 	_top_bar.add_child(_refund_btn)
 
 	var refund_all_btn := Button.new()
-	refund_all_btn.name = "RefundAllButton"
 	refund_all_btn.text = "Refund All"
 	refund_all_btn.pressed.connect(_on_refund_all_pressed)
 	_top_bar.add_child(refund_all_btn)
 
 	_confirm_btn = Button.new()
-	_confirm_btn.name = "ConfirmButton"
 	_confirm_btn.text = "Confirm (Enter)"
 	_confirm_btn.disabled = true
 	_confirm_btn.pressed.connect(_on_confirm_pressed)
 	_top_bar.add_child(_confirm_btn)
 
 	var clear_btn := Button.new()
-	clear_btn.name = "ClearButton"
 	clear_btn.text = "Clear (Esc)"
 	clear_btn.pressed.connect(_on_clear_pressed)
 	_top_bar.add_child(clear_btn)
 
 	var reset_save_btn := Button.new()
-	reset_save_btn.name = "ResetSaveButton"
 	reset_save_btn.text = "Reset Save"
-	reset_save_btn.tooltip_text = "Delete the saved allocation state on disk and reset."
 	reset_save_btn.pressed.connect(_on_reset_save_pressed)
 	_top_bar.add_child(reset_save_btn)
 
 	_top_bar.add_child(VSeparator.new())
 
 	var center_btn := Button.new()
-	center_btn.name = "CenterButton"
 	center_btn.text = "Center Camera"
 	center_btn.pressed.connect(_on_center_pressed)
 	_top_bar.add_child(center_btn)
 
 	var save_btn := Button.new()
-	save_btn.name = "SaveButton"
 	save_btn.text = "Save State"
 	save_btn.pressed.connect(_on_save_pressed)
 	_top_bar.add_child(save_btn)
 
 	var load_btn := Button.new()
-	load_btn.name = "LoadButton"
 	load_btn.text = "Load State"
 	load_btn.pressed.connect(_on_load_pressed)
 	_top_bar.add_child(load_btn)
@@ -232,12 +206,11 @@ func _build_tree_screen() -> void:
 	_top_bar.add_child(VSeparator.new())
 
 	var reload_btn := Button.new()
-	reload_btn.name = "ReloadButton"
 	reload_btn.text = "Reload Tree"
 	reload_btn.pressed.connect(_on_reload_pressed)
 	_top_bar.add_child(reload_btn)
 
-	# --- ANIMATION BAR — ROW 1 (Enter / Mouse Over) ---
+	# --- ANIM BAR — ENTER ---
 	_anim_enter_bar = HBoxContainer.new()
 	_anim_enter_bar.name = "AnimEnterBar"
 	_anim_enter_bar.position = Vector2(10, 8 + TOP_BAR_HEIGHT)
@@ -251,6 +224,7 @@ func _build_tree_screen() -> void:
 	_anim_enter_bar.add_child(enter_label)
 
 	_build_enter_dropdown(_anim_enter_bar)
+	_build_enter_easing_dropdown(_anim_enter_bar)
 
 	_anim_enter_bar.add_child(VSeparator.new())
 
@@ -265,7 +239,7 @@ func _build_tree_screen() -> void:
 	_add_manual_anim_button_to(_anim_enter_bar, "Pop", "pop")
 	_add_manual_anim_button_to(_anim_enter_bar, "Shake", "shake")
 
-	# --- ANIMATION BAR — ROW 2 (Exit / Mouse Out) ---
+	# --- ANIM BAR — EXIT ---
 	_anim_exit_bar = HBoxContainer.new()
 	_anim_exit_bar.name = "AnimExitBar"
 	_anim_exit_bar.position = Vector2(10, 8 + TOP_BAR_HEIGHT + ANIM_BAR_HEIGHT + ANIM_BAR_GAP)
@@ -279,6 +253,7 @@ func _build_tree_screen() -> void:
 	_anim_exit_bar.add_child(exit_label)
 
 	_build_exit_dropdown(_anim_exit_bar)
+	_build_exit_easing_dropdown(_anim_exit_bar)
 
 	_anim_exit_bar.add_child(VSeparator.new())
 
@@ -293,13 +268,11 @@ func _build_tree_screen() -> void:
 	_anim_exit_bar.add_child(VSeparator.new())
 
 	var stop_anim_btn := Button.new()
-	stop_anim_btn.name = "StopAnimButton"
 	stop_anim_btn.text = "Stop All"
-	stop_anim_btn.tooltip_text = "Stop all running animations and snap back."
 	stop_anim_btn.pressed.connect(_on_stop_animation_pressed)
 	_anim_exit_bar.add_child(stop_anim_btn)
 
-	# --- ANIMATION BAR — ROW 3 (Speed) ---
+	# --- ANIM BAR — SPEED ---
 	var anim_speed_bar := HBoxContainer.new()
 	anim_speed_bar.name = "AnimSpeedBar"
 	anim_speed_bar.position = Vector2(
@@ -322,33 +295,26 @@ func _build_tree_screen() -> void:
 	speed_slider.step = 0.05
 	speed_slider.value = _hover_anim_speed
 	speed_slider.custom_minimum_size = Vector2(200, 0)
-	speed_slider.tooltip_text = "Animation speed multiplier for both enter and exit animations.\n1.0× = normal, 2.0× = twice as fast, 0.5× = half speed."
 	speed_slider.value_changed.connect(_on_speed_changed)
 	anim_speed_bar.add_child(speed_slider)
 
-	# --- Live speed value label ---
-	_enter_speed_label = Label.new()
-	_enter_speed_label.name = "SpeedValueLabel"
-	_enter_speed_label.text = "%.2f×" % _hover_anim_speed
-	_enter_speed_label.custom_minimum_size = Vector2(60, 0)
-	_enter_speed_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.5))
-	anim_speed_bar.add_child(_enter_speed_label)
-
-	# Reuse the same label for exit (they share the same speed).
-	_exit_speed_label = _enter_speed_label
+	var speed_value_label := Label.new()
+	speed_value_label.name = "SpeedValueLabel"
+	speed_value_label.text = "%.2f×" % _hover_anim_speed
+	speed_value_label.custom_minimum_size = Vector2(60, 0)
+	speed_value_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.5))
+	anim_speed_bar.add_child(speed_value_label)
 
 	anim_speed_bar.add_child(VSeparator.new())
 
 	var reset_speed_btn := Button.new()
-	reset_speed_btn.name = "ResetSpeedButton"
 	reset_speed_btn.text = "Reset (1.0×)"
 	reset_speed_btn.pressed.connect(func() -> void:
 		speed_slider.value = 1.0
 	)
 	anim_speed_bar.add_child(reset_speed_btn)
 
-	# --- TREE RENDER CONTAINER ---
-	# Now there are THREE bars stacked: top + enter + exit + speed.
+	# --- TREE CONTAINER ---
 	var bars_height: float = TOP_BAR_HEIGHT + (ANIM_BAR_HEIGHT + ANIM_BAR_GAP) * 3
 	_tree_container = Control.new()
 	_tree_container.name = "TreeContainer"
@@ -358,17 +324,19 @@ func _build_tree_screen() -> void:
 
 	_build_hud()
 
+# --- Dropdowns ---
+
 func _build_enter_dropdown(parent: HBoxContainer) -> void:
 	var dropdown := OptionButton.new()
 	dropdown.name = "EnterPresetDropdown"
 	dropdown.tooltip_text = "Animation played when the mouse enters a node."
 	dropdown.add_item("None", 0)
 	dropdown.set_item_metadata(0, "")
-	dropdown.add_item("Hover Enter (lift + rotate)", 1)
+	dropdown.add_item("Hover Enter", 1)
 	dropdown.set_item_metadata(1, "hover_enter")
-	dropdown.add_item("Lift + Rotate (one-shot)", 2)
+	dropdown.add_item("Lift + Rotate", 2)
 	dropdown.set_item_metadata(2, "lift_rotate")
-	dropdown.add_item("Hover Lift (lift only)", 3)
+	dropdown.add_item("Hover Lift", 3)
 	dropdown.set_item_metadata(3, "hover_lift")
 	dropdown.add_item("Pop", 4)
 	dropdown.set_item_metadata(4, "pop")
@@ -389,9 +357,9 @@ func _build_exit_dropdown(parent: HBoxContainer) -> void:
 	dropdown.tooltip_text = "Animation played when the mouse leaves a node."
 	dropdown.add_item("None", 0)
 	dropdown.set_item_metadata(0, "")
-	dropdown.add_item("Hover Exit (descend, no rotation)", 1)
+	dropdown.add_item("Hover Exit", 1)
 	dropdown.set_item_metadata(1, "hover_exit")
-	dropdown.add_item("Lift + Rotate (one-shot)", 2)
+	dropdown.add_item("Lift + Rotate", 2)
 	dropdown.set_item_metadata(2, "lift_rotate")
 
 	for i in dropdown.item_count:
@@ -402,38 +370,60 @@ func _build_exit_dropdown(parent: HBoxContainer) -> void:
 	dropdown.item_selected.connect(_on_exit_preset_changed)
 	parent.add_child(dropdown)
 
+func _build_enter_easing_dropdown(parent: HBoxContainer) -> void:
+	parent.add_child(VSeparator.new())
+
+	var lbl := Label.new()
+	lbl.text = "Easing:"
+	lbl.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+	lbl.add_theme_font_size_override("font_size", 11)
+	parent.add_child(lbl)
+
+	var dd := OptionButton.new()
+	dd.name = "EnterEasingDropdown"
+	dd.tooltip_text = "Easing curve for the enter animation."
+	var names: Array = BayterekAnimatorBuilder.get_easing_names()
+	for i in names.size():
+		dd.add_item(String(names[i]), i)
+		dd.set_item_metadata(i, String(names[i]))
+	for i in dd.item_count:
+		if String(dd.get_item_metadata(i)) == _hover_enter_easing:
+			dd.select(i)
+			break
+	dd.item_selected.connect(_on_enter_easing_changed)
+	parent.add_child(dd)
+
+func _build_exit_easing_dropdown(parent: HBoxContainer) -> void:
+	parent.add_child(VSeparator.new())
+
+	var lbl := Label.new()
+	lbl.text = "Easing:"
+	lbl.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+	lbl.add_theme_font_size_override("font_size", 11)
+	parent.add_child(lbl)
+
+	var dd := OptionButton.new()
+	dd.name = "ExitEasingDropdown"
+	dd.tooltip_text = "Easing curve for the exit animation."
+	var names: Array = BayterekAnimatorBuilder.get_easing_names()
+	for i in names.size():
+		dd.add_item(String(names[i]), i)
+		dd.set_item_metadata(i, String(names[i]))
+	for i in dd.item_count:
+		if String(dd.get_item_metadata(i)) == _hover_exit_easing:
+			dd.select(i)
+			break
+	dd.item_selected.connect(_on_exit_easing_changed)
+	parent.add_child(dd)
+
 func _add_manual_anim_button_to(parent: HBoxContainer, label: String, preset_name: String) -> void:
 	var btn := Button.new()
-	btn.name = "Anim_" + preset_name
 	btn.text = label
-	btn.tooltip_text = "Play '%s' on the selected nodes (or all if nothing selected)." % preset_name
+	btn.tooltip_text = "Play '%s' on selected (or all) nodes." % preset_name
 	btn.pressed.connect(func() -> void: _on_anim_button_pressed(preset_name))
 	parent.add_child(btn)
 
-# ============================================================
-# SPEED CONTROL (shared between enter + exit)
-# ============================================================
-
-## Called when the user drags the speed slider.
-## The base duration is divided by the speed multiplier:
-##   speed = 2.0  →  duration halves  →  animation plays twice as fast.
-##   speed = 0.5  →  duration doubles →  animation plays half as fast.
-func _on_speed_changed(value: float) -> void:
-	_hover_anim_speed = clampf(value, MIN_SPEED, MAX_SPEED)
-
-	_update_speed_labels()
-	_apply_hover_config_to_tree_view()
-
-	print("Test: Animation speed set to %.2f×" % _hover_anim_speed)
-
-func _update_speed_labels() -> void:
-	var text := "%.2f×" % _hover_anim_speed
-	if _enter_speed_label:
-		_enter_speed_label.text = text
-	if _exit_speed_label:
-		_exit_speed_label.text = text
-
-# --- HUD --------------------------------------------------------
+# --- HUD ---
 
 func _build_hud() -> void:
 	_hud_panel = PanelContainer.new()
@@ -441,7 +431,7 @@ func _build_hud() -> void:
 	_hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_panel.visible = false
 
-	var bars_height: float = TOP_BAR_HEIGHT + ANIM_BAR_HEIGHT * 2 + ANIM_BAR_GAP
+	var bars_height: float = TOP_BAR_HEIGHT + (ANIM_BAR_HEIGHT + ANIM_BAR_GAP) * 3
 
 	_hud_panel.anchor_left = 0.0
 	_hud_panel.anchor_top = 0.0
@@ -476,13 +466,12 @@ func _build_hud() -> void:
 	_hud_panel.add_child(_hud_label)
 
 # ============================================================
-# HUD UPDATE (event-driven)
+# HUD UPDATE
 # ============================================================
 
 func _update_hud() -> void:
 	if not _hud_panel or not _tree_screen or not _tree_screen.visible:
 		return
-
 	if not _tree_view or not _tree_view.allocation_service:
 		_hud_panel.visible = false
 		return
@@ -495,7 +484,7 @@ func _update_hud() -> void:
 	var visible_state: bool = false
 
 	if svc.is_refund_mode() and refund_count > 0:
-		text = "[color=#ff8080]Refund selected: [b]%d[/b][/color]" % refund_count
+		text = "[color=#ff8080]Refund: [b]%d[/b][/color]" % refund_count
 		visible_state = true
 	elif not svc.is_refund_mode() and pre_count > 0:
 		text = "[color=#ffdd66]Preallocated: [b]%d[/b][/color]" % pre_count
@@ -506,52 +495,87 @@ func _update_hud() -> void:
 		_hud_label.text = text
 
 # ============================================================
-# HOVER ANIMATION CONFIG
+# SPEED
+# ============================================================
+
+func _on_speed_changed(value: float) -> void:
+	_hover_anim_speed = clampf(value, MIN_SPEED, MAX_SPEED)
+	var lbl: Label = _tree_screen.get_node_or_null("AnimSpeedBar/SpeedValueLabel")
+	if lbl:
+		lbl.text = "%.2f×" % _hover_anim_speed
+	_apply_hover_config_to_tree_view()
+	print("Test: Speed → %.2f×" % _hover_anim_speed)
+
+# ============================================================
+# HOVER CONFIG
 # ============================================================
 
 func _on_enter_preset_changed(index: int) -> void:
-	var dropdown: OptionButton = _anim_enter_bar.get_node_or_null("EnterPresetDropdown")
-	if not dropdown:
-		return
-	var meta = dropdown.get_item_metadata(index)
+	var dd: OptionButton = _anim_enter_bar.get_node_or_null("EnterPresetDropdown")
+	if not dd: return
+	var meta = dd.get_item_metadata(index)
 	_hover_enter_preset = "" if meta == null else String(meta)
 	print("Test: Enter preset → '%s'" % (_hover_enter_preset if not _hover_enter_preset.is_empty() else "(disabled)"))
 	_apply_hover_config_to_tree_view()
 
 func _on_exit_preset_changed(index: int) -> void:
-	var dropdown: OptionButton = _anim_exit_bar.get_node_or_null("ExitPresetDropdown")
-	if not dropdown:
-		return
-	var meta = dropdown.get_item_metadata(index)
+	var dd: OptionButton = _anim_exit_bar.get_node_or_null("ExitPresetDropdown")
+	if not dd: return
+	var meta = dd.get_item_metadata(index)
 	_hover_exit_preset = "" if meta == null else String(meta)
 	print("Test: Exit preset → '%s'" % (_hover_exit_preset if not _hover_exit_preset.is_empty() else "(disabled)"))
 	_apply_hover_config_to_tree_view()
 
-## Pushes the current hover preset config to the active tree view.
-##
-## Duration is divided by the speed multiplier so speed=2.0 doubles
-## animation speed (halves duration).
+func _on_enter_easing_changed(index: int) -> void:
+	var dd: OptionButton = _anim_enter_bar.get_node_or_null("EnterEasingDropdown")
+	if not dd: return
+	var meta = dd.get_item_metadata(index)
+	_hover_enter_easing = "smooth" if meta == null else String(meta)
+	print("Test: Enter easing → '%s'" % _hover_enter_easing)
+	_apply_hover_config_to_tree_view()
+
+func _on_exit_easing_changed(index: int) -> void:
+	var dd: OptionButton = _anim_exit_bar.get_node_or_null("ExitEasingDropdown")
+	if not dd: return
+	var meta = dd.get_item_metadata(index)
+	_hover_exit_easing = "smooth" if meta == null else String(meta)
+	print("Test: Exit easing → '%s'" % _hover_exit_easing)
+	_apply_hover_config_to_tree_view()
+
 func _apply_hover_config_to_tree_view() -> void:
 	if not _tree_view:
 		return
 
-	var scaled_opts: Dictionary = BASE_HOVER_OPTS.duplicate()
-	var base_duration: float = float(scaled_opts.get("duration", 0.45))
-	scaled_opts["duration"] = base_duration / _hover_anim_speed
+	var base_dur: float = float(BASE_HOVER_OPTS.get("duration", 0.45))
+	var scaled_dur: float = base_dur / _hover_anim_speed
+
+	var enter_opts: Dictionary = {
+		"lift": BASE_HOVER_OPTS.get("lift", -8.0),
+		"rot_peak": BASE_HOVER_OPTS.get("rot_peak", 5.0),
+		"duration": scaled_dur,
+		"easing": _hover_enter_easing,
+	}
+	var exit_opts: Dictionary = {
+		"duration": scaled_dur,
+		"easing": _hover_exit_easing,
+	}
 
 	_tree_view.hover_enter_preset = _hover_enter_preset
 	_tree_view.hover_exit_preset = _hover_exit_preset
-	_tree_view.hover_animation_opts = scaled_opts
+	_tree_view.hover_enter_opts = enter_opts
+	_tree_view.hover_exit_opts = exit_opts
 
-## Builds the scaled options for manual test buttons.
 func _get_scaled_opts() -> Dictionary:
-	var scaled_opts: Dictionary = BASE_HOVER_OPTS.duplicate()
-	var base_duration: float = float(scaled_opts.get("duration", 0.45))
-	scaled_opts["duration"] = base_duration / _hover_anim_speed
-	return scaled_opts
+	var d: float = float(BASE_HOVER_OPTS.get("duration", 0.45)) / _hover_anim_speed
+	return {
+		"lift": BASE_HOVER_OPTS.get("lift", -8.0),
+		"rot_peak": BASE_HOVER_OPTS.get("rot_peak", 5.0),
+		"duration": d,
+		"easing": _hover_enter_easing,
+	}
 
 # ============================================================
-# BROWSER LOGIC
+# BROWSER
 # ============================================================
 
 func _show_browser() -> void:
@@ -582,8 +606,7 @@ func _show_browser() -> void:
 	_populate_browser_tree()
 
 func _populate_browser_tree() -> void:
-	if not _browser_tree:
-		return
+	if not _browser_tree: return
 
 	_browser_tree.clear()
 	_browser_tree.create_item()
@@ -616,40 +639,34 @@ func _populate_browser_tree() -> void:
 			})
 
 	if total_groups == 0:
-		_browser_status.text = "Registry boş. Browser'dan grup/tree oluştur."
+		_browser_status.text = "Registry boş."
 	elif total_trees == 0:
-		_browser_status.text = "%d grup var ama hiç tree yok." % total_groups
+		_browser_status.text = "%d grup var, tree yok." % total_groups
 	else:
 		_browser_status.text = "%d grup, %d tree." % [total_groups, total_trees]
 
 func _on_browser_item_activated() -> void:
 	var item: TreeItem = _browser_tree.get_selected()
-	if not item:
-		return
+	if not item: return
 
 	var meta: Dictionary = item.get_metadata(0)
 	if meta.get("type", "") == "group":
 		item.collapsed = not item.collapsed
 		return
-
 	if meta.get("type", "") == "tree":
-		var group_name: String = meta.get("group_name", "")
-		var tree_name: String = meta.get("name", "")
-		_show_tree_view(group_name, tree_name)
+		_show_tree_view(meta.get("group_name", ""), meta.get("name", ""))
 
 # ============================================================
-# TREE VIEW LOGIC
+# TREE VIEW
 # ============================================================
 
 func _show_tree_view(group_name: String, tree_name: String) -> void:
-	if not _loader:
-		return
+	if not _loader: return
 
 	var tree_path: String = "%s/%s" % [group_name, tree_name]
 	var tree = _loader.call("load_tree", tree_path)
 	if not tree:
 		push_warning("Test: '%s' yüklenemedi." % tree_path)
-		_browser_status.text = "'%s' yüklenemedi." % tree_path
 		return
 
 	_current_group_name = group_name
@@ -670,17 +687,14 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 		.build()
 
 	if not _tree_view:
-		push_error("Test: Failed to build tree view for '%s'" % tree_path)
+		push_error("Test: Failed to build tree view.")
 		return
 
 	_tree_view.set_tooltip_near_node_right()
-
-	# Apply hover animation config to the new tree view.
 	_apply_hover_config_to_tree_view()
-
 	_connect_allocation_signals()
 
-	print("Test: Opened tree '%s' (%d nodes)" % [tree_path, tree.nodes.size()])
+	print("Test: Opened '%s' (%d nodes)" % [tree_path, tree.nodes.size()])
 
 	_browser_screen.visible = false
 	_tree_screen.visible = true
@@ -690,12 +704,11 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 	_update_confirm_button_state()
 
 # ============================================================
-# MANUAL ANIMATION HANDLERS
+# MANUAL ANIMATION
 # ============================================================
 
 func _on_anim_button_pressed(preset_name: String) -> void:
-	if not _tree_view or not _tree_view.nodes_service:
-		return
+	if not _tree_view or not _tree_view.nodes_service: return
 
 	var targets: Array = []
 	if not _tree_view.selected_nodes.is_empty():
@@ -710,31 +723,26 @@ func _on_anim_button_pressed(preset_name: String) -> void:
 	var opts: Dictionary = _get_scaled_opts()
 	var count: int = 0
 	for node in targets:
-		if not is_instance_valid(node):
-			continue
-		if not node.has_method("play_animation"):
-			continue
+		if not is_instance_valid(node): continue
+		if not node.has_method("play_animation"): continue
 		node.play_animation(preset_name, opts)
 		count += 1
 
 	print("Test: Playing '%s' on %d node(s) @ %.2f×" % [preset_name, count, _hover_anim_speed])
 
 func _on_stop_animation_pressed() -> void:
-	if not _tree_view or not _tree_view.nodes_service:
-		return
+	if not _tree_view or not _tree_view.nodes_service: return
 	for node in _tree_view.nodes_service.get_all_nodes():
 		if is_instance_valid(node) and node.has_method("stop_animation"):
 			node.stop_animation()
 	print("Test: Stopped all animations")
 
 # ============================================================
-# ALLOCATION SIGNAL WIRING (event-driven HUD + confirm)
+# ALLOCATION SIGNALS
 # ============================================================
 
 func _connect_allocation_signals() -> void:
-	if not _tree_view or not _tree_view.allocation_service:
-		return
-
+	if not _tree_view or not _tree_view.allocation_service: return
 	var svc = _tree_view.allocation_service
 
 	if not svc.node_preallocated.is_connected(_on_allocation_state_changed):
@@ -755,11 +763,8 @@ func _connect_allocation_signals() -> void:
 		svc.node_deallocated.connect(_on_allocation_state_changed)
 
 func _disconnect_allocation_signals() -> void:
-	if not _tree_view or not is_instance_valid(_tree_view):
-		return
-	if not _tree_view.allocation_service:
-		return
-
+	if not _tree_view or not is_instance_valid(_tree_view): return
+	if not _tree_view.allocation_service: return
 	var svc = _tree_view.allocation_service
 
 	if svc.node_preallocated.is_connected(_on_allocation_state_changed):
@@ -793,158 +798,116 @@ func _on_refund_mode_changed() -> void:
 # ============================================================
 
 func _on_node_allocated(node: BayterekNode) -> void:
-	print("Test: Node allocated → %s" % node.name)
+	print("Test: Allocated → %s" % node.name)
 
 func _on_node_deallocated(node: BayterekNode) -> void:
-	print("Test: Node deallocated → %s" % node.name)
+	print("Test: Deallocated → %s" % node.name)
 
 func _on_refund_button_pressed() -> void:
-	if not _tree_view or not _tree_view.allocation_service:
-		return
-
+	if not _tree_view or not _tree_view.allocation_service: return
 	if _tree_view.allocation_service.is_refund_mode():
 		_tree_view.allocation_service.exit_refund_mode()
 	else:
 		_tree_view.allocation_service.enter_refund_mode()
 
 func _on_refund_all_pressed() -> void:
-	if not _tree_view or not _tree_view.allocation_service:
-		return
+	if not _tree_view or not _tree_view.allocation_service: return
 	_tree_view.allocation_service.stage_all_for_refund()
 
 func _on_confirm_pressed() -> void:
-	if not _tree_view or not _tree_view.allocation_service:
-		return
-
+	if not _tree_view or not _tree_view.allocation_service: return
 	if _tree_view.allocation_service.is_refund_mode():
 		_tree_view.allocation_service.confirm_refund()
 	else:
 		_tree_view.allocation_service.confirm_preallocations()
 
-# ============================================================
-# CLEAR — clears EVERYTHING (allocations + preallocations + refunds)
-# ============================================================
-
 func _on_clear_pressed() -> void:
-	if not _tree_view:
-		return
-
+	if not _tree_view: return
 	if _tree_view.allocation_service:
 		_tree_view.allocation_service.clear_all_allocations()
-
 	_tree_view.clear_selection()
 	if _tree_view.group_frames_service:
 		_tree_view.group_frames_service.clear_selection()
-
 	if _refund_btn:
 		_refund_btn.button_pressed = false
 		_refund_btn.text = "Enter Refund Mode (R)"
-
 	_update_hud()
 	_update_confirm_button_state()
 
 func _on_center_pressed() -> void:
-	if _tree_view:
-		_tree_view.center_camera_on_content()
+	if _tree_view: _tree_view.center_camera_on_content()
 
 func _on_save_pressed() -> void:
-	if not _serializer:
-		push_warning("Test: BayterekSerializer yok — plugin açık mı?")
-		return
-	if not _tree_view or not _tree_view._tree_data:
-		return
+	if not _serializer: return
+	if not _tree_view or not _tree_view._tree_data: return
 	var tree = _tree_view._tree_data
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
 	_serializer.call("save_tree_state", tree)
-	print("Test: Tree state saved")
+	print("Test: Saved")
 
 func _on_load_pressed() -> void:
-	if not _serializer:
-		push_warning("Test: BayterekSerializer yok — plugin açık mı?")
-		return
-	if not _tree_view or not _tree_view._tree_data:
-		return
+	if not _serializer: return
+	if not _tree_view or not _tree_view._tree_data: return
 	var tree = _tree_view._tree_data
 	_serializer.call("load_tree_state", tree)
 	if _tree_view.allocation_service:
 		_tree_view.allocation_service.reload_from_state()
-	print("Test: Tree state loaded")
+	print("Test: Loaded")
 	_update_hud()
 	_update_confirm_button_state()
 
 func _on_reset_save_pressed() -> void:
-	if not _tree_view or not _tree_view._tree_data:
-		return
-
+	if not _tree_view or not _tree_view._tree_data: return
 	var tree = _tree_view._tree_data
-
 	if _serializer:
 		_serializer.call("delete_tree_state", tree)
-
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
 	tree.tree_state.allocated_nodes.clear()
 	tree.tree_state.allocation_level.clear()
-
 	if _tree_view.allocation_service:
 		_tree_view.allocation_service.reload_from_state()
-
 	if _refund_btn:
 		_refund_btn.button_pressed = false
 		_refund_btn.text = "Enter Refund Mode (R)"
-
 	_update_hud()
 	_update_confirm_button_state()
-
-	print("Test: Save state reset")
+	print("Test: Save reset")
 
 func _on_reload_pressed() -> void:
-	if _current_group_name.is_empty() or _current_tree_name.is_empty():
-		return
+	if _current_group_name.is_empty() or _current_tree_name.is_empty(): return
 	_show_tree_view(_current_group_name, _current_tree_name)
 
 func _update_refund_button_text() -> void:
-	if not _refund_btn:
-		return
-
+	if not _refund_btn: return
 	if _tree_view and _tree_view.allocation_service and _tree_view.allocation_service.is_refund_mode():
 		_refund_btn.text = "Exit Refund Mode (R)"
 	else:
 		_refund_btn.text = "Enter Refund Mode (R)"
 
 # ============================================================
-# CONFIRM BUTTON VISIBILITY
+# CONFIRM BUTTON
 # ============================================================
 
 func _is_confirm_required() -> bool:
-	if not _tree_view or not _tree_view._tree_data:
-		return false
-
+	if not _tree_view or not _tree_view._tree_data: return false
 	var tree = _tree_view._tree_data
-
 	if _tree_view.allocation_service and _tree_view.allocation_service.is_refund_mode():
 		return tree.refund_confirm
-
 	return tree.allocation_confirm
 
 func _update_confirm_button_state() -> void:
-	if not _confirm_btn:
-		return
-
+	if not _confirm_btn: return
 	if not _is_confirm_required():
 		_confirm_btn.visible = false
 		_confirm_btn.disabled = true
 		return
-
 	_confirm_btn.visible = true
-
 	if not _tree_view or not _tree_view.allocation_service:
 		_confirm_btn.disabled = true
 		return
-
 	var svc = _tree_view.allocation_service
-
 	if svc.is_refund_mode():
 		_confirm_btn.disabled = svc.get_refund_count() == 0
 	else:
@@ -955,11 +918,8 @@ func _update_confirm_button_state() -> void:
 # ============================================================
 
 func _input(event: InputEvent) -> void:
-	if not _tree_screen or not _tree_screen.visible:
-		return
-
-	if not (event is InputEventKey and event.pressed and not event.echo):
-		return
+	if not _tree_screen or not _tree_screen.visible: return
+	if not (event is InputEventKey and event.pressed and not event.echo): return
 
 	if event.keycode == KEY_R:
 		_on_refund_button_pressed()
