@@ -289,7 +289,6 @@ func _build_field_row(
 # ============================================================
 
 ## Turns "layers.<uuid>.transform.scale" into "Scale".
-## Turns "layers.<uuid>.transform.scale" (Vector2) into "Scale X / Y".
 func _humanize_field_path(field_path: String) -> String:
 	var parts: Array = field_path.split(".")
 	if parts.size() < 3:
@@ -330,16 +329,6 @@ func _humanize_single(s: String) -> String:
 		"layer_name": return "Name"
 		"render_mode_override": return "Render Mode"
 		"texture_filter_override": return "Texture Filter"
-		"shape_type": return "Shape Type"
-		"corner_radius": return "Corner Radius"
-		"fill_enabled": return "Fill Enabled"
-		"border_enabled": return "Border Enabled"
-		"border_width": return "Border Width"
-		"border_corner_gap": return "Border Corner Gap"
-		"shadow_enabled": return "Shadow Enabled"
-		"shadow_color": return "Shadow Color"
-		"shadow_size": return "Shadow Size"
-		"shadow_blur": return "Shadow Blur"
 		"icon_enabled": return "Icon Enabled"
 		"tint_enabled": return "Tint Enabled"
 		"stretch_mode": return "Stretch Mode"
@@ -367,11 +356,6 @@ func _field_sort_key(path: String) -> int:
 	if path.ends_with(".layer_name"): return 101
 	if path.ends_with(".render_mode_override"): return 110
 	if path.ends_with(".texture_filter_override"): return 111
-	if path.ends_with(".shape_type"): return 200
-	if path.ends_with(".corner_radius"): return 201
-	if path.ends_with(".fill_enabled"): return 210
-	if path.ends_with(".border_enabled"): return 220
-	if path.ends_with(".border_width"): return 221
 	return 500
 
 # ============================================================

@@ -64,7 +64,12 @@ func create_prefab(node: BayterekNodeButton, prefab_name: String) -> BayterekPre
 	if not prefab.design_id.is_empty():
 		design = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
 	if design:
-		prefab.copy_exported_fields_from(design)
+		# Pass the node's current overrides so they become the prefab's
+		# starting values (fixes the "exported_values empty" bug).
+		prefab.copy_exported_fields_from(
+			design,
+			node.node_data.exported_overrides
+		)
 
 	node.node_data.reference_id = prefab.reference_id
 	node.prefab = prefab

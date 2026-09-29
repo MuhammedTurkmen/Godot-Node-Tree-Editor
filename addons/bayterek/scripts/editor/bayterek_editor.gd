@@ -2002,6 +2002,12 @@ func _icon_configs_to_dict(configs: Dictionary) -> Dictionary:
 		}
 	return out
 
+## Reconstructs a BayterekLayer from a dict (paste path).
+##
+## IMPORTANT: this method always assigns a FRESH layer_id. Without this,
+## a pasted node's layers would share the same layer_id as the source
+## node's layers, and get_layer_by_id() would return the wrong instance.
+## That causes the pasted node and the original to become entangled.
 func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 	var type_str: String = d.get("_type", "")
 
@@ -2011,9 +2017,8 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 	else:
 		return null
 
-	var stored_id: String = d.get("layer_id", "")
-	if not stored_id.is_empty():
-		layer.layer_id = stored_id
+	# Fresh layer_id — see docstring above.
+	layer.layer_id = BayterekUUIDGenerator.v4()
 
 	layer.layer_name = d.get("layer_name", "Layer")
 	layer.visible = d.get("visible", true)

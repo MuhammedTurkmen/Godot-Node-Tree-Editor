@@ -7,7 +7,6 @@
 
 ## MEDIUM
 [] bağlantı çizgileri düzenlenecek 
-[] node editorde node'u kayıt edip etmediğimi anlayamıyorum
 
 ## HARD
 [] yetenek ağacındaki çerçeve (frame) tipleri

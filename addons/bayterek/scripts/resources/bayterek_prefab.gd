@@ -49,10 +49,36 @@ func get_resolved_value(design: BayterekNodeDesign, field_path: String) -> Varia
 		return design.get_field_value(field_path)
 	return null
 
-func copy_exported_fields_from(design: BayterekNodeDesign) -> void:
+## Copies exported fields AND their current resolved values from a design.
+## Optionally also folds in overrides that were set directly on the source
+## node, so the new prefab starts with the node's actual current values.
+##
+## This fixes the old behavior where `exported_values` was left empty,
+## causing freshly-created prefab nodes to fall back to design defaults.
+func copy_exported_fields_from(
+	design: BayterekNodeDesign,
+	source_overrides: Dictionary = {}
+) -> void:
 	if not design:
 		return
+
+	# 1. Copy the exported field whitelist.
 	exported_fields = design.exported_fields.duplicate(true)
+
+	# 2. Seed exported_values from the design's current values, so the
+	#    prefab has real defaults from the start (not null/empty).
+	exported_values.clear()
+	for field_path in exported_fields.keys():
+		var v: Variant = design.get_field_value(field_path)
+		if v != null:
+			exported_values[field_path] = v
+
+	# 3. Fold in any per-node overrides the source node had — this
+	#    preserves user customizations made before saving as prefab.
+	for field_path in source_overrides.keys():
+		exported_values[field_path] = source_overrides[field_path]
+
+	exported_values_changed.emit(self)
 
 # ============================================================
 # NODE BINDING

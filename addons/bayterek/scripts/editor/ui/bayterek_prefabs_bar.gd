@@ -120,19 +120,47 @@ func refresh() -> void:
 	_rebuild_tabs()
 	_rebuild_cards_for_current_tab()
 
+## Refresh the tab list and try to keep the user on the same category tab
+## they were viewing before the refresh.
+##
+## Without this, changing a design's category would rebuild all tabs from
+## scratch and drop the user back onto "All" — which is what made the bar
+## look like it wasn't responding to category changes at all.
+##
+## Important: after `refresh()`, `_tab_meta` contains brand-new ids, so we
+## must remember the category STRING before the rebuild, not the old id.
 func refresh_categories() -> void:
+	# 1. Capture the category the user is currently viewing.
 	var current_category: String = _get_current_category()
+	var was_on_all: bool = current_category.is_empty()
+
+	# 2. Rebuild tabs + cards.
 	refresh()
 
-	if not current_category.is_empty():
-		for item_id in _tab_meta.keys():
-			var meta: Dictionary = _tab_meta[item_id]
-			if meta.get("type", "") == "category" and meta.get("category", "") == current_category:
-				var idx: int = _find_tab_index_by_id(item_id)
-				if idx >= 0:
-					_tab_bar.current_tab = idx
-					_on_tab_changed(idx)
-				return
+	# 3. Try to reselect the same category on the fresh TabBar.
+	if was_on_all:
+		if _tab_bar.tab_count > 0:
+			_tab_bar.current_tab = 0
+			_on_tab_changed(0)
+		return
+
+	for item_id in _tab_meta.keys():
+		var meta: Dictionary = _tab_meta[item_id]
+		if meta.get("type", "") != "category":
+			continue
+		if meta.get("category", "") != current_category:
+			continue
+		var idx: int = _find_tab_index_by_id(item_id)
+		if idx >= 0:
+			_tab_bar.current_tab = idx
+			_on_tab_changed(idx)
+			return
+
+	# 4. Category no longer exists (all its designs were re-categorized
+	#    or deleted) — fall back to "All".
+	if _tab_bar.tab_count > 0:
+		_tab_bar.current_tab = 0
+		_on_tab_changed(0)
 
 func _rebuild_tabs() -> void:
 	_tab_bar.clear_tabs()

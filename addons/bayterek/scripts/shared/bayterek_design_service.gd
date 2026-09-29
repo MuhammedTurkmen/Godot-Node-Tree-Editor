@@ -2,11 +2,10 @@
 class_name BayterekDesignService
 extends RefCounted
 ## Design CRUD + disk operations.
-
-signal design_created(design: BayterekNodeDesign)
-signal design_removed(design: BayterekNodeDesign)
-signal design_renamed(design: BayterekNodeDesign, old_id: String)
-signal designs_reloaded
+##
+## NOTE: This is a fully static utility class. We do NOT use signals here
+## because Godot 4 does not allow emitting instance signals from static
+## functions. UI layers refresh themselves after calling these methods.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -84,6 +83,24 @@ static func get_all_categories() -> Array:
 # CREATE
 # ============================================================
 
+## Creates a brand-new design and saves it to disk.
+##
+## IMPORTANT (bug fix):
+## The old implementation reused `BayterekNodeDesign.new()` directly and
+## then saved it. In some Godot 4 editor sessions the typed array
+## `layers: Array[BayterekLayer]` ends up being shared across instances
+## created with `.new()`, so a fresh design would silently inherit the
+## layer stack of the first design in the session — making every new
+## design look identical.
+##
+## The fix has three parts:
+##   1. Explicitly reset `design.layers` and `design.exported_fields`
+##      right after `.new()`.
+##   2. Delete any stale file at the target path before saving.
+##   3. Reload with CACHE_MODE_IGNORE and abort if the fresh design
+##      somehow has layers.
+##
+## Returns the new design on success, or null on failure.
 static func create_design(base_name: String = "New Design", category: String = "") -> BayterekNodeDesign:
 	_ensure_designs_dir()
 
@@ -91,33 +108,48 @@ static func create_design(base_name: String = "New Design", category: String = "
 	var snake: String = Bayterek.to_snake_case(unique_name)
 	var file_path: String = "%s/%s.tres" % [Bayterek.get_designs_dir(), snake]
 
-	# --- DEBUG ---
-	print("[create_design] REQUEST name=", unique_name, " snake=", snake, " path=", file_path)
+	# 1) Remove any stale file at the target path.
+	if FileAccess.file_exists(file_path):
+		Bayterek.delete_resource_with_sidecar(file_path)
 
+	# 2) Build a brand-new, empty design.
 	var design := BayterekNodeDesign.new()
 	design.id = snake
 	design.name = unique_name
 	design.category = category
 	design.design_size = Vector2(100, 100)
 	design.scale = Vector2.ONE
+	# Belt-and-braces reset (guards against shared typed-array references).
+	design.layers = []
+	design.exported_fields = {}
+	design.bounds_layer_id = ""
 
-	# --- DEBUG ---
-	print("[create_design] NEW instance=", design.get_instance_id(), " design.id=", design.id, " design.layers=", design.layers.size())
-
+	# 3) Save to disk.
 	var err: Error = Bayterek.safe_save(design, file_path)
 	if err != OK:
 		BayterekLogger.error("Could not save design (%d): %s" % [err, file_path], "designs")
 		return null
 
-	var saved: BayterekNodeDesign = ResourceLoader.load(file_path, "BayterekNodeDesign", ResourceLoader.CACHE_MODE_IGNORE)
+	# 4) Reload from disk bypassing the resource cache.
+	var saved: BayterekNodeDesign = ResourceLoader.load(
+		file_path,
+		"BayterekNodeDesign",
+		ResourceLoader.CACHE_MODE_IGNORE
+	)
 	if not saved:
 		BayterekLogger.error("Could not reload design after save: %s" % file_path, "designs")
 		return null
 
-	# --- DEBUG ---
-	print("[create_design] LOADED instance=", saved.get_instance_id(), " saved.id=", saved.id, " saved.name=", saved.name, " saved.resource_path=", saved.resource_path, " saved.layers=", saved.layers.size())
-
 	saved.resource_path = file_path
+
+	# 5) Sanity check — a fresh design MUST have zero layers.
+	if saved.layers.size() != 0:
+		BayterekLogger.error(
+			"Fresh design has %d layers — expected 0. Aborting." % saved.layers.size(),
+			"designs"
+		)
+		Bayterek.delete_resource_with_sidecar(file_path)
+		return null
 
 	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
 	reg.add_design(saved)
@@ -127,6 +159,10 @@ static func create_design(base_name: String = "New Design", category: String = "
 
 	return saved
 
+## Duplicates an existing design.
+##
+## Uses `source.duplicate_design()` which now hands out fresh layer ids
+## to every layer, so the copy and the original are fully independent.
 static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 	if not source:
 		return null
@@ -138,28 +174,31 @@ static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 	var snake: String = Bayterek.to_snake_case(unique_name)
 	var file_path: String = "%s/%s.tres" % [Bayterek.get_designs_dir(), snake]
 
-	# --- DEBUG ---
-	print("[duplicate_design] SOURCE instance=", source.get_instance_id(), " source.id=", source.id, " source.layers=", source.layers.size())
-	print("[duplicate_design] TARGET name=", unique_name, " path=", file_path)
+	# Remove any stale file at the target path.
+	if FileAccess.file_exists(file_path):
+		Bayterek.delete_resource_with_sidecar(file_path)
 
+	# Build the copy via the resource-level duplicator.
 	var copy: BayterekNodeDesign = source.duplicate_design()
+	if not copy:
+		return null
+
 	copy.id = snake
 	copy.name = unique_name
-
-	# --- DEBUG ---
-	print("[duplicate_design] COPY instance=", copy.get_instance_id(), " copy.id=", copy.id, " copy.layers=", copy.layers.size())
 
 	var err: Error = Bayterek.safe_save(copy, file_path)
 	if err != OK:
 		BayterekLogger.error("Could not save duplicated design (%d): %s" % [err, file_path], "designs")
 		return null
 
-	var saved: BayterekNodeDesign = ResourceLoader.load(file_path, "BayterekNodeDesign", ResourceLoader.CACHE_MODE_IGNORE)
+	var saved: BayterekNodeDesign = ResourceLoader.load(
+		file_path,
+		"BayterekNodeDesign",
+		ResourceLoader.CACHE_MODE_IGNORE
+	)
 	if not saved:
+		BayterekLogger.error("Could not reload duplicated design: %s" % file_path, "designs")
 		return null
-
-	# --- DEBUG ---
-	print("[duplicate_design] LOADED instance=", saved.get_instance_id(), " saved.id=", saved.id, " saved.layers=", saved.layers.size())
 
 	saved.resource_path = file_path
 
@@ -181,9 +220,6 @@ static func save_design(design: BayterekNodeDesign) -> Error:
 	if design.resource_path.is_empty():
 		BayterekLogger.error("Cannot save design with empty resource_path.", "designs")
 		return FAILED
-
-	# --- DEBUG ---
-	print("[save_design] instance=", design.get_instance_id(), " id=", design.id, " name=", design.name, " path=", design.resource_path, " layers=", design.layers.size())
 
 	return Bayterek.safe_save(design, design.resource_path)
 

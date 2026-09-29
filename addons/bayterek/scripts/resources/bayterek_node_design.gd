@@ -9,6 +9,8 @@ signal description_changed(design: BayterekNodeDesign)
 signal exported_fields_changed(design: BayterekNodeDesign)
 
 ## Whitelist of layer fields that can be exported to prefabs.
+## NOTE: Shape-layer fields (shape_type, corner_radius, fill_enabled, ...)
+## have been removed since BayterekShapeLayer was deleted.
 const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 	"visible",
 	"absolute",
@@ -25,7 +27,7 @@ const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 	"transform.pivot",
 	"transform.pivot_mode",
 	"transform.scale_from_pivot",
-	# Texture
+	# Texture layer
 	"icon_enabled",
 	"tint_enabled",
 	"stretch_mode",
@@ -47,6 +49,24 @@ const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 @export_storage var layers: Array[BayterekLayer] = []
 @export_storage var bounds_layer_id: String = ""
 @export_storage var exported_fields: Dictionary = {}
+
+# ============================================================
+# INIT — guarantees every design starts with its OWN, empty state.
+# ============================================================
+#
+# Without an explicit _init(), Godot sometimes leaves typed Array
+# properties (@export_storage var layers: Array[BayterekLayer]) as
+# shared references across instances created with .new(). This is
+# exactly the "new design looks like the first design" bug: the new
+# design's `layers` points at the first design's `layers`, so adding
+# a layer to one shows up in the other, and saving both files ends
+# up writing the same content.
+#
+# Forcing fresh containers here (and only here) breaks that link.
+func _init() -> void:
+	layers = []
+	exported_fields = {}
+	bounds_layer_id = ""
 
 # ============================================================
 # EXPORTED FIELDS
@@ -244,6 +264,9 @@ func get_layer_count() -> int:
 func add_layer(layer: BayterekLayer) -> bool:
 	if not layer or not can_add_layer():
 		return false
+	# Guard against double-add of the same instance.
+	if layers.has(layer):
+		return false
 	layers.append(layer)
 	layers_changed.emit(self, "add")
 	return true
@@ -294,11 +317,24 @@ func clear_layers() -> void:
 func notify_layer_modified() -> void:
 	layers_changed.emit(self, "modify")
 
+## Rebuilds this design's layer array from a source array, giving every
+## copied layer a NEW layer_id so the source and the copy stay fully
+## independent afterwards.
+##
+## The old implementation called `duplicate_layer()` which preserves
+## `layer_id` — meaning a duplicated design shared layer ids with the
+## original, and any lookup by id (e.g. from a node referencing the
+## design) could hit the wrong instance.
 func copy_layers_from(source_layers: Array) -> void:
 	layers.clear()
 	for layer in source_layers:
 		if layer is BayterekLayer:
-			layers.append(layer.duplicate_layer())
+			var dup: BayterekLayer = layer.duplicate_layer()
+			if dup:
+				# Fresh id so this design's layers never collide with
+				# the source design's layers.
+				dup.layer_id = BayterekUUIDGenerator.v4()
+				layers.append(dup)
 	layers_changed.emit(self, "reset")
 
 # ============================================================
@@ -395,6 +431,12 @@ func set_description(new_desc: String) -> void:
 # DUPLICATE
 # ============================================================
 
+## Creates a fully independent copy of this design.
+##
+## Important: this used to rely on `copy_layers_from` which didn't change
+## layer ids. As a result, a duplicated design shared layer ids with its
+## source, and any per-node override keyed by layer id would silently
+## resolve to the wrong layer. Now every layer gets a fresh id.
 func duplicate_design() -> BayterekNodeDesign:
 	var copy := BayterekNodeDesign.new()
 	copy.id = ""
@@ -403,19 +445,21 @@ func duplicate_design() -> BayterekNodeDesign:
 	copy.category = category
 	copy.design_size = design_size
 	copy.scale = scale
-	copy.copy_layers_from(layers)
+	copy.bounds_layer_id = ""
 	copy.exported_fields = exported_fields.duplicate(true)
-	copy.bounds_layer_id = bounds_layer_id
+	copy.copy_layers_from(layers)
 
-	# --- DEBUG ---
-	print("[duplicate_design] SRC instance=", get_instance_id(), " layers=", layers.size())
-	for i in layers.size():
-		if layers[i]:
-			print("  SRC layer[", i, "] instance=", layers[i].get_instance_id(), " name=", layers[i].layer_name)
-	print("[duplicate_design] DST instance=", copy.get_instance_id(), " layers=", copy.layers.size())
-	for i in copy.layers.size():
-		if copy.layers[i]:
-			print("  DST layer[", i, "] instance=", copy.layers[i].get_instance_id(), " name=", copy.layers[i].layer_name)
+	# If this design had a bounds layer, remap the id to the new layer
+	# with the same name. copy_layers_from() gave every layer a new id,
+	# so we need to find the corresponding one in the copy.
+	if not bounds_layer_id.is_empty():
+		for i in layers.size():
+			if not layers[i]:
+				continue
+			if layers[i].layer_id == bounds_layer_id:
+				if i < copy.layers.size():
+					copy.bounds_layer_id = copy.layers[i].layer_id
+				break
 
 	return copy
 
