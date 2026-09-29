@@ -163,8 +163,7 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	return node
 
 # ============================================================
-# AUTO-ROOT HELPER
-# ============================================================
+# AUTO-ROOT HELPER# ============================================================
 
 func _tree_has_root() -> bool:
 	if not _tree_data or not _tree_data.nodes:
@@ -406,6 +405,11 @@ func _compute_allocatable(node: BayterekNodeButton, active_ids: Array) -> bool:
 ##
 ## Size = design's natural size (no scale multiplier).
 ## Scale = visual multiplier via Control.scale (pivot-centered).
+##
+## We use set_deferred for size/custom_minimum_size/pivot_offset so the
+## assignment happens after the Control has entered the tree — otherwise
+## Godot emits "Nodes with non-equal opposite anchors will have their
+## size overridden after _ready()".
 func _create_node_button(node_data: BayterekNode) -> BayterekNodeButton:
 	var node := BayterekNodeButton.new()
 
@@ -417,9 +421,10 @@ func _create_node_button(node_data: BayterekNode) -> BayterekNodeButton:
 	if node_size.x <= 0.0 or node_size.y <= 0.0:
 		node_size = Vector2(100, 100)
 
-	node.size = node_size
-	node.custom_minimum_size = node_size
-	node.pivot_offset = node_size * 0.5
+	# set_deferred avoids the "size overridden after _ready()" anchor warning.
+	node.set_deferred("size", node_size)
+	node.set_deferred("custom_minimum_size", node_size)
+	node.set_deferred("pivot_offset", node_size * 0.5)
 	node.scale = node_data.scale
 	return node
 

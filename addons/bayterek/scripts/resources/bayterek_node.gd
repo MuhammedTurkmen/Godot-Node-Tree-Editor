@@ -238,6 +238,9 @@ func add_layer(layer: BayterekLayer) -> bool:
 		return false
 	if not can_add_layer():
 		return false
+	# Guard against double-add of the same instance.
+	if layers.has(layer):
+		return false
 	layers.append(layer)
 	clear_render_cache()
 	return true
@@ -280,6 +283,14 @@ func clear_layers() -> void:
 	layers.clear()
 	clear_render_cache()
 
+## Rebuilds this node's layer array from a source array, giving every
+## copied layer a NEW layer_id so the source and the copy stay fully
+## independent afterwards.
+##
+## The old implementation called `duplicate_layer()` which preserves
+## `layer_id` — meaning two nodes referencing the same design ended up
+## sharing layer ids, and any per-layer lookup (via exported field paths)
+## could silently hit the wrong instance.
 func copy_layers_from(source_layers: Array) -> void:
 	layers.clear()
 	for layer in source_layers:
@@ -287,17 +298,15 @@ func copy_layers_from(source_layers: Array) -> void:
 			continue
 		var dup: BayterekLayer = layer.duplicate_layer()
 		if dup:
+			# Fresh id so this node's layers never collide with
+			# the source node's layers.
+			dup.layer_id = BayterekUUIDGenerator.v4()
 			layers.append(dup)
-	print("[copy_layers_from] src=", source_layers.size(), " dst=", layers.size())
-	for i in layers.size():
-		var l = layers[i]
-		print("  layer[", i, "] type=", l.get_class(), " script=", l.get_script().resource_path.get_file() if l.get_script() else "none")
 	clear_render_cache()
 
 # ============================================================
 # DESIGN APPLICATION
 # ============================================================
-
 
 func apply_design(design: BayterekNodeDesign) -> void:
 	if not design:
@@ -306,7 +315,6 @@ func apply_design(design: BayterekNodeDesign) -> void:
 	design_size = design.design_size
 	scale = design.scale
 	copy_layers_from(design.layers)
-	print("[apply_design] design.id=", design.id, " design.layers=", design.layers.size(), " -> node_data.design_id=", design_id)
 
 func apply_defaults_from_tree(tree: BayterekTree) -> void:
 	if not tree:

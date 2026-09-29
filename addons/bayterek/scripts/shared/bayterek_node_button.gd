@@ -110,6 +110,21 @@ var design_id: String:
 			rebuild_from_design()
 
 func _ready() -> void:
+	# ------------------------------------------------------------------
+	# CRITICAL: pin anchors to the top-left corner so Godot never tries
+	# to override our size at the end of _ready(). Without this, we'd
+	# get "Nodes with non-equal opposite anchors will have their size
+	# overridden after _ready()" whenever we assign `size` directly.
+	#
+	# We want top-left anchoring because `position` is set explicitly
+	# from the tree-space coordinates, and `size` is set from the
+	# design's bounds — both are absolute values, not relative ones.
+	# ------------------------------------------------------------------
+	anchor_left = 0.0
+	anchor_top = 0.0
+	anchor_right = 0.0
+	anchor_bottom = 0.0
+
 	button_mask = MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	mouse_entered.connect(_on_mouse_entered)
@@ -199,13 +214,7 @@ func get_animator() -> BayterekNodeAnimator:
 # ============================================================
 # VISUAL TRANSFORM API (animations go through these)
 # ============================================================
-#
-# IMPORTANT: these only affect the VisualRoot child. The outer
-# BayterekNodeButton's layout rect is NEVER touched by animations,
-# so input hit-testing stays rock-solid.
 
-## Offsets the visual content from the node's layout position.
-## Positive Y = down, negative Y = up.
 func set_visual_offset(offset: Vector2) -> void:
 	if _visual_root:
 		_visual_root.position = offset
@@ -213,7 +222,6 @@ func set_visual_offset(offset: Vector2) -> void:
 func get_visual_offset() -> Vector2:
 	return _visual_root.position if _visual_root else Vector2.ZERO
 
-## Visual rotation in DEGREES. Pivots around the visual center.
 func set_visual_rotation(deg: float) -> void:
 	if not _visual_root:
 		return
@@ -223,7 +231,6 @@ func set_visual_rotation(deg: float) -> void:
 func get_visual_rotation() -> float:
 	return rad_to_deg(_visual_root.rotation) if _visual_root else 0.0
 
-## Visual scale. Pivots around the visual center (merkezden büyür).
 func set_visual_scale(v: Vector2) -> void:
 	if v.x <= 0.0:
 		v.x = 0.01
@@ -240,8 +247,6 @@ func set_visual_scale(v: Vector2) -> void:
 func get_visual_scale() -> Vector2:
 	return _visual_root.scale if _visual_root else Vector2.ONE
 
-## Resets visual transform to identity. Called when animations end
-## without persisting.
 func reset_visual_transform() -> void:
 	if not _visual_root:
 		return
@@ -363,6 +368,10 @@ func _apply_texture_filter() -> void:
 
 ## The outer Control's size = design's natural size.
 ## VisualRoot's size mirrors it and holds the visual pivot.
+##
+## Direct assignment (no set_deferred). Because _ready() pins all
+## anchors to the top-left corner, Godot has no reason to override the
+## size at the end of _ready(), so we don't need the deferred trick.
 func _sync_size_with_design() -> void:
 	if not node_data:
 		return

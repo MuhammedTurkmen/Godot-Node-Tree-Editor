@@ -33,35 +33,43 @@ func has_design_id(design_id: String) -> bool:
 
 ## Adds a design to the registry.
 ##
-## Guard against two failure modes that both produce the
-## "new design looks like the old one" bug:
+## Guarding rules:
 ##
-##   1. The SAME instance being added twice.
-##   2. TWO DIFFERENT instances with the same `id` (a stale cached
-##      resource slipping in alongside a freshly loaded one).
+##   1. The SAME instance is never added twice.
+##   2. If a DIFFERENT instance already exists with the same id, we
+##      REJECT the new one instead of overwriting the old.
 ##
-## In case 2 we replace the old entry with the new one, so
-## `get_design_by_id()` always resolves to the freshest instance.
-func add_design(design: BayterekNodeDesign) -> void:
+## The earlier "replace" behaviour caused data loss: creating a new
+## design would silently drop the previous one when their ids happened
+## to collide. Now the caller is responsible for producing a unique id
+## (see BayterekDesignService._make_unique_id), and we simply refuse to
+## let a collision through.
+##
+## Returns true if the design was actually appended, false otherwise.
+func add_design(design: BayterekNodeDesign) -> bool:
 	if not design:
-		return
+		return false
 
 	# Guard 1: same instance already present.
 	if designs.has(design):
-		return
+		return false
 
-	# Guard 2: different instance, same id.
+	# Guard 2: different instance, same id — reject.
 	if not design.id.is_empty():
 		for existing in designs:
 			if not existing:
 				continue
 			if existing.id == design.id:
-				var idx: int = designs.find(existing)
-				if idx >= 0:
-					designs[idx] = design
-				return
+				push_warning(
+					"[BayterekDesignRegistry] id collision '%s' — "
+					% design.id
+					+ "a design with this id already exists; "
+					+ "refusing to add the new one."
+				)
+				return false
 
 	designs.append(design)
+	return true
 
 func remove_design(design: BayterekNodeDesign) -> void:
 	designs.erase(design)

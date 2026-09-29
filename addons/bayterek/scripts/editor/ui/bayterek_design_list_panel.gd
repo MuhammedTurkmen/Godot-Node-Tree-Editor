@@ -10,6 +10,7 @@ extends VBoxContainer
 ##   - Left click:        select single
 ##   - Ctrl + Left click: toggle one
 ##   - Shift + Left click: select range from last anchor
+##   - F2:                rename selected (opens the rename dialog)
 ##   - Delete / Insert:   delete all selected
 ##   - Delete button:     delete all selected
 ##
@@ -325,6 +326,13 @@ func _on_tree_gui_input(event: InputEvent) -> void:
 		return
 
 func _handle_item_click(id: String) -> void:
+	# Ensure the Tree has keyboard focus so F2 / Delete shortcuts work
+	# after the user clicks an item with the mouse. Without this, the
+	# shortcuts would only fire once the user had manually tabbed into
+	# the Tree control.
+	if not _tree.has_focus():
+		_tree.grab_focus()
+
 	var ctrl: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
 	var shift: bool = Input.is_key_pressed(KEY_SHIFT)
 
@@ -392,10 +400,18 @@ func _input(event: InputEvent) -> void:
 	if not _tree.has_focus():
 		return
 
+	# --- F2: rename the selected design ---
+	if event.keycode == KEY_F2:
+		_rename_selected()
+		get_viewport().set_input_as_handled()
+		return
+
+	# --- Delete / Insert: delete the selected design(s) ---
 	if event.keycode == KEY_DELETE or event.keycode == KEY_INSERT:
 		if not _selected_ids.is_empty():
 			_on_delete_pressed()
 			get_viewport().set_input_as_handled()
+		return
 
 # ============================================================
 # CRUD
@@ -502,6 +518,10 @@ func _show_context_menu(pos: Vector2) -> void:
 # RENAME DIALOG
 # ============================================================
 
+## Opens the rename dialog for the currently-selected (primary) design.
+## Can be triggered from the context menu, the F2 shortcut, or any
+## other caller. The dialog's name field confirms on Enter as well as
+## on the Rename button.
 func _rename_selected() -> void:
 	var design: BayterekNodeDesign = get_selected_design()
 	if not design:
@@ -554,6 +574,15 @@ func _rename_selected() -> void:
 		_open_new_category_dialog(cat_dropdown, dialog)
 	)
 
+	# --- Enter in the Name field = confirm dialog ---
+	# This mirrors the effect of clicking the "Rename" button, but lets
+	# the user stay on the keyboard. We deliberately do NOT trigger this
+	# from the category dropdown — only from the text input.
+	name_input.text_submitted.connect(func(_text: String) -> void:
+		dialog.get_ok_button().emit_signal("pressed")
+	)
+
+	# --- Confirm ---
 	dialog.confirmed.connect(func():
 		var new_name: String = name_input.text.strip_edges()
 		if new_name.is_empty():
@@ -633,6 +662,11 @@ func _open_new_category_dialog(dropdown: OptionButton, _parent_dialog: Confirmat
 	error_lbl.visible = false
 	error_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(error_lbl)
+
+	# Enter inside the new-category input confirms the dialog too.
+	input.text_submitted.connect(func(_text: String) -> void:
+		dlg.get_ok_button().emit_signal("pressed")
+	)
 
 	dlg.confirmed.connect(func():
 		var new_cat: String = input.text.strip_edges()

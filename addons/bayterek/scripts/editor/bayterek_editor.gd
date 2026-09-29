@@ -219,35 +219,16 @@ func _toggle_hover_animations() -> void:
 # GROUP FRAMES TOGGLE (centralized)
 # ============================================================
 
-## Toggles visibility of all group frames in the current tree.
-## Delegates to `_set_show_group_frames` so the View menu, the Settings
-## checkbox, and the live frames all stay in sync.
 func _toggle_group_frames() -> void:
 	if not tree:
 		return
 	_set_show_group_frames(not tree.show_group_frames)
 
 
-## Centralized setter for `tree.show_group_frames`. Called by BOTH the
-## View menu toggle and the Settings tab checkbox, so both entry points
-## stay perfectly in sync (and the frames update live).
-##
-## Syncs:
-##   - tree.show_group_frames (persistent state)
-##   - View → Show Group Frames checkmark
-##   - Settings → Group Frames → Show Frames checkbox
-##   - All live group frames on the canvas
-##   - Dirty flag on the editor
-##
-## Optionally shows a toast (pass false to suppress it, e.g. when the
-## caller was the Settings checkbox and doesn't want double notifications).
 func _set_show_group_frames(value: bool, show_toast: bool = true) -> void:
 	if not tree:
 		return
 
-	# Always sync both UIs to the requested value, even if the state
-	# was already correct — this heals any drift between the two
-	# entry points that might have crept in earlier.
 	var state_changed: bool = tree.show_group_frames != value
 	tree.show_group_frames = value
 
@@ -257,22 +238,20 @@ func _set_show_group_frames(value: bool, show_toast: bool = true) -> void:
 	# 2. Settings tab checkbox.
 	_pass_state_to_settings_editor(value)
 
-	# 3. Live frames — only refresh if something actually changed,
-	#    otherwise we'd rebuild frames on every redundant call.
+	# 3. Live frames.
 	if state_changed and tree_view and tree_view.group_frames_service:
 		tree_view.group_frames_service.refresh_all()
 
-	# 4. Toast (optional) — only show when the state actually flipped.
+	# 4. Toast (optional).
 	if show_toast and state_changed and tree_view:
 		var state: String = "ON" if value else "OFF"
 		BayterekToast.info(tree_view, "Group Frames: [b]%s[/b]" % state)
 
-	# 5. Dirty — only mark dirty if we actually changed something.
+	# 5. Dirty.
 	if state_changed:
 		set_dirty(true)
 
 
-## Updates the View menu checkmark to reflect `value`.
 func _pass_state_to_view_menu(value: bool) -> void:
 	if not menu_bar:
 		return
@@ -285,9 +264,6 @@ func _pass_state_to_view_menu(value: bool) -> void:
 			break
 
 
-## Updates the Settings tab checkbox to reflect `value`.
-## Uses `_updating_ui` so the checkbox's `toggled` signal doesn't
-## loop back into `_set_show_group_frames`.
 func _pass_state_to_settings_editor(value: bool) -> void:
 	if not settings_editor or not is_instance_valid(settings_editor):
 		return
@@ -1667,11 +1643,47 @@ func _do_set_node_root(node_ids: Array, root_flags: Array) -> void:
 # INPUT (keyboard)
 # ============================================================
 
+## Global keyboard handler. Delegates to BayterekShortcuts, which
+## already guards against intercepting keys while a text input widget
+## has focus (see bayterek_shortcuts.gd → _is_text_input_focused()).
 func _input(event: InputEvent) -> void:
 	if not _shortcuts:
 		return
+
+	if _is_text_input_focused():
+		return
+
 	if _shortcuts.handle_input(event):
 		get_viewport().set_input_as_handled()
+
+
+## Local mirror of BayterekShortcuts._is_text_input_focused().
+##
+## NOTE: We deliberately do NOT check RichTextLabel — it has no
+## `editable` property in Godot 4, and attempting to read one spams
+## "Invalid access to property 'editable'" for every keystroke when
+## the Output panel or other editor RichTextLabels have focus.
+func _is_text_input_focused() -> bool:
+	var vp: Viewport = get_viewport()
+	if not vp:
+		return false
+
+	var focused: Control = vp.gui_get_focus_owner()
+	if not focused:
+		return false
+
+	if focused is LineEdit or focused is TextEdit or focused is CodeEdit:
+		return true
+
+	var node: Node = focused
+	var depth: int = 0
+	while node and depth < 4:
+		if node is LineEdit or node is TextEdit or node is CodeEdit:
+			return true
+		node = node.get_parent()
+		depth += 1
+
+	return false
 
 # ============================================================
 # COPY / PASTE
@@ -1768,6 +1780,22 @@ func _line_data_to_dict(ld: BayterekLineData) -> Dictionary:
 		"arrow_size": ld.arrow_size,
 	}
 
+## Reads the system clipboard and, if it contains a valid Bayterek node
+## payload, pastes those nodes into the current tree.
+##
+## The clipboard might contain ANY text the user copied from anywhere —
+## an email, a URL, a code snippet, a random word. We must NOT treat
+## every failure to parse as an error:
+##
+##   1. If the clipboard text doesn't even mention our version tag,
+##      it's obviously not a Bayterek payload. We quietly show a small
+##      toast and return — no parse attempt, no console ERROR.
+##   2. If it does mention the tag but JSON.parse fails, we show a
+##      "clipboard corrupted" toast and return. We use
+##      JSON.new().parse() instead of JSON.parse_string() specifically
+##      because the static method pushes an ERROR to the console on
+##      failure, and we don't want editor noise from every stray Ctrl+V.
+##   3. Only if both checks pass do we run the full deserialization.
 func _paste_nodes() -> void:
 	if not tree_view or not tree_view.nodes_service:
 		return
@@ -1777,22 +1805,45 @@ func _paste_nodes() -> void:
 		BayterekToast.info(tree_view, "Clipboard is empty")
 		return
 
-	var parsed = JSON.parse_string(clipboard_text)
+	# --- Cheap pre-check: is this even a Bayterek payload? ---
+	if not _looks_like_bayterek_payload(clipboard_text):
+		BayterekToast.info(tree_view, "Clipboard does not contain Bayterek nodes")
+		return
+
+	# --- Safe parse (no console ERROR on failure) ---
+	var parsed: Variant = _safe_json_parse(clipboard_text)
 	if parsed == null or not parsed is Dictionary:
-		BayterekToast.error(tree_view, "Clipboard does not contain Bayterek nodes")
+		BayterekToast.warning(tree_view, "Clipboard data is corrupted or malformed")
 		return
 
 	var payload: Dictionary = parsed
-	if payload.get("bayterek_version", 0) != 2:
-		BayterekToast.error(tree_view, "Unsupported clipboard version")
+
+	# --- Version check ---
+	var version: int = int(payload.get("bayterek_version", 0))
+	if version != 2:
+		if version == 0:
+			BayterekToast.warning(tree_view, "Clipboard data is not a Bayterek payload")
+		else:
+			BayterekToast.warning(tree_view, "Unsupported clipboard version: %d" % version)
 		return
 
 	var nodes_data: Array = payload.get("nodes", [])
 	var copied_ids: Array = payload.get("copied_ids", [])
 
 	if nodes_data.is_empty() or copied_ids.size() != nodes_data.size():
-		BayterekToast.error(tree_view, "Invalid clipboard data")
+		BayterekToast.warning(tree_view, "Clipboard data is empty or inconsistent")
 		return
+
+	# --- Sanity check: at least the top-level shape must be right ---
+	for nd in nodes_data:
+		if not nd is Dictionary:
+			BayterekToast.warning(tree_view, "Clipboard node data is malformed")
+			return
+
+	# ------------------------------------------------------------------
+	# At this point we are confident the payload is a real Bayterek
+	# node list. Proceed with the actual paste.
+	# ------------------------------------------------------------------
 
 	var mouse_local: Vector2 = tree_view.get_local_mouse_position()
 	var mouse_tree: Vector2 = tree_view.screen_to_tree(mouse_local)
@@ -1861,6 +1912,50 @@ func _paste_nodes() -> void:
 		tree_view.group_frames_service.refresh_all()
 
 	set_dirty(true)
+
+
+## Returns true if `text` might be a Bayterek clipboard payload.
+##
+## This is a cheap substring check — no JSON parsing involved. It's
+## intentionally lenient: false positives just fall through to the real
+## parser, which will bail cleanly. The point is to avoid parsing
+## arbitrary user text (URLs, code, random words), which would otherwise
+## spam the editor console with JSON parse errors.
+func _looks_like_bayterek_payload(text: String) -> bool:
+	if text.is_empty():
+		return false
+	# Fast path: the version key must appear somewhere.
+	if not text.contains("bayterek_version"):
+		return false
+	# Cheap secondary check: the top-level must look like an object.
+	var trimmed: String = text.strip_edges()
+	if not trimmed.begins_with("{"):
+		return false
+	return true
+
+
+## Parses `text` as JSON WITHOUT pushing errors to the console.
+##
+## Godot's static `JSON.parse_string()` is a thin wrapper that calls
+## `JSON.new().parse()` and then, if parsing fails, pushes an ERROR
+## with the parser's message. That message is helpful when debugging
+## our own serialization, but it's pure noise when a user just pressed
+## Ctrl+V with something that isn't our payload on their clipboard.
+##
+## This wrapper does the parse ourselves so we can swallow the error.
+## Returns the parsed value (Dictionary / Array / primitive) on success,
+## or null on any failure.
+func _safe_json_parse(text: String) -> Variant:
+	var json := JSON.new()
+	var err: int = json.parse(text)
+	if err != OK:
+		# Deliberately silent — the caller decides how to notify the user.
+		return null
+	return json.data
+
+# ============================================================
+# PASTE HELPERS
+# ============================================================
 
 func _do_paste_connection(from_id: int, to_id: int) -> void:
 	if not tree_view or not tree_view.connections_service:
@@ -2280,13 +2375,7 @@ func _on_settings_chain_connection_changed() -> void:
 ## Called when the Settings tab's "Show Frames" checkbox changes.
 ## We delegate to the editor's centralized setter so the View menu
 ## checkmark and the live frames stay in sync with the checkbox.
-##
-## Passing `show_toast = false` avoids a redundant toast since the user
-## is looking right at the checkbox when they toggle it.
 func _on_settings_show_group_frames_changed(pressed: bool) -> void:
-	# `_set_show_group_frames` will also update the checkbox via
-	# `_pass_state_to_settings_editor`, but that update is guarded by
-	# the settings editor's `_updating_ui` flag, so no signal loop.
 	_set_show_group_frames(pressed, false)
 
 func _on_prefab_dropped_from_canvas(prefab: BayterekPrefab, tree_pos: Vector2) -> void:

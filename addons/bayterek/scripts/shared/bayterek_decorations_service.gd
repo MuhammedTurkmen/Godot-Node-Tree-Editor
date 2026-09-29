@@ -74,9 +74,10 @@ func _create_decoration_from_data(node_data: BayterekNode) -> BayterekNodeButton
 	var node_size: Vector2 = node_data.design_size
 	if node_size.x <= 0.0 or node_size.y <= 0.0:
 		node_size = Vector2(100, 100)
-	node.size = node_size
-	node.custom_minimum_size = node_size
-	node.pivot_offset = node_size * 0.5
+	# set_deferred avoids the "size overridden after _ready()" anchor warning.
+	node.set_deferred("size", node_size)
+	node.set_deferred("custom_minimum_size", node_size)
+	node.set_deferred("pivot_offset", node_size * 0.5)
 	node.scale = node_data.scale
 
 	_position_decoration(node, node_data.position)

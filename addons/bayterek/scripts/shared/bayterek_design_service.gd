@@ -85,52 +85,48 @@ static func get_all_categories() -> Array:
 
 ## Creates a brand-new design and saves it to disk.
 ##
-## IMPORTANT (bug fix):
-## The old implementation reused `BayterekNodeDesign.new()` directly and
-## then saved it. In some Godot 4 editor sessions the typed array
-## `layers: Array[BayterekLayer]` ends up being shared across instances
-## created with `.new()`, so a fresh design would silently inherit the
-## layer stack of the first design in the session — making every new
-## design look identical.
-##
-## The fix has three parts:
-##   1. Explicitly reset `design.layers` and `design.exported_fields`
-##      right after `.new()`.
-##   2. Delete any stale file at the target path before saving.
-##   3. Reload with CACHE_MODE_IGNORE and abort if the fresh design
-##      somehow has layers.
-##
-## Returns the new design on success, or null on failure.
+## Important guarantees:
+##   1. The new design gets a UNIQUE name AND a UNIQUE id. Both are
+##      derived via _make_unique_name(), which now checks the registry
+##      for BOTH name and id collisions.
+##   2. `layers` and `exported_fields` are explicitly reset after .new()
+##      to defend against shared typed-array references.
+##   3. The freshly saved resource is reloaded with CACHE_MODE_IGNORE
+##      and sanity-checked (must have 0 layers, id must not collide).
+##   4. If anything goes wrong, the partial file is deleted so the
+##      registry is never polluted.
 static func create_design(base_name: String = "New Design", category: String = "") -> BayterekNodeDesign:
 	_ensure_designs_dir()
 
+	# --- 1. Unique name + unique id, both verified against the registry ---
 	var unique_name: String = _make_unique_name(base_name)
 	var snake: String = Bayterek.to_snake_case(unique_name)
+	snake = _make_unique_id(snake)
+
 	var file_path: String = "%s/%s.tres" % [Bayterek.get_designs_dir(), snake]
 
-	# 1) Remove any stale file at the target path.
+	# --- 2. Remove any stale file at the target path ---
 	if FileAccess.file_exists(file_path):
 		Bayterek.delete_resource_with_sidecar(file_path)
 
-	# 2) Build a brand-new, empty design.
+	# --- 3. Build a fresh, empty design ---
 	var design := BayterekNodeDesign.new()
 	design.id = snake
 	design.name = unique_name
 	design.category = category
 	design.design_size = Vector2(100, 100)
 	design.scale = Vector2.ONE
-	# Belt-and-braces reset (guards against shared typed-array references).
 	design.layers = []
 	design.exported_fields = {}
 	design.bounds_layer_id = ""
 
-	# 3) Save to disk.
+	# --- 4. Save to disk ---
 	var err: Error = Bayterek.safe_save(design, file_path)
 	if err != OK:
 		BayterekLogger.error("Could not save design (%d): %s" % [err, file_path], "designs")
 		return null
 
-	# 4) Reload from disk bypassing the resource cache.
+	# --- 5. Reload with CACHE_MODE_IGNORE to get a truly fresh instance ---
 	var saved: BayterekNodeDesign = ResourceLoader.load(
 		file_path,
 		"BayterekNodeDesign",
@@ -138,11 +134,12 @@ static func create_design(base_name: String = "New Design", category: String = "
 	)
 	if not saved:
 		BayterekLogger.error("Could not reload design after save: %s" % file_path, "designs")
+		Bayterek.delete_resource_with_sidecar(file_path)
 		return null
 
 	saved.resource_path = file_path
 
-	# 5) Sanity check — a fresh design MUST have zero layers.
+	# --- 6. Sanity checks ---
 	if saved.layers.size() != 0:
 		BayterekLogger.error(
 			"Fresh design has %d layers — expected 0. Aborting." % saved.layers.size(),
@@ -152,6 +149,17 @@ static func create_design(base_name: String = "New Design", category: String = "
 		return null
 
 	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
+	if reg and reg.has_design_id(saved.id):
+		# Should never happen after _make_unique_id(), but be defensive:
+		# never let a new design silently overwrite an existing one.
+		BayterekLogger.error(
+			"Design id collision '%s' — aborting creation." % saved.id,
+			"designs"
+		)
+		Bayterek.delete_resource_with_sidecar(file_path)
+		return null
+
+	# --- 7. Register + persist ---
 	reg.add_design(saved)
 	Bayterek.save_designs_registry()
 
@@ -161,7 +169,7 @@ static func create_design(base_name: String = "New Design", category: String = "
 
 ## Duplicates an existing design.
 ##
-## Uses `source.duplicate_design()` which now hands out fresh layer ids
+## Uses `source.duplicate_design()` which hands out fresh layer ids
 ## to every layer, so the copy and the original are fully independent.
 static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 	if not source:
@@ -172,13 +180,12 @@ static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 	var base_name: String = source.name + " Copy"
 	var unique_name: String = _make_unique_name(base_name)
 	var snake: String = Bayterek.to_snake_case(unique_name)
+	snake = _make_unique_id(snake)
 	var file_path: String = "%s/%s.tres" % [Bayterek.get_designs_dir(), snake]
 
-	# Remove any stale file at the target path.
 	if FileAccess.file_exists(file_path):
 		Bayterek.delete_resource_with_sidecar(file_path)
 
-	# Build the copy via the resource-level duplicator.
 	var copy: BayterekNodeDesign = source.duplicate_design()
 	if not copy:
 		return null
@@ -198,11 +205,20 @@ static func duplicate_design(source: BayterekNodeDesign) -> BayterekNodeDesign:
 	)
 	if not saved:
 		BayterekLogger.error("Could not reload duplicated design: %s" % file_path, "designs")
+		Bayterek.delete_resource_with_sidecar(file_path)
 		return null
 
 	saved.resource_path = file_path
 
 	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
+	if reg and reg.has_design_id(saved.id):
+		BayterekLogger.error(
+			"Duplicate design id collision '%s' — aborting." % saved.id,
+			"designs"
+		)
+		Bayterek.delete_resource_with_sidecar(file_path)
+		return null
+
 	reg.add_design(saved)
 	Bayterek.save_designs_registry()
 
@@ -263,8 +279,6 @@ static func delete_design(design: BayterekNodeDesign) -> bool:
 
 	return true
 
-## Deletes multiple designs at once. Returns the number of designs
-## actually deleted.
 static func delete_multiple_designs(designs: Array) -> int:
 	if designs.is_empty():
 		return 0
@@ -308,6 +322,8 @@ static func _ensure_designs_dir() -> void:
 	if not DirAccess.dir_exists_absolute(dir_path):
 		DirAccess.make_dir_recursive_absolute(dir_path)
 
+## Returns a unique display name that doesn't collide with any existing
+## design's name. Uses "New Design", "New Design 2", "New Design 3", ...
 static func _make_unique_name(base_name: String) -> String:
 	var trimmed: String = base_name.strip_edges()
 	if trimmed.is_empty():
@@ -330,5 +346,37 @@ static func _make_unique_name(base_name: String) -> String:
 	while existing_names.has(candidate):
 		counter += 1
 		candidate = "%s %d" % [trimmed, counter]
+
+	return candidate
+
+## Returns a unique id (snake_case) that doesn't collide with any
+## existing design's id. If `base_id` is already taken, tries
+## "base_id_2", "base_id_3", ...
+##
+## This is a belt-and-braces guard on top of _make_unique_name(): even
+## if two different display names happen to snake_case into the same id
+## (e.g. "New Design!" and "New-Design"), we still get distinct ids.
+static func _make_unique_id(base_id: String) -> String:
+	var trimmed: String = base_id.strip_edges()
+	if trimmed.is_empty():
+		trimmed = "new_design"
+
+	var reg: BayterekDesignRegistry = Bayterek.get_designs_registry()
+	if not reg:
+		return trimmed
+
+	var existing_ids: Dictionary = {}
+	for d in reg.designs:
+		if d and not d.id.is_empty():
+			existing_ids[d.id] = true
+
+	if not existing_ids.has(trimmed):
+		return trimmed
+
+	var counter: int = 2
+	var candidate: String = "%s_%d" % [trimmed, counter]
+	while existing_ids.has(candidate):
+		counter += 1
+		candidate = "%s_%d" % [trimmed, counter]
 
 	return candidate

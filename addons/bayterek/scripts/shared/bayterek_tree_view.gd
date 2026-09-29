@@ -295,14 +295,55 @@ func _gui_input(event: InputEvent) -> void:
 	if selection_box:
 		selection_box.handle_input(event)
 
+
+## Global keyboard handler.
+##
+## Guard: when a text input widget (LineEdit / TextEdit / CodeEdit, or a
+## LineEdit nested inside a SpinBox) has focus, we DO NOT intercept
+## keyboard events. Without this guard, pressing Delete while renaming a
+## node — or while editing an attribute in the Inspector — would delete
+## the selected node(s) instead of a character.
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
+
+	if _is_text_input_focused():
+		return
+
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_DELETE:
 			if not selected_nodes.is_empty():
 				delete_selected()
 				get_viewport().set_input_as_handled()
+
+## Returns true if the current GUI focus is inside a text-editing widget.
+## Walks up a few parent levels so SpinBox's internal LineEdit is caught.
+##
+## NOTE: RichTextLabel is intentionally NOT checked — Godot 4's
+## RichTextLabel has no `editable` property, and reading it throws an
+## error every frame the Output panel (or any other editor
+## RichTextLabel) has focus.
+func _is_text_input_focused() -> bool:
+	var vp: Viewport = get_viewport()
+	if not vp:
+		return false
+
+	var focused: Control = vp.gui_get_focus_owner()
+	if not focused:
+		return false
+
+	if focused is LineEdit or focused is TextEdit or focused is CodeEdit:
+		return true
+
+	var node: Node = focused
+	var depth: int = 0
+	while node and depth < 4:
+		if node is LineEdit or node is TextEdit or node is CodeEdit:
+			return true
+		node = node.get_parent()
+		depth += 1
+
+	return false
 
 # ============================================================
 # SELECTION

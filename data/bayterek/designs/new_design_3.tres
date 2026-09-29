@@ -1,9 +1,0 @@
-[gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://ctxtwxq48ltu7"]
-
-[ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="1_0gs3x"]
-[ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="2_1fadk"]
-
-[resource]
-script = ExtResource("2_1fadk")
-id = "new_design_3"
-name = "New Design 3"
