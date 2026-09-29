@@ -7,6 +7,12 @@ extends VBoxContainer
 ## user edit each one's `BayterekLineData`: type, style, curve, dash
 ## pattern, arrows, etc.
 ##
+## IMPORTANT: field edits update ONLY the affected widget's conditional
+## visibility (e.g. showing the Dash Length row when style becomes DASHED).
+## We do NOT rebuild the whole list on every change — that would reset
+## the foldout state, kill focus, and reset scroll position, making it
+## impossible to make several quick edits in a row.
+##
 ## Owned by BayterekTreeEditorInspector.
 
 signal changed
@@ -20,6 +26,15 @@ var _empty_label: Label
 var _list: VBoxContainer
 
 var _updating_ui: bool = false
+
+## Which connection entries are currently expanded.
+## Keyed by to_id (int) so the state survives refreshes.
+var _expanded_ids: Dictionary = {}
+
+# --- Per-entry widget registry ---
+# to_id -> Dictionary with references to that entry's widgets so we can
+# update visibility without rebuilding.
+var _entries: Dictionary = {}
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
@@ -48,6 +63,9 @@ func _build_ui() -> void:
 # ============================================================
 
 func refresh() -> void:
+	# Wipe the widget registry — old widgets are about to be freed.
+	_entries.clear()
+
 	for child in _list.get_children():
 		child.queue_free()
 
@@ -83,16 +101,20 @@ func _build_connection_entry(to_id: int) -> void:
 	_list.add_child(block)
 
 	var header_btn := Button.new()
-	header_btn.text = "▶ Node %d" % to_id
 	header_btn.toggle_mode = true
 	header_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	header_btn.custom_minimum_size = Vector2(0, 24)
 	block.add_child(header_btn)
 
 	var content_box := VBoxContainer.new()
-	content_box.visible = false
 	content_box.add_theme_constant_override("separation", 2)
 	block.add_child(content_box)
+
+	# --- Foldout state (restored from _expanded_ids) ---
+	var should_expand: bool = _expanded_ids.get(to_id, false)
+	header_btn.button_pressed = should_expand
+	content_box.visible = should_expand
+	header_btn.text = ("▼ Node %d" % to_id) if should_expand else ("▶ Node %d" % to_id)
 
 	var tid_capture: int = to_id
 	var header_capture: Button = header_btn
@@ -100,9 +122,14 @@ func _build_connection_entry(to_id: int) -> void:
 	header_btn.toggled.connect(func(pressed: bool):
 		content_capture.visible = pressed
 		header_capture.text = ("▼ Node %d" % tid_capture) if pressed else ("▶ Node %d" % tid_capture)
+		# Persist the foldout state so it survives refresh().
+		if pressed:
+			_expanded_ids[tid_capture] = true
+		else:
+			_expanded_ids.erase(tid_capture)
 	)
 
-	# Line type
+	# --- Line type ---
 	var type_row := HBoxContainer.new()
 	content_box.add_child(type_row)
 	var type_label := Label.new()
@@ -120,7 +147,7 @@ func _build_connection_entry(to_id: int) -> void:
 	type_dropdown.item_selected.connect(_on_line_type_changed.bind(to_id))
 	type_row.add_child(type_dropdown)
 
-	# Line style
+	# --- Line style ---
 	var style_row := HBoxContainer.new()
 	content_box.add_child(style_row)
 	var style_label := Label.new()
@@ -138,7 +165,7 @@ func _build_connection_entry(to_id: int) -> void:
 	style_dropdown.item_selected.connect(_on_line_style_changed.bind(to_id))
 	style_row.add_child(style_dropdown)
 
-	# Dash length
+	# --- Dash length (conditional) ---
 	var dash_len_row := HBoxContainer.new()
 	content_box.add_child(dash_len_row)
 	var dash_len_label := Label.new()
@@ -156,7 +183,7 @@ func _build_connection_entry(to_id: int) -> void:
 	dash_len_row.add_child(dash_len_input)
 	dash_len_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
 
-	# Dash gap
+	# --- Dash gap (conditional) ---
 	var dash_gap_row := HBoxContainer.new()
 	content_box.add_child(dash_gap_row)
 	var dash_gap_label := Label.new()
@@ -174,7 +201,7 @@ func _build_connection_entry(to_id: int) -> void:
 	dash_gap_row.add_child(dash_gap_input)
 	dash_gap_row.visible = (line_data.line_style != BayterekLineData.LineStyle.SOLID)
 
-	# Curve
+	# --- Curve (conditional) ---
 	var curve_row := HBoxContainer.new()
 	content_box.add_child(curve_row)
 	var curve_label := Label.new()
@@ -192,7 +219,7 @@ func _build_connection_entry(to_id: int) -> void:
 	curve_row.add_child(curve_input)
 	curve_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER)
 
-	# Step distance
+	# --- Step distance (conditional) ---
 	var step_row := HBoxContainer.new()
 	content_box.add_child(step_row)
 	var step_label := Label.new()
@@ -210,7 +237,7 @@ func _build_connection_entry(to_id: int) -> void:
 	step_row.add_child(step_input)
 	step_row.visible = (line_data.line_type == BayterekLineData.LineType.STEP)
 
-	# Segments
+	# --- Segments (conditional) ---
 	var seg_row := HBoxContainer.new()
 	content_box.add_child(seg_row)
 	var seg_label := Label.new()
@@ -228,7 +255,7 @@ func _build_connection_entry(to_id: int) -> void:
 	seg_row.add_child(seg_input)
 	seg_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
-	# Reversed
+	# --- Reversed (conditional) ---
 	var rev_row := HBoxContainer.new()
 	content_box.add_child(rev_row)
 	var rev_label := Label.new()
@@ -243,7 +270,7 @@ func _build_connection_entry(to_id: int) -> void:
 	rev_row.add_child(rev_check)
 	rev_row.visible = (line_data.line_type == BayterekLineData.LineType.BEZIER or line_data.line_type == BayterekLineData.LineType.ARC)
 
-	# Start arrow
+	# --- Start arrow ---
 	var start_arrow_row := HBoxContainer.new()
 	content_box.add_child(start_arrow_row)
 	var start_arrow_label := Label.new()
@@ -263,7 +290,7 @@ func _build_connection_entry(to_id: int) -> void:
 	start_arrow_dropdown.item_selected.connect(_on_start_arrow_changed.bind(to_id))
 	start_arrow_row.add_child(start_arrow_dropdown)
 
-	# End arrow
+	# --- End arrow ---
 	var end_arrow_row := HBoxContainer.new()
 	content_box.add_child(end_arrow_row)
 	var end_arrow_label := Label.new()
@@ -283,7 +310,7 @@ func _build_connection_entry(to_id: int) -> void:
 	end_arrow_dropdown.item_selected.connect(_on_end_arrow_changed.bind(to_id))
 	end_arrow_row.add_child(end_arrow_dropdown)
 
-	# Arrow size
+	# --- Arrow size (conditional) ---
 	var arrow_size_row := HBoxContainer.new()
 	content_box.add_child(arrow_size_row)
 	var arrow_size_label := Label.new()
@@ -301,7 +328,7 @@ func _build_connection_entry(to_id: int) -> void:
 	arrow_size_row.add_child(arrow_size_input)
 	arrow_size_row.visible = (line_data.start_arrow != BayterekLineData.ArrowStyle.NONE or line_data.end_arrow != BayterekLineData.ArrowStyle.NONE)
 
-	# Delete
+	# --- Delete button ---
 	var del_row := HBoxContainer.new()
 	content_box.add_child(del_row)
 	var del_spacer := Control.new()
@@ -312,6 +339,63 @@ func _build_connection_entry(to_id: int) -> void:
 	del_btn.text = "Delete Connection"
 	del_btn.pressed.connect(_on_delete_connection.bind(to_id))
 	del_row.add_child(del_btn)
+
+	# --- Register the entry so we can update it without rebuilding ---
+	_entries[to_id] = {
+		"content": content_box,
+		"header": header_btn,
+		"type_dropdown": type_dropdown,
+		"style_dropdown": style_dropdown,
+		"dash_len_row": dash_len_row,
+		"dash_gap_row": dash_gap_row,
+		"curve_row": curve_row,
+		"step_row": step_row,
+		"seg_row": seg_row,
+		"rev_row": rev_row,
+		"start_arrow_dropdown": start_arrow_dropdown,
+		"end_arrow_dropdown": end_arrow_dropdown,
+		"arrow_size_row": arrow_size_row,
+	}
+
+# ============================================================
+# CONDITIONAL VISIBILITY (in-place, no rebuild)
+# ============================================================
+
+## Recomputes which rows should be visible for a given entry, based on
+## the current line_data values. Called after a dropdown changes, so we
+## can show/hide conditional rows (dash length, curve, etc.) WITHOUT
+## tearing down the whole UI — which would close the foldout, kill focus
+## and reset scroll.
+func _update_entry_visibility(to_id: int) -> void:
+	if not _entries.has(to_id):
+		return
+	var e: Dictionary = _entries[to_id]
+	var line_data = _get_line_data(to_id)
+	if not line_data:
+		return
+
+	var line_type: int = int(line_data.line_type)
+	var line_style: int = int(line_data.line_style)
+
+	e["dash_len_row"].visible = (line_style != BayterekLineData.LineStyle.SOLID)
+	e["dash_gap_row"].visible = (line_style != BayterekLineData.LineStyle.SOLID)
+
+	e["curve_row"].visible = (line_type == BayterekLineData.LineType.BEZIER)
+	e["step_row"].visible = (line_type == BayterekLineData.LineType.STEP)
+
+	e["seg_row"].visible = (
+		line_type == BayterekLineData.LineType.BEZIER
+		or line_type == BayterekLineData.LineType.ARC
+	)
+	e["rev_row"].visible = (
+		line_type == BayterekLineData.LineType.BEZIER
+		or line_type == BayterekLineData.LineType.ARC
+	)
+
+	e["arrow_size_row"].visible = (
+		line_data.start_arrow != BayterekLineData.ArrowStyle.NONE
+		or line_data.end_arrow != BayterekLineData.ArrowStyle.NONE
+	)
 
 # ============================================================
 # HANDLERS
@@ -337,7 +421,8 @@ func _on_line_type_changed(index: int, to_id: int) -> void:
 	if not line_data: return
 	line_data.line_type = index as BayterekLineData.LineType
 	_refresh_line(to_id)
-	refresh()
+	# In-place conditional visibility update — no full rebuild.
+	_update_entry_visibility(to_id)
 	_notify_changed()
 
 func _on_line_style_changed(index: int, to_id: int) -> void:
@@ -346,7 +431,7 @@ func _on_line_style_changed(index: int, to_id: int) -> void:
 	if not line_data: return
 	line_data.line_style = index as BayterekLineData.LineStyle
 	_refresh_line(to_id)
-	refresh()
+	_update_entry_visibility(to_id)
 	_notify_changed()
 
 func _on_dash_length_changed(value: float, to_id: int) -> void:
@@ -403,7 +488,8 @@ func _on_start_arrow_changed(index: int, to_id: int) -> void:
 	if not line_data: return
 	line_data.start_arrow = index as BayterekLineData.ArrowStyle
 	_refresh_line(to_id)
-	refresh()
+	# Arrow visibility depends on whether start/end arrow is NONE.
+	_update_entry_visibility(to_id)
 	_notify_changed()
 
 func _on_end_arrow_changed(index: int, to_id: int) -> void:
@@ -412,7 +498,7 @@ func _on_end_arrow_changed(index: int, to_id: int) -> void:
 	if not line_data: return
 	line_data.end_arrow = index as BayterekLineData.ArrowStyle
 	_refresh_line(to_id)
-	refresh()
+	_update_entry_visibility(to_id)
 	_notify_changed()
 
 func _on_arrow_size_changed(value: float, to_id: int) -> void:
@@ -427,5 +513,9 @@ func _on_delete_connection(to_id: int) -> void:
 	if not inspector._current_node: return
 	if not inspector.editor or not inspector.editor.tree_view: return
 	inspector.editor.tree_view.connections_service.remove_connection(inspector._current_node.id, to_id)
+
+	# A deleted connection really does need a rebuild — but only the
+	# deleted entry, and _expanded_ids keeps other foldouts open.
+	_expanded_ids.erase(to_id)
 	refresh()
 	_notify_changed()

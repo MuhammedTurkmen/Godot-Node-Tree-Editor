@@ -147,6 +147,7 @@ texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_qlprm"]
 script = ExtResource("8_royti")
+line_type = 1
 
 [sub_resource type="Resource" id="Resource_nrko7"]
 script = ExtResource("1_immpc")
@@ -547,5 +548,5 @@ attributes = {
 "new_attribute_2": SubResource("Resource_5mdwv")
 }
 node_groups = Array[ExtResource("2_3oq2p")]([SubResource("Resource_6p5mu")])
-hierarchy_split_offset = -536
+hierarchy_split_offset = -404
 prefabs_bar_visible = false
