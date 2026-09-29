@@ -216,6 +216,88 @@ func _toggle_hover_animations() -> void:
 	BayterekToast.info(tree_view, "Hover Animations: [b]%s[/b]" % state)
 
 # ============================================================
+# GROUP FRAMES TOGGLE (centralized)
+# ============================================================
+
+## Toggles visibility of all group frames in the current tree.
+## Delegates to `_set_show_group_frames` so the View menu, the Settings
+## checkbox, and the live frames all stay in sync.
+func _toggle_group_frames() -> void:
+	if not tree:
+		return
+	_set_show_group_frames(not tree.show_group_frames)
+
+
+## Centralized setter for `tree.show_group_frames`. Called by BOTH the
+## View menu toggle and the Settings tab checkbox, so both entry points
+## stay perfectly in sync (and the frames update live).
+##
+## Syncs:
+##   - tree.show_group_frames (persistent state)
+##   - View → Show Group Frames checkmark
+##   - Settings → Group Frames → Show Frames checkbox
+##   - All live group frames on the canvas
+##   - Dirty flag on the editor
+##
+## Optionally shows a toast (pass false to suppress it, e.g. when the
+## caller was the Settings checkbox and doesn't want double notifications).
+func _set_show_group_frames(value: bool, show_toast: bool = true) -> void:
+	if not tree:
+		return
+
+	# Always sync both UIs to the requested value, even if the state
+	# was already correct — this heals any drift between the two
+	# entry points that might have crept in earlier.
+	var state_changed: bool = tree.show_group_frames != value
+	tree.show_group_frames = value
+
+	# 1. View menu checkmark.
+	_pass_state_to_view_menu(value)
+
+	# 2. Settings tab checkbox.
+	_pass_state_to_settings_editor(value)
+
+	# 3. Live frames — only refresh if something actually changed,
+	#    otherwise we'd rebuild frames on every redundant call.
+	if state_changed and tree_view and tree_view.group_frames_service:
+		tree_view.group_frames_service.refresh_all()
+
+	# 4. Toast (optional) — only show when the state actually flipped.
+	if show_toast and state_changed and tree_view:
+		var state: String = "ON" if value else "OFF"
+		BayterekToast.info(tree_view, "Group Frames: [b]%s[/b]" % state)
+
+	# 5. Dirty — only mark dirty if we actually changed something.
+	if state_changed:
+		set_dirty(true)
+
+
+## Updates the View menu checkmark to reflect `value`.
+func _pass_state_to_view_menu(value: bool) -> void:
+	if not menu_bar:
+		return
+	for child in menu_bar.get_children():
+		if child is MenuButton and child.text == "View":
+			var popup: PopupMenu = child.get_popup()
+			var idx: int = popup.get_item_index(3)
+			if idx >= 0:
+				popup.set_item_checked(idx, value)
+			break
+
+
+## Updates the Settings tab checkbox to reflect `value`.
+## Uses `_updating_ui` so the checkbox's `toggled` signal doesn't
+## loop back into `_set_show_group_frames`.
+func _pass_state_to_settings_editor(value: bool) -> void:
+	if not settings_editor or not is_instance_valid(settings_editor):
+		return
+	if not settings_editor._show_group_frames_check:
+		return
+	settings_editor._updating_ui = true
+	settings_editor._show_group_frames_check.button_pressed = value
+	settings_editor._updating_ui = false
+
+# ============================================================
 # UI SETUP
 # ============================================================
 
@@ -277,6 +359,9 @@ func _build_ui() -> void:
 	view_popup.add_check_item("Hover Animations", 2)
 	view_popup.set_item_checked(view_popup.get_item_index(2), true)
 	view_popup.set_item_tooltip(view_popup.get_item_index(2), "Play hover enter/exit animations on nodes.")
+	view_popup.add_check_item("Show Group Frames", 3)
+	view_popup.set_item_checked(view_popup.get_item_index(3), tree.show_group_frames if tree else true)
+	view_popup.set_item_tooltip(view_popup.get_item_index(3), "Show colored bounding boxes around node groups.")
 	view_popup.add_separator()
 	_build_tooltip_submenu(view_popup)
 	view_popup.id_pressed.connect(_on_view_menu_pressed)
@@ -426,6 +511,7 @@ func _create_tree_view() -> void:
 		settings_editor.border_scale_changed.connect(_on_settings_border_scale_changed)
 		settings_editor.texture_filter_changed.connect(_on_settings_texture_filter_changed)
 		settings_editor.chain_connection_mode_changed.connect(_on_settings_chain_connection_changed)
+		settings_editor.show_group_frames_changed.connect(_on_settings_show_group_frames_changed)
 
 	if attributes_editor:
 		attributes_editor.editor = self
@@ -2191,6 +2277,18 @@ func _on_settings_texture_filter_changed() -> void:
 func _on_settings_chain_connection_changed() -> void:
 	pass
 
+## Called when the Settings tab's "Show Frames" checkbox changes.
+## We delegate to the editor's centralized setter so the View menu
+## checkmark and the live frames stay in sync with the checkbox.
+##
+## Passing `show_toast = false` avoids a redundant toast since the user
+## is looking right at the checkbox when they toggle it.
+func _on_settings_show_group_frames_changed(pressed: bool) -> void:
+	# `_set_show_group_frames` will also update the checkbox via
+	# `_pass_state_to_settings_editor`, but that update is guarded by
+	# the settings editor's `_updating_ui` flag, so no signal loop.
+	_set_show_group_frames(pressed, false)
+
 func _on_prefab_dropped_from_canvas(prefab: BayterekPrefab, tree_pos: Vector2) -> void:
 	if not tree_view or not tree_view.nodes_service:
 		return
@@ -2255,6 +2353,8 @@ func _on_view_menu_pressed(id: int) -> void:
 				tree_view.center_camera_on_content()
 		2:
 			_toggle_hover_animations()
+		3:
+			_toggle_group_frames()
 
 func do_undo() -> void:
 	if undo_redo and undo_redo.has_undo():

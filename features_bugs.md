@@ -3,7 +3,7 @@
 
 ## EASY
 [] validator'a yeni uyarı ve hata mesajları eklenecek 
-[] 
+[] editor ayarlarını ayrı kaydedebiliriz belki?
 
 ## MEDIUM
 [] bağlantı çizgileri düzenlenecek 

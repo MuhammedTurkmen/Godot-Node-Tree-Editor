@@ -200,10 +200,10 @@ func _build_ui() -> void:
 
 	_show_group_frames_check = _make_check_row(
 		_content,
-		"Show Frames in Runtime",
-		"Whether group frames are drawn at runtime (in-game). In the editor they are always visible."
+		"Show Frames",
+		"Draw colored bounding boxes around node groups. Applies to both the editor canvas and the runtime view. Also toggled by View → Show Group Frames."
 	)
-	_show_group_frames_check.button_pressed = false
+	_show_group_frames_check.button_pressed = true
 	_show_group_frames_check.toggled.connect(_on_show_group_frames_changed)
 
 	_frame_title_align_dropdown = _make_dropdown_row(
@@ -555,13 +555,31 @@ func _on_refund_confirm_changed(pressed: bool) -> void:
 	changed.emit()
 	_notify_dirty()
 
+## Called when the user toggles the "Show Frames" checkbox in the
+## Settings tab. Delegates to the editor's centralized setter so the
+## View menu checkmark and the live frames stay in sync with the checkbox.
+##
+## We pass `show_toast = false` because the user is right next to the
+## checkbox — a toast would just be redundant noise.
+##
+## Note: the editor's centralized setter will also re-sync THIS checkbox
+## (via `_pass_state_to_settings_editor`), but that update is guarded by
+## `_updating_ui`, so the `toggled` signal won't loop.
 func _on_show_group_frames_changed(pressed: bool) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
-	editor.tree.show_group_frames = pressed
-	show_group_frames_changed.emit()
-	changed.emit()
-	_notify_dirty()
+
+	if editor.has_method("_set_show_group_frames"):
+		editor._set_show_group_frames(pressed, false)
+	else:
+		# Fallback: direct assignment (only used if the editor is missing
+		# the centralized setter — e.g. older versions).
+		editor.tree.show_group_frames = pressed
+		if editor.tree_view and editor.tree_view.group_frames_service:
+			editor.tree_view.group_frames_service.refresh_all()
+		show_group_frames_changed.emit()
+		changed.emit()
+		_notify_dirty()
 
 func _on_frame_title_align_changed(index: int) -> void:
 	if _updating_ui or not editor or not editor.tree:

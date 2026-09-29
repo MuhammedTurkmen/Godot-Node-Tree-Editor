@@ -15,7 +15,11 @@ extends Resource
 @export_storage var allocation_confirm: bool = false
 @export_storage var refund_confirm: bool = false
 
-@export_storage var show_group_frames: bool = false
+## Whether group frames (colored bounding boxes around node groups)
+## are drawn. Default is TRUE in the editor so the user always sees
+## which nodes belong to which group. At runtime, projects that don't
+## want group frames should set this to false in the tree settings.
+@export_storage var show_group_frames: bool = true
 @export_storage var group_frame_title_align: int = 0
 
 @export_storage var tooltip_header_align: int = 0

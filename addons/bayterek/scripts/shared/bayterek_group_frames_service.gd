@@ -114,16 +114,24 @@ func on_node_group_changed(node: BayterekNodeButton, old_group_id: String, new_g
 	if not new_group_id.is_empty():
 		refresh_group(new_group_id)
 
-## Applies runtime visibility. In editor: always visible (fit_to_members
-## already controls visibility based on member count). At runtime: only
-## visible if tree.show_group_frames is true.
+## Applies visibility to a group frame.
+##
+## Behavior:
+##   - The single source of truth is `tree.show_group_frames`.
+##   - The tree defaults this to TRUE in the editor, so frames are
+##     visible by default. The user can toggle it off from the View
+##     menu at any time (editor or runtime).
+##
+## This is called on every refresh_group() so toggling the flag and
+## calling refresh_all() is enough to update everything.
 func _apply_visibility(frame: BayterekGroupFrame) -> void:
 	if not frame:
 		return
-	if Engine.is_editor_hint():
-		return
-	if _tree_data and not _tree_data.show_group_frames:
+	if not _tree_data:
 		frame.visible = false
+		return
+
+	frame.visible = _tree_data.show_group_frames
 
 # ============================================================
 # MEMBER COLLECTION

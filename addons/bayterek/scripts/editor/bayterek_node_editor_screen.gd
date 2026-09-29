@@ -131,29 +131,41 @@ func get_current_design() -> BayterekNodeDesign:
 	return _current_design
 
 ## Forces an immediate save (bypasses the debounce).
-func save_now() -> void:
+## Returns true if the save succeeded (or there was nothing to save),
+## false if it failed. On failure the design stays dirty so a later
+## autosave or a manual save can retry.
+func save_now() -> bool:
 	if _autosave_timer:
 		_autosave_timer.stop()
-	_flush_save()
+	return _flush_save()
 
 func _on_autosave_timeout() -> void:
 	_flush_save()
 
-func _flush_save() -> void:
+## Performs the actual save. Returns true on success, false on failure.
+## On failure, the design stays marked dirty so a later autosave or a
+## manual Ctrl+S can retry — we do NOT silently discard the dirty flag.
+func _flush_save() -> bool:
 	if not _dirty:
-		return
+		return true
+
 	if not _current_design:
 		_dirty = false
 		dirty_changed.emit(false)
-		return
+		return true
 
 	var err: Error = BayterekDesignService.save_design(_current_design)
 	if err != OK:
 		push_warning("[Bayterek] Autosave failed for design '%s' (err=%d)" % [_current_design.name, err])
-		return
+		# Stay dirty — next autosave or manual save will retry.
+		# Also restart the timer so we try again soon.
+		if _autosave_timer:
+			_autosave_timer.start()
+		return false
 
 	_dirty = false
 	dirty_changed.emit(false)
+	return true
 
 # ============================================================
 # CALLBACKS
@@ -161,8 +173,12 @@ func _flush_save() -> void:
 
 func _on_design_selected(design: BayterekNodeDesign) -> void:
 	# If the current design has unsaved changes, save before switching.
+	# If the save fails, we still switch (the dirty flag stays set so the
+	# user can retry later) but we warn them via the logger.
 	if _dirty and _current_design and _current_design != design:
-		save_now()
+		var saved_ok: bool = save_now()
+		if not saved_ok:
+			push_warning("[Bayterek] Could not save '%s' before switching designs." % _current_design.name)
 
 	_current_design = design
 	design_changed.emit(design)

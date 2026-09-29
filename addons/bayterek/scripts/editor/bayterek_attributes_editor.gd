@@ -2,6 +2,11 @@
 class_name BayterekAttributesEditor
 extends VBoxContainer
 ## Attribute list editor — right panel 3rd tab.
+##
+## This editor manages the tree-level attribute definitions
+## (name, effect, value_count). Changing value_count affects every node
+## and prefab that uses the attribute, so we warn the user and make the
+## change undoable.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -115,7 +120,7 @@ func _build_ui() -> void:
 	var count_label := Label.new()
 	count_label.text = "Value Count"
 	count_label.custom_minimum_size = Vector2(90, 0)
-	count_label.tooltip_text = "How many values (0-4)"
+	count_label.tooltip_text = "How many values (0-4). Changing this affects every node and prefab that uses this attribute."
 	count_row.add_child(count_label)
 	_value_count_input = SpinBox.new()
 	_value_count_input.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -314,6 +319,14 @@ func _on_effect_changed() -> void:
 	changed.emit()
 	attribute_changed.emit(_current_attr_id)
 
+# ============================================================
+# VALUE COUNT CHANGE (with confirmation + undo)
+# ============================================================
+
+## Called when the user drags the value_count spinbox.
+## Because value_count affects the shape of every node's and prefab's
+## attribute array, we ask for confirmation if anything else would be
+## touched, then commit the change as a single undoable action.
 func _on_value_count_changed(value: float) -> void:
 	if _updating_ui or _current_attr_id.is_empty():
 		return
@@ -325,14 +338,109 @@ func _on_value_count_changed(value: float) -> void:
 
 	var old_count: int = attr.value_count
 	var new_count: int = int(value)
-	attr.value_count = new_count
+	if old_count == new_count:
+		return
 
-	if old_count != new_count:
-		_resize_nodes_arrays(_current_attr_id, new_count)
+	# Count how many nodes and prefabs will be affected.
+	var node_count: int = 0
+	for node_data in editor.tree.nodes:
+		if node_data and node_data.attributes.has(_current_attr_id):
+			node_count += 1
+
+	var prefab_count: int = 0
+	for prefab in editor.tree.prefabs:
+		if prefab and prefab.attributes.has(_current_attr_id):
+			prefab_count += 1
+
+	# If nothing else uses this attribute yet, apply immediately.
+	if node_count == 0 and prefab_count == 0:
+		_apply_value_count_change(_current_attr_id, old_count, new_count)
+		return
+
+	# Otherwise, ask for confirmation since this will affect other nodes.
+	_confirm_value_count_change(_current_attr_id, old_count, new_count, node_count, prefab_count)
+
+## Performs the actual value_count change with undo/redo support.
+func _apply_value_count_change(attr_id: String, old_count: int, new_count: int) -> void:
+	if not editor or not editor.tree:
+		return
+	var attr: BayterekAttribute = editor.tree.attributes.get(attr_id, null)
+	if not attr:
+		return
+
+	var do_callable := func():
+		_do_set_value_count(attr_id, new_count)
+	var undo_callable := func():
+		_do_set_value_count(attr_id, old_count)
+
+	if editor.undo_redo:
+		editor.undo_redo.create_action("Change Attribute Value Count")
+		editor.undo_redo.add_do_method(do_callable)
+		editor.undo_redo.add_undo_method(undo_callable)
+		editor.undo_redo.commit_action()
+	else:
+		do_callable.call()
+
+## Internal helper — actually sets value_count and resizes arrays.
+## Called both from do_callable and undo_callable.
+func _do_set_value_count(attr_id: String, new_count: int) -> void:
+	if not editor or not editor.tree:
+		return
+	var attr: BayterekAttribute = editor.tree.attributes.get(attr_id, null)
+	if not attr:
+		return
+
+	attr.value_count = new_count
+	_resize_nodes_arrays(attr_id, new_count)
+
+	# Update the UI (only if this is still the currently-selected attr).
+	if _current_attr_id == attr_id:
+		_updating_ui = true
+		_value_count_input.set_value_no_signal(new_count)
+		_updating_ui = false
 
 	editor.set_dirty(true)
 	changed.emit()
-	attribute_changed.emit(_current_attr_id)
+	attribute_changed.emit(attr_id)
+
+## Shows a confirmation dialog warning about the impact of this change.
+func _confirm_value_count_change(attr_id: String, old_count: int, new_count: int, node_count: int, prefab_count: int) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Change Value Count"
+	dialog.dialog_text = (
+		"Changing value count from %d to %d will affect:\n\n" % [old_count, new_count] +
+		"  • %d node(s)\n" % node_count +
+		"  • %d prefab(s)\n\n" % prefab_count +
+		"Existing values will be kept where possible; new slots default to 0.\n\nContinue?"
+	)
+	dialog.ok_button_text = "Change"
+	dialog.cancel_button_text = "Cancel"
+	dialog.unresizable = true
+
+	dialog.confirmed.connect(func() -> void:
+		_apply_value_count_change(attr_id, old_count, new_count)
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func() -> void:
+		# Revert the spinbox to the old value.
+		_updating_ui = true
+		_value_count_input.set_value_no_signal(old_count)
+		_updating_ui = false
+		dialog.queue_free()
+	)
+	dialog.close_requested.connect(func() -> void:
+		_updating_ui = true
+		_value_count_input.set_value_no_signal(old_count)
+		_updating_ui = false
+		dialog.queue_free()
+	)
+
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(440, 240))
+
+# ============================================================
+# ARRAY RESIZE HELPERS
+# ============================================================
 
 func _resize_nodes_arrays(attr_id: String, new_count: int) -> void:
 	if not editor or not editor.tree:
@@ -345,7 +453,7 @@ func _resize_nodes_arrays(attr_id: String, new_count: int) -> void:
 		var values = node_data.attributes[attr_id]
 		_resize_value_array(values, new_count)
 
-	# Resize each prefab (artık Array)
+	# Resize each prefab
 	for prefab in editor.tree.prefabs:
 		if not prefab:
 			continue

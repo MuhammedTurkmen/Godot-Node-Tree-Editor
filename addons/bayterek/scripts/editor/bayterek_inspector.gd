@@ -64,6 +64,15 @@ func _ready() -> void:
 	_build_ui()
 	_show_empty()
 
+	# Guard: if inspect() was called before _ready() finished building the
+	# sub-panels, apply the pending target now that everything exists.
+	# Without this, an early inspect() call (e.g. from a signal fired during
+	# scene construction) would leave the inspector stuck on the empty view.
+	if _current_node:
+		inspect(_current_node)
+	elif _current_prefab:
+		inspect_prefab(_current_prefab)
+
 # ============================================================
 # UI SETUP
 # ============================================================
@@ -464,7 +473,7 @@ func init(_tree_view: BayterekTreeView) -> void:
 	pass
 
 func refresh_attributes() -> void:
-	if _attributes:
+	if _attributes and is_instance_valid(_attributes):
 		_attributes.refresh()
 
 func remove_attribute_from_node(attr_id: String) -> void:
@@ -491,6 +500,12 @@ func _show_content() -> void:
 # ============================================================
 
 func inspect(node: BayterekNodeButton) -> void:
+	# If _ready() hasn't built the UI yet, just remember the target.
+	# _ready() will call inspect() again once everything exists.
+	if not _content:
+		_current_node = node
+		return
+
 	_current_prefab = null
 	_mode_banner.visible = false
 	_root_check.disabled = false
@@ -548,9 +563,13 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_updating_ui = false
 
-	_exported_fields.refresh()
-	_attributes.refresh()
-	_connections.refresh()
+	# Safe sub-panel refresh — these may be null during early init.
+	if _exported_fields and is_instance_valid(_exported_fields):
+		_exported_fields.refresh()
+	if _attributes and is_instance_valid(_attributes):
+		_attributes.refresh()
+	if _connections and is_instance_valid(_connections):
+		_connections.refresh()
 
 func _refresh_design_size_label() -> void:
 	if not _design_size_label or not _current_node:
@@ -627,7 +646,9 @@ func _on_design_changed(index: int) -> void:
 
 	_current_node.rebuild_from_design()
 	_refresh_design_size_label()
-	_exported_fields.refresh()
+
+	if _exported_fields and is_instance_valid(_exported_fields):
+		_exported_fields.refresh()
 
 	if editor and editor.tree_view and editor.tree_view.connections_service:
 		editor.tree_view.connections_service.update_lines_of(_current_node)
@@ -669,6 +690,11 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	if not prefab:
 		return
 
+	# If _ready() hasn't built the UI yet, just remember the target.
+	if not _content:
+		_current_prefab = prefab
+		return
+
 	_current_node = null
 	_current_prefab = prefab
 
@@ -696,9 +722,13 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_max_alloc_input.set_value_no_signal(prefab.max_allocations)
 	_updating_ui = false
 
-	_exported_fields.refresh()
-	_attributes.refresh()
-	_connections.refresh()
+	# Safe sub-panel refresh.
+	if _exported_fields and is_instance_valid(_exported_fields):
+		_exported_fields.refresh()
+	if _attributes and is_instance_valid(_attributes):
+		_attributes.refresh()
+	if _connections and is_instance_valid(_connections):
+		_connections.refresh()
 
 func _on_back_to_node_pressed() -> void:
 	_current_prefab = null
@@ -795,7 +825,8 @@ func _on_max_alloc_changed(value: float) -> void:
 	if _current_prefab:
 		_current_prefab.set_max_allocations(new_max)
 		_reshape_prefab_attribute_arrays(_current_prefab, new_max)
-		_attributes.refresh()
+		if _attributes and is_instance_valid(_attributes):
+			_attributes.refresh()
 		changed.emit()
 		_notify_editor_dirty()
 		return
@@ -828,7 +859,8 @@ func _on_max_alloc_changed(value: float) -> void:
 				while data.size() > new_max:
 					data.pop_back()
 
-	_attributes.refresh()
+	if _attributes and is_instance_valid(_attributes):
+		_attributes.refresh()
 	changed.emit()
 	_notify_editor_dirty()
 
