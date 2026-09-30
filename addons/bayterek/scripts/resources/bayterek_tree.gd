@@ -22,6 +22,11 @@ extends Resource
 @export_storage var show_group_frames: bool = true
 @export_storage var group_frame_title_align: int = 0
 
+## Whether hover enter/exit animations play on nodes in the tree canvas.
+## Toggled from View → Hover Animations. Persisted across editor sessions
+## and file saves.
+@export_storage var hover_animations_enabled: bool = true
+
 @export_storage var tooltip_header_align: int = 0
 @export_storage var tooltip_body_align: int = 0
 @export_storage var tooltip_footer_align: int = 1

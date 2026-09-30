@@ -23,6 +23,10 @@ signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 # ============================================================
 ## Master switch — when false, hover enter/exit do NOT play any animation.
 ## Tooltips still work.
+##
+## The value is loaded from `tree_data.hover_animations_enabled` in
+## load_tree(), and persisted back when the user toggles it from the
+## View menu (via BayterekEditor._toggle_hover_animations).
 @export var hover_animations_enabled: bool = true
 
 @export var hover_enter_preset: String = "hover_enter"
@@ -79,6 +83,9 @@ func _ready() -> void:
 
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
+
+	# Pull persisted UI preferences from the tree resource.
+	hover_animations_enabled = tree_data.hover_animations_enabled
 
 	if _tree_data.tree_state and _tree_data.tree_state.version != _tree_data.version:
 		tree_version_mismatch.emit(_tree_data, _tree_data.tree_state.version)
@@ -315,6 +322,7 @@ func _input(event: InputEvent) -> void:
 			if not selected_nodes.is_empty():
 				delete_selected()
 				get_viewport().set_input_as_handled()
+
 
 ## Returns true if the current GUI focus is inside a text-editing widget.
 ## Walks up a few parent levels so SpinBox's internal LineEdit is caught.
@@ -918,7 +926,7 @@ func _handle_group_frame_input(event: InputEvent) -> bool:
 
 				var additive: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
 				if not additive:
-					clear_selection()
+						clear_selection()
 				for node in nodes_service.get_all_nodes():
 					if is_instance_valid(node) and node.node_data and node.node_data.group_id == hit.group_id:
 						select_node(node, true)

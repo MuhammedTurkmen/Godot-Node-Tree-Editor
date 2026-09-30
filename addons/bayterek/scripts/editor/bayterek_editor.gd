@@ -194,37 +194,85 @@ func _show_chain_mode_notification() -> void:
 		BayterekToast.error(tree_view, message)
 
 # ============================================================
-# HOVER ANIMATIONS TOGGLE
+# HOVER ANIMATIONS TOGGLE (persistent)
 # ============================================================
 
+## Toggles hover animations on/off and persists the setting to the
+## tree resource, so it survives editor sessions and file saves.
+##
+## Called from View → Hover Animations.
 func _toggle_hover_animations() -> void:
+	if not tree:
+		return
 	if not tree_view:
 		return
 
-	tree_view.hover_animations_enabled = not tree_view.hover_animations_enabled
+	# Flip the persisted value.
+	tree.hover_animations_enabled = not tree.hover_animations_enabled
 
-	# Update the checkmark in the View menu.
+	# Sync the live tree view.
+	tree_view.hover_animations_enabled = tree.hover_animations_enabled
+
+	# Update the View menu checkmark.
+	_pass_state_to_hover_menu(tree.hover_animations_enabled)
+
+	# If we just turned animations OFF, cancel any currently-playing
+	# hover animations so nodes don't stay in a lifted state.
+	if not tree.hover_animations_enabled:
+		_stop_all_node_animations()
+
+	var state: String = "ON" if tree.hover_animations_enabled else "OFF"
+	BayterekToast.info(tree_view, "Hover Animations: [b]%s[/b]" % state)
+
+	# Mark dirty so the setting is saved on next Ctrl+S / autosave.
+	set_dirty(true)
+
+
+## Updates the View → Hover Animations checkmark to reflect `value`.
+func _pass_state_to_hover_menu(value: bool) -> void:
+	if not menu_bar:
+		return
 	for child in menu_bar.get_children():
 		if child is MenuButton and child.text == "View":
 			var popup: PopupMenu = child.get_popup()
 			var idx: int = popup.get_item_index(2)
 			if idx >= 0:
-				popup.set_item_checked(idx, tree_view.hover_animations_enabled)
+				popup.set_item_checked(idx, value)
 			break
 
-	var state: String = "ON" if tree_view.hover_animations_enabled else "OFF"
-	BayterekToast.info(tree_view, "Hover Animations: [b]%s[/b]" % state)
+
+## Stops any hover animation currently playing on every node.
+## Called when the user turns hover animations off so nodes that were
+## mid-hover return to their resting state.
+func _stop_all_node_animations() -> void:
+	if not tree_view or not tree_view.nodes_service:
+		return
+	for node in tree_view.nodes_service.get_all_nodes():
+		if not is_instance_valid(node):
+			continue
+		if node.has_method("stop_animation"):
+			node.stop_animation()
+		# Also reset the visual transform in case the animation was
+		# persistent and left the node offset.
+		if node.has_method("reset_visual_transform"):
+			node.reset_visual_transform()
 
 # ============================================================
 # GROUP FRAMES TOGGLE (centralized)
 # ============================================================
 
+## Toggles visibility of all group frames in the current tree.
+## Delegates to `_set_show_group_frames` so the View menu, the Settings
+## checkbox, and the live frames all stay in sync.
 func _toggle_group_frames() -> void:
 	if not tree:
 		return
 	_set_show_group_frames(not tree.show_group_frames)
 
 
+## Centralized setter for `tree.show_group_frames`. Called by BOTH the
+## View menu toggle and the Settings tab checkbox, so both entry points
+## stay perfectly in sync (and the frames update live).
 func _set_show_group_frames(value: bool, show_toast: bool = true) -> void:
 	if not tree:
 		return
@@ -333,7 +381,7 @@ func _build_ui() -> void:
 	view_popup.add_item("Center Camera", 0)
 	view_popup.add_separator()
 	view_popup.add_check_item("Hover Animations", 2)
-	view_popup.set_item_checked(view_popup.get_item_index(2), true)
+	view_popup.set_item_checked(view_popup.get_item_index(2), tree.hover_animations_enabled if tree else true)
 	view_popup.set_item_tooltip(view_popup.get_item_index(2), "Play hover enter/exit animations on nodes.")
 	view_popup.add_check_item("Show Group Frames", 3)
 	view_popup.set_item_checked(view_popup.get_item_index(3), tree.show_group_frames if tree else true)
@@ -1658,11 +1706,6 @@ func _input(event: InputEvent) -> void:
 
 
 ## Local mirror of BayterekShortcuts._is_text_input_focused().
-##
-## NOTE: We deliberately do NOT check RichTextLabel — it has no
-## `editable` property in Godot 4, and attempting to read one spams
-## "Invalid access to property 'editable'" for every keystroke when
-## the Output panel or other editor RichTextLabels have focus.
 func _is_text_input_focused() -> bool:
 	var vp: Viewport = get_viewport()
 	if not vp:
@@ -1782,20 +1825,6 @@ func _line_data_to_dict(ld: BayterekLineData) -> Dictionary:
 
 ## Reads the system clipboard and, if it contains a valid Bayterek node
 ## payload, pastes those nodes into the current tree.
-##
-## The clipboard might contain ANY text the user copied from anywhere —
-## an email, a URL, a code snippet, a random word. We must NOT treat
-## every failure to parse as an error:
-##
-##   1. If the clipboard text doesn't even mention our version tag,
-##      it's obviously not a Bayterek payload. We quietly show a small
-##      toast and return — no parse attempt, no console ERROR.
-##   2. If it does mention the tag but JSON.parse fails, we show a
-##      "clipboard corrupted" toast and return. We use
-##      JSON.new().parse() instead of JSON.parse_string() specifically
-##      because the static method pushes an ERROR to the console on
-##      failure, and we don't want editor noise from every stray Ctrl+V.
-##   3. Only if both checks pass do we run the full deserialization.
 func _paste_nodes() -> void:
 	if not tree_view or not tree_view.nodes_service:
 		return
@@ -1805,12 +1834,10 @@ func _paste_nodes() -> void:
 		BayterekToast.info(tree_view, "Clipboard is empty")
 		return
 
-	# --- Cheap pre-check: is this even a Bayterek payload? ---
 	if not _looks_like_bayterek_payload(clipboard_text):
 		BayterekToast.info(tree_view, "Clipboard does not contain Bayterek nodes")
 		return
 
-	# --- Safe parse (no console ERROR on failure) ---
 	var parsed: Variant = _safe_json_parse(clipboard_text)
 	if parsed == null or not parsed is Dictionary:
 		BayterekToast.warning(tree_view, "Clipboard data is corrupted or malformed")
@@ -1818,7 +1845,6 @@ func _paste_nodes() -> void:
 
 	var payload: Dictionary = parsed
 
-	# --- Version check ---
 	var version: int = int(payload.get("bayterek_version", 0))
 	if version != 2:
 		if version == 0:
@@ -1834,16 +1860,10 @@ func _paste_nodes() -> void:
 		BayterekToast.warning(tree_view, "Clipboard data is empty or inconsistent")
 		return
 
-	# --- Sanity check: at least the top-level shape must be right ---
 	for nd in nodes_data:
 		if not nd is Dictionary:
 			BayterekToast.warning(tree_view, "Clipboard node data is malformed")
 			return
-
-	# ------------------------------------------------------------------
-	# At this point we are confident the payload is a real Bayterek
-	# node list. Proceed with the actual paste.
-	# ------------------------------------------------------------------
 
 	var mouse_local: Vector2 = tree_view.get_local_mouse_position()
 	var mouse_tree: Vector2 = tree_view.screen_to_tree(mouse_local)
@@ -1915,19 +1935,11 @@ func _paste_nodes() -> void:
 
 
 ## Returns true if `text` might be a Bayterek clipboard payload.
-##
-## This is a cheap substring check — no JSON parsing involved. It's
-## intentionally lenient: false positives just fall through to the real
-## parser, which will bail cleanly. The point is to avoid parsing
-## arbitrary user text (URLs, code, random words), which would otherwise
-## spam the editor console with JSON parse errors.
 func _looks_like_bayterek_payload(text: String) -> bool:
 	if text.is_empty():
 		return false
-	# Fast path: the version key must appear somewhere.
 	if not text.contains("bayterek_version"):
 		return false
-	# Cheap secondary check: the top-level must look like an object.
 	var trimmed: String = text.strip_edges()
 	if not trimmed.begins_with("{"):
 		return false
@@ -1935,21 +1947,10 @@ func _looks_like_bayterek_payload(text: String) -> bool:
 
 
 ## Parses `text` as JSON WITHOUT pushing errors to the console.
-##
-## Godot's static `JSON.parse_string()` is a thin wrapper that calls
-## `JSON.new().parse()` and then, if parsing fails, pushes an ERROR
-## with the parser's message. That message is helpful when debugging
-## our own serialization, but it's pure noise when a user just pressed
-## Ctrl+V with something that isn't our payload on their clipboard.
-##
-## This wrapper does the parse ourselves so we can swallow the error.
-## Returns the parsed value (Dictionary / Array / primitive) on success,
-## or null on any failure.
 func _safe_json_parse(text: String) -> Variant:
 	var json := JSON.new()
 	var err: int = json.parse(text)
 	if err != OK:
-		# Deliberately silent — the caller decides how to notify the user.
 		return null
 	return json.data
 
@@ -2188,7 +2189,6 @@ func _icon_configs_to_dict(configs: Dictionary) -> Dictionary:
 ## IMPORTANT: this method always assigns a FRESH layer_id. Without this,
 ## a pasted node's layers would share the same layer_id as the source
 ## node's layers, and get_layer_by_id() would return the wrong instance.
-## That causes the pasted node and the original to become entangled.
 func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 	var type_str: String = d.get("_type", "")
 
@@ -2198,7 +2198,6 @@ func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 	else:
 		return null
 
-	# Fresh layer_id — see docstring above.
 	layer.layer_id = BayterekUUIDGenerator.v4()
 
 	layer.layer_name = d.get("layer_name", "Layer")
@@ -2373,8 +2372,6 @@ func _on_settings_chain_connection_changed() -> void:
 	pass
 
 ## Called when the Settings tab's "Show Frames" checkbox changes.
-## We delegate to the editor's centralized setter so the View menu
-## checkmark and the live frames stay in sync with the checkbox.
 func _on_settings_show_group_frames_changed(pressed: bool) -> void:
 	_set_show_group_frames(pressed, false)
 

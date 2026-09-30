@@ -12,7 +12,6 @@
 
 [sub_resource type="Resource" id="Resource_e1v5k"]
 script = ExtResource("7_6p5mu")
-position = Vector2(8, 0)
 size = Vector2(100, 100)
 
 [sub_resource type="Resource" id="Resource_x1plc"]
@@ -61,7 +60,7 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "fdee80c7-0edb-43e4-8faf-1e4a6f28206b"
+layer_id = "29037ade-42f5-47cd-92de-4527a355fb1f"
 layer_name = "Texture 2"
 transform = SubResource("Resource_e1v5k")
 
@@ -74,7 +73,7 @@ is_root = true
 id = 35
 name = "New Design"
 design_id = "new_design"
-position = Vector2(-556, 294.85718)
+position = Vector2(-529.5293, 240.73975)
 line_data = {
 36: SubResource("Resource_qlprm")
 }
@@ -83,7 +82,6 @@ layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_x1plc")])
 
 [sub_resource type="Resource" id="Resource_royti"]
 script = ExtResource("7_6p5mu")
-position = Vector2(8, 0)
 size = Vector2(100, 100)
 
 [sub_resource type="Resource" id="Resource_6p5mu"]
@@ -132,7 +130,7 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "27555cd3-4079-4965-82e4-871830a27120"
+layer_id = "efd7d022-7ec6-471f-8f1d-2073098cb7d4"
 layer_name = "Texture 2"
 transform = SubResource("Resource_royti")
 
@@ -154,7 +152,6 @@ layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_6p5mu")])
 
 [sub_resource type="Resource" id="Resource_5lgyx"]
 script = ExtResource("7_6p5mu")
-position = Vector2(8, 0)
 size = Vector2(100, 100)
 
 [sub_resource type="Resource" id="Resource_nrko7"]
@@ -203,7 +200,7 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "2d79b7df-b6d1-4792-97b3-430177317fc1"
+layer_id = "0f3935db-2ecb-46bd-a6a9-66e8472241e5"
 layer_name = "Texture 2"
 transform = SubResource("Resource_5lgyx")
 
@@ -225,7 +222,6 @@ layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_nrko7")])
 
 [sub_resource type="Resource" id="Resource_53451"]
 script = ExtResource("7_6p5mu")
-position = Vector2(8, 0)
 size = Vector2(100, 100)
 
 [sub_resource type="Resource" id="Resource_x2q8f"]
@@ -274,7 +270,7 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "6dbe7ea3-05c1-4be0-a138-1680fe938d48"
+layer_id = "9b2d94e1-e640-4620-8027-a6c6b22b6272"
 layer_name = "Texture 2"
 transform = SubResource("Resource_53451")
 
@@ -291,6 +287,7 @@ layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_x2q8f")])
 script = ExtResource("4_ak1rv")
 id = "tree_1"
 name = "Tree 1"
+hover_animations_enabled = false
 tooltip_header_align = 1
 id_counter = 40
 nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_k1nh3"), SubResource("Resource_wfhhu"), SubResource("Resource_k0kgc"), SubResource("Resource_3cysg")])
