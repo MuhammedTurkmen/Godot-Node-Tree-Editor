@@ -8,7 +8,9 @@
 
 [sub_resource type="Resource" id="Resource_anblf"]
 script = ExtResource("3_3s02k")
+position = Vector2(0, 5)
 size = Vector2(100, 100)
+scale = Vector2(1.1, 1)
 
 [sub_resource type="Resource" id="Resource_ciy6q"]
 script = ExtResource("2_j7ax0")

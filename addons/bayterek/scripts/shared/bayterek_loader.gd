@@ -1,13 +1,34 @@
 @tool
 extends Node
 ## Autoload: BayterekLoader. Registry + design API.
+##
+## Also acts as a global keyboard hook for undo/redo. The Godot editor
+## reserves Ctrl+Z / Ctrl+Y for its own undo system and consumes them
+## before any child Control's _shortcut_input() handler runs. By
+## intercepting at the Autoload level — which sits ABOVE the editor's
+## shortcut dispatcher in the input stack — we can guarantee that our
+## undo fires first when a Node Editor screen is active.
+##
+## The screen registers itself via register_node_editor() on _ready()
+## and unregisters on _exit_tree(). Only ONE screen can be active at a
+## time; the most recent registration wins.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
 var _registry: BayterekRegistry
 
+## Weak reference to the currently-active Node Editor screen (if any).
+## We use a plain `Node` type here to avoid a hard class dependency, and
+## guard every access with is_instance_valid().
+var _active_node_editor: Node = null
+
 func _init() -> void:
 	_load_registry()
+
+func _ready() -> void:
+	# Ensure we receive keyboard input even when no other node has focus.
+	set_process_input(true)
+	set_process_unhandled_key_input(true)
 
 # ============================================================
 # TREE API
@@ -48,21 +69,77 @@ func reload_registry() -> void:
 # DESIGN API
 # ============================================================
 
-## Returns all node designs. Editor-only usage is fine at runtime too
-## if you want to look up a design by id.
 func get_all_designs() -> Array:
 	return BayterekDesignService.get_all_designs()
 
-## Returns a design by id, or null.
 func get_design(design_id: String) -> BayterekNodeDesign:
 	return BayterekDesignService.get_design(design_id)
 
-## True if a design with this id exists.
 func has_design(design_id: String) -> bool:
 	return BayterekDesignService.has_design(design_id)
 
 func reload_designs() -> void:
 	BayterekDesignService.reload()
+
+# ============================================================
+# NODE EDITOR REGISTRATION
+# ============================================================
+
+## Called by a BayterekNodeEditorScreen when it becomes the active
+## screen. Only one screen can be active at a time — the most recent
+## caller wins.
+func register_node_editor(editor: Node) -> void:
+	_active_node_editor = editor
+
+## Called by a BayterekNodeEditorScreen when it's torn down or loses
+## focus. Only clears the reference if it still points at `editor` —
+## this prevents a stale teardown from clearing a newer registration.
+func unregister_node_editor(editor: Node) -> void:
+	if _active_node_editor == editor:
+		_active_node_editor = null
+
+# ============================================================
+# GLOBAL INPUT HOOK (undo / redo)
+# ============================================================
+
+## Intercept Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z at the Autoload level.
+##
+## Autoloads are children of the root Window and get their _input()
+## called BEFORE the Godot editor's own global shortcut handling — so
+## this is the earliest safe place to steal the keystroke.
+##
+## We only consume the event if the active screen actually performed an
+## undo/redo. If its stack was empty (or no screen is registered, or a
+## text field has focus) we let the event fall through to the editor.
+func _input(event: InputEvent) -> void:
+	if not _active_node_editor:
+		return
+	if not is_instance_valid(_active_node_editor):
+		_active_node_editor = null
+		return
+	if not _active_node_editor.is_visible_in_tree():
+		return
+
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+
+	if not (event.ctrl_pressed or event.meta_pressed):
+		return
+
+	var key: int = event.keycode
+	var shift: bool = event.shift_pressed
+
+	if key == KEY_Z and not shift:
+		if _active_node_editor.has_method("try_handle_undo"):
+			if _active_node_editor.try_handle_undo():
+				get_viewport().set_input_as_handled()
+		return
+
+	if key == KEY_Y or (key == KEY_Z and shift):
+		if _active_node_editor.has_method("try_handle_redo"):
+			if _active_node_editor.try_handle_redo():
+				get_viewport().set_input_as_handled()
+		return
 
 # ============================================================
 # PRIVATE

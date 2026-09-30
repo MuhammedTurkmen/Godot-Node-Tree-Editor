@@ -2,6 +2,10 @@
 class_name BayterekLayerStateTextures
 extends VBoxContainer
 ## 8-row state texture editor.
+##
+## Every checkbox toggle, texture assignment, and texture clear is
+## routed through the parent Node Editor's UndoRedo instance so Ctrl+Z
+## works on individual state changes.
 
 signal changed
 
@@ -10,6 +14,7 @@ var _updating: bool = false
 
 var _rows: Dictionary = {}
 var _owner_layer: BayterekLayer = null
+var _node_editor: BayterekNodeEditorScreen = null
 
 var _ui_ready: bool = false
 
@@ -55,6 +60,11 @@ func bind(layer: BayterekLayer) -> void:
 	_owner_layer = layer
 	if _ui_ready:
 		_refresh_from_data()
+
+## Provides access to the parent Node Editor for undoable operations.
+## Called by the layer editor after it's built.
+func bind_editor(node_editor: BayterekNodeEditorScreen) -> void:
+	_node_editor = node_editor
 
 ## Attaches export functionality to each state row.
 func bind_export(design: BayterekNodeDesign, layer_id: String, on_changed: Callable = Callable()) -> void:
@@ -125,15 +135,39 @@ func _refresh_from_data() -> void:
 	_updating = false
 
 # ============================================================
+# UNDO-COMMIT HELPER
+# ============================================================
+
+func _commit(action_name: String, do_cb: Callable, undo_cb: Callable) -> void:
+	if _node_editor and _node_editor.has_method("commit_undoable"):
+		var ok: bool = _node_editor.commit_undoable(action_name, do_cb, undo_cb)
+		if ok:
+			return
+	do_cb.call()
+
+# ============================================================
 # HANDLERS
 # ============================================================
 
 func _on_check_toggled(pressed: bool, state: String) -> void:
 	if _updating or not _owner_layer:
 		return
-	_ensure_config(state)
-	_configs[state]["enabled"] = pressed
-	_push_configs_to_layer()
+	if not (_owner_layer is BayterekTextureLayer):
+		return
+
+	var old_configs: Dictionary = _owner_layer.icon_configs.duplicate(true)
+	var new_configs: Dictionary = _owner_layer.icon_configs.duplicate(true)
+	_ensure_config_in(new_configs, state)
+	new_configs[state]["enabled"] = pressed
+
+	var layer_ref: BayterekTextureLayer = _owner_layer
+
+	var do_cb := func():
+		layer_ref.icon_configs = new_configs.duplicate(true)
+	var undo_cb := func():
+		layer_ref.icon_configs = old_configs.duplicate(true)
+
+	_commit("Toggle Texture State", do_cb, undo_cb)
 	changed.emit()
 
 func _on_texture_dropped(path: String, state: String) -> void:
@@ -141,28 +175,64 @@ func _on_texture_dropped(path: String, state: String) -> void:
 		return
 	if path.is_empty():
 		return
+	if not (_owner_layer is BayterekTextureLayer):
+		return
 	var tex: Texture2D = load(path) as Texture2D
 	if not tex:
 		return
-	_ensure_config(state)
-	_configs[state]["texture"] = tex
-	_push_configs_to_layer()
+
+	var old_configs: Dictionary = _owner_layer.icon_configs.duplicate(true)
+	var new_configs: Dictionary = _owner_layer.icon_configs.duplicate(true)
+	_ensure_config_in(new_configs, state)
+	new_configs[state]["texture"] = tex
+
+	var layer_ref: BayterekTextureLayer = _owner_layer
+
+	var do_cb := func():
+		layer_ref.icon_configs = new_configs.duplicate(true)
+	var undo_cb := func():
+		layer_ref.icon_configs = old_configs.duplicate(true)
+
+	_commit("Assign Texture", do_cb, undo_cb)
 	changed.emit()
 
 func _on_texture_cleared(state: String) -> void:
 	if _updating or not _owner_layer:
 		return
-	_ensure_config(state)
-	_configs[state]["texture"] = null
-	_push_configs_to_layer()
+	if not (_owner_layer is BayterekTextureLayer):
+		return
+
+	var old_configs: Dictionary = _owner_layer.icon_configs.duplicate(true)
+	var new_configs: Dictionary = _owner_layer.icon_configs.duplicate(true)
+	_ensure_config_in(new_configs, state)
+	new_configs[state]["texture"] = null
+
+	var layer_ref: BayterekTextureLayer = _owner_layer
+
+	var do_cb := func():
+		layer_ref.icon_configs = new_configs.duplicate(true)
+	var undo_cb := func():
+		layer_ref.icon_configs = old_configs.duplicate(true)
+
+	_commit("Clear Texture", do_cb, undo_cb)
 	changed.emit()
 
+func _ensure_config_in(configs: Dictionary, state: String) -> void:
+	if not configs.has(state):
+		configs[state] = {"enabled": false, "texture": null}
+	elif not configs[state] is Dictionary:
+		configs[state] = {"enabled": false, "texture": null}
+
+## Legacy helper kept for compatibility. The public API now goes through
+## _commit() so this is no longer called from the UI, but external code
+## may still rely on it.
 func _ensure_config(state: String) -> void:
 	if not _configs.has(state):
 		_configs[state] = {"enabled": false, "texture": null}
 	elif not _configs[state] is Dictionary:
 		_configs[state] = {"enabled": false, "texture": null}
 
+## Legacy helper kept for compatibility.
 func _push_configs_to_layer() -> void:
 	if not _owner_layer:
 		return

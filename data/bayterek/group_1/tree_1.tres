@@ -1,6 +1,5 @@
 [gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://cgt7fuj0gnifp"]
 
-[ext_resource type="Script" uid="uid://hqjiiihenipg" path="res://addons/bayterek/scripts/resources/bayterek_attribute.gd" id="1_6p5mu"]
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_immpc"]
 [ext_resource type="Script" uid="uid://de6ng2pbq3gss" path="res://addons/bayterek/scripts/resources/bayterek_node_group.gd" id="2_3oq2p"]
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_k1nh3"]
@@ -11,25 +10,12 @@
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="7_6p5mu"]
 [ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="8_royti"]
 
-[sub_resource type="Resource" id="Resource_lrons"]
-script = ExtResource("1_6p5mu")
-id = "new_attribute"
-name = "money"
-effect = "Effect #"
-value_count = 1
-
-[sub_resource type="Resource" id="Resource_5mdwv"]
-script = ExtResource("1_6p5mu")
-id = "new_attribute_2"
-name = "New Attribute"
-effect = "Effect #"
-value_count = 1
-
-[sub_resource type="Resource" id="Resource_x1plc"]
+[sub_resource type="Resource" id="Resource_e1v5k"]
 script = ExtResource("7_6p5mu")
+position = Vector2(8, 0)
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_royti"]
+[sub_resource type="Resource" id="Resource_x1plc"]
 script = ExtResource("6_qlprm")
 icon_configs = {
 "normal": {
@@ -75,10 +61,9 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "c060caf2-8f03-40be-9bd8-19272f90ad47"
-layer_name = "Texture 1"
-transform = SubResource("Resource_x1plc")
-texture_filter_override = 2
+layer_id = "fdee80c7-0edb-43e4-8faf-1e4a6f28206b"
+layer_name = "Texture 2"
+transform = SubResource("Resource_e1v5k")
 
 [sub_resource type="Resource" id="Resource_qlprm"]
 script = ExtResource("8_royti")
@@ -89,18 +74,19 @@ is_root = true
 id = 35
 name = "New Design"
 design_id = "new_design"
-position = Vector2(-576, 192)
+position = Vector2(-556, 294.85718)
 line_data = {
 36: SubResource("Resource_qlprm")
 }
 out_nodes = Array[int]([36])
-layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_royti")])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_x1plc")])
 
-[sub_resource type="Resource" id="Resource_6p5mu"]
+[sub_resource type="Resource" id="Resource_royti"]
 script = ExtResource("7_6p5mu")
+position = Vector2(8, 0)
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_5lgyx"]
+[sub_resource type="Resource" id="Resource_6p5mu"]
 script = ExtResource("6_qlprm")
 icon_configs = {
 "normal": {
@@ -146,10 +132,9 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "3f0fa5d0-072a-41ed-8d6d-2b2e413a7a9c"
-layer_name = "Texture 1"
-transform = SubResource("Resource_6p5mu")
-texture_filter_override = 2
+layer_id = "27555cd3-4079-4965-82e4-871830a27120"
+layer_name = "Texture 2"
+transform = SubResource("Resource_royti")
 
 [sub_resource type="Resource" id="Resource_j5a67"]
 script = ExtResource("8_royti")
@@ -165,13 +150,14 @@ line_data = {
 }
 out_nodes = Array[int]([37])
 in_nodes = Array[int]([35])
-layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_5lgyx")])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_6p5mu")])
 
-[sub_resource type="Resource" id="Resource_nrko7"]
+[sub_resource type="Resource" id="Resource_5lgyx"]
 script = ExtResource("7_6p5mu")
+position = Vector2(8, 0)
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_53451"]
+[sub_resource type="Resource" id="Resource_nrko7"]
 script = ExtResource("6_qlprm")
 icon_configs = {
 "normal": {
@@ -217,10 +203,9 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "c43cefc0-39bc-41d6-b839-295c431c9159"
-layer_name = "Texture 1"
-transform = SubResource("Resource_nrko7")
-texture_filter_override = 2
+layer_id = "2d79b7df-b6d1-4792-97b3-430177317fc1"
+layer_name = "Texture 2"
+transform = SubResource("Resource_5lgyx")
 
 [sub_resource type="Resource" id="Resource_l2tvo"]
 script = ExtResource("8_royti")
@@ -236,13 +221,14 @@ line_data = {
 }
 out_nodes = Array[int]([38])
 in_nodes = Array[int]([36])
-layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_53451")])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_nrko7")])
 
-[sub_resource type="Resource" id="Resource_x2q8f"]
+[sub_resource type="Resource" id="Resource_53451"]
 script = ExtResource("7_6p5mu")
+position = Vector2(8, 0)
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_tmiro"]
+[sub_resource type="Resource" id="Resource_x2q8f"]
 script = ExtResource("6_qlprm")
 icon_configs = {
 "normal": {
@@ -288,10 +274,9 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "bc8cf0f5-603c-44aa-99d3-32a96b68f866"
-layer_name = "Texture 1"
-transform = SubResource("Resource_x2q8f")
-texture_filter_override = 2
+layer_id = "6dbe7ea3-05c1-4be0-a138-1680fe938d48"
+layer_name = "Texture 2"
+transform = SubResource("Resource_53451")
 
 [sub_resource type="Resource" id="Resource_3cysg"]
 script = ExtResource("1_immpc")
@@ -300,17 +285,14 @@ name = "New Design"
 design_id = "new_design"
 position = Vector2(-208, -784)
 in_nodes = Array[int]([37])
-layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_tmiro")])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_x2q8f")])
 
 [resource]
 script = ExtResource("4_ak1rv")
 id = "tree_1"
 name = "Tree 1"
+tooltip_header_align = 1
 id_counter = 40
 nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_k1nh3"), SubResource("Resource_wfhhu"), SubResource("Resource_k0kgc"), SubResource("Resource_3cysg")])
-attributes = {
-"new_attribute": SubResource("Resource_lrons"),
-"new_attribute_2": SubResource("Resource_5mdwv")
-}
 hierarchy_split_offset = -494
 prefabs_bar_visible = false

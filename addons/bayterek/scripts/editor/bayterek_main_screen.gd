@@ -24,9 +24,25 @@ func _ready() -> void:
 	size_flags_horizontal = SIZE_EXPAND_FILL
 	size_flags_vertical = SIZE_EXPAND_FILL
 
+
+## Called when this screen leaves the tree. This can happen during plugin
+## hot-reload or when the editor is torn down. We clear the initialized
+## flag and any cached editor references so a future init() can rebuild
+## everything cleanly, and so stale child screens (which may still have
+## signals wired) don't try to touch a dead screen.
+func _exit_tree() -> void:
+	initialized = false
+	_open_editors.clear()
+	tab_container = null
+	browser = null
+	node_editor = null
+	save_confirmation = null
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_VISIBILITY_CHANGED and visible:
 		call_deferred("_force_layout_refresh")
+
 
 func _force_layout_refresh() -> void:
 	if not is_inside_tree():
@@ -38,6 +54,7 @@ func _force_layout_refresh() -> void:
 		var vbox := browser.get_node_or_null("Root")
 		if vbox:
 			vbox.queue_sort()
+
 
 func init() -> void:
 	if initialized:
@@ -53,6 +70,7 @@ func init() -> void:
 	_force_layout_refresh()
 	call_deferred("_force_layout_refresh")
 	print("Bayterek: MainScreen ready.")
+
 
 func _build_ui() -> void:
 	if tab_container:
@@ -96,6 +114,7 @@ func _build_ui() -> void:
 	save_confirmation.custom_action.connect(_on_save_custom_action)
 	add_child(save_confirmation)
 
+
 # ============================================================
 # DESIGN CATEGORY CHANGE → REFRESH ALL OPEN EDITORS' PREFAB BARS
 # ============================================================
@@ -108,6 +127,7 @@ func _on_design_category_changed() -> void:
 		if not editor.prefabs_bar:
 			continue
 		editor.prefabs_bar.refresh_categories()
+
 
 # ============================================================
 # NODE EDITOR DIRTY → TAB TITLE
@@ -126,6 +146,7 @@ func _on_node_editor_dirty_changed(dirty: bool) -> void:
 		title = title + " (*)"
 	tab_container.set_tab_title(idx, title)
 
+
 # ============================================================
 # TAB SWITCHING
 # ============================================================
@@ -136,6 +157,7 @@ func switch_to_node_editor() -> void:
 	var idx: int = tab_container.get_tab_idx_from_control(node_editor)
 	if idx >= 0:
 		tab_container.current_tab = idx
+
 
 # ============================================================
 # TREE EDITOR MANAGEMENT
@@ -182,6 +204,7 @@ func open_tree(path: String) -> void:
 	_open_editors[path] = editor
 	tab_container.current_tab = idx
 
+
 func _on_tab_close_pressed(tab_index: int) -> void:
 	if tab_index <= 1:
 		# Browser (0) and Node Editor (1) tabs are not closeable.
@@ -201,6 +224,7 @@ func _on_tab_close_pressed(tab_index: int) -> void:
 		else:
 			editor.request_close()
 
+
 func _handle_node_editor_close(editor: BayterekNodeEditorScreen) -> void:
 	if not editor:
 		return
@@ -210,11 +234,13 @@ func _handle_node_editor_close(editor: BayterekNodeEditorScreen) -> void:
 	editor.save_now()
 	print("[Bayterek] Node Editor: autosaved current design on close.")
 
+
 func _on_save_confirmed() -> void:
 	var editor: BayterekEditor = save_confirmation.get_meta("editor")
 	if editor:
 		editor.save_tree()
 		editor.request_close()
+
 
 func _on_save_custom_action(action: String) -> void:
 	if action == "no_save":
@@ -222,6 +248,7 @@ func _on_save_custom_action(action: String) -> void:
 		if editor:
 			editor.request_close()
 		save_confirmation.hide()
+
 
 func _on_editor_closed(editor: BayterekEditor) -> void:
 	var path: String = ""
@@ -236,6 +263,7 @@ func _on_editor_closed(editor: BayterekEditor) -> void:
 	editor.queue_free()
 	tree_closed.emit(editor)
 
+
 func _on_editor_dirty_changed(editor: BayterekEditor, dirty: bool) -> void:
 	var idx: int = tab_container.get_tab_idx_from_control(editor)
 	if idx < 0:
@@ -247,6 +275,7 @@ func _on_editor_dirty_changed(editor: BayterekEditor, dirty: bool) -> void:
 	tab_container.set_tab_title(idx, title)
 
 	dirty_changed.emit(editor, dirty)
+
 
 # ============================================================
 # RENAME SUPPORT

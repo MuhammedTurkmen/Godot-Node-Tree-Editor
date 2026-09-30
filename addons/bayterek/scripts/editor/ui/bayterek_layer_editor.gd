@@ -2,11 +2,21 @@
 class_name BayterekLayerEditor
 extends VBoxContainer
 ## Middle-column layer editor.
+##
+## All mutations go through `_commit()`, which routes them through the
+## parent Node Editor's UndoRedo instance when available. When the
+## editor is used standalone (no `node_editor` reference), mutations
+## fall back to direct assignment without undo support.
 
 signal changed
 
 var design: BayterekNodeDesign = null
 var editor: BayterekEditor = null
+
+## Reference to the parent Node Editor screen (if any). Provides access
+## to the central UndoRedo instance for undoable actions. May be null
+## if the layer editor is used outside of a Node Editor context.
+var node_editor: BayterekNodeEditorScreen = null
 
 var _layer_tree: Tree
 var _layer_root: TreeItem
@@ -22,6 +32,23 @@ var _context_menu: PopupMenu
 
 var _selected_layer_index: int = -1
 var _updating_ui: bool = false
+
+## When true, the next call to `_rebuild_detail_form()` is skipped.
+## Set while an undo/redo is executing, to avoid rebuilding the UI in
+## the middle of Godot's UndoRedo bookkeeping.
+var _suspend_detail_rebuild: bool = false
+
+## Cache for the transform form so we don't rebuild it on every
+## notify_layer_modified() / undo / redo. Rebuilding the form destroys
+## and recreates its SpinBox children, and SpinBox uses an internal
+## Timer to debounce arrow-key value changes — destroying the SpinBox
+## while that Timer is running causes Godot to emit
+## "Unable to start the timer because it's not inside the scene tree".
+##
+## By keeping the form alive and only calling set_transform() to refresh
+## its values, we avoid that failure mode entirely.
+var _transform_form: BayterekLayerTransformForm = null
+var _transform_form_layer_id: String = ""
 
 # Button IDs on each layer row
 const BTN_VISIBILITY := 0
@@ -123,6 +150,17 @@ func _build_context_menu() -> void:
 	add_child(_context_menu)
 
 # ============================================================
+# UNDO-COMMIT HELPERS
+# ============================================================
+
+func _commit(action_name: String, do_callable: Callable, undo_callable: Callable) -> void:
+	if node_editor and node_editor.has_method("commit_undoable"):
+		var ok: bool = node_editor.commit_undoable(action_name, do_callable, undo_callable)
+		if ok:
+			return
+	do_callable.call()
+
+# ============================================================
 # PUBLIC
 # ============================================================
 
@@ -135,11 +173,24 @@ func set_design(d: BayterekNodeDesign) -> void:
 		design.layers_changed.connect(_on_design_layers_changed)
 
 	_selected_layer_index = -1
+	# Destroy the cached transform form when the design changes — it's
+	# tied to the old design's layer resources.
+	if _transform_form and is_instance_valid(_transform_form):
+		_transform_form.queue_free()
+	_transform_form = null
+	_transform_form_layer_id = ""
+
 	_rebuild_layer_list()
 	_rebuild_detail_form()
 
 func _on_design_layers_changed(_d: BayterekNodeDesign, _change: String) -> void:
-	pass
+	_rebuild_layer_list()
+	if _suspend_detail_rebuild:
+		return
+	# Use the refresh path so we don't destroy the transform form's
+	# SpinBox children — that would kill their internal debounce Timer
+	# and cause "not inside the scene tree" errors on the next edit.
+	_refresh_detail_form()
 
 # ============================================================
 # LAYER LIST
@@ -154,6 +205,10 @@ func _rebuild_layer_list() -> void:
 	if not design:
 		_update_buttons_state()
 		return
+
+	# Clamp selected index — undo/redo may have changed layer count.
+	if _selected_layer_index >= design.layers.size():
+		_selected_layer_index = design.layers.size() - 1
 
 	var theme := EditorInterface.get_editor_theme()
 
@@ -229,7 +284,9 @@ func _on_layer_selected() -> void:
 		return
 
 	_selected_layer_index = idx
-	_rebuild_detail_form()
+	# Refresh the existing detail form (including the cached transform
+	# form) instead of rebuilding it from scratch.
+	_refresh_detail_form()
 	_update_buttons_state()
 
 func _on_layer_button_clicked(item: TreeItem, _column: int, id: int, mouse_button_index: int) -> void:
@@ -253,15 +310,30 @@ func _on_layer_button_clicked(item: TreeItem, _column: int, id: int, mouse_butto
 		BTN_DELETE:
 			_delete_layer_by_index(idx)
 
+# ============================================================
+# UNDOABLE OPERATIONS
+# ============================================================
+
 func _toggle_layer_visibility(idx: int) -> void:
 	if not design:
 		return
 	var layer: BayterekLayer = design.get_layer(idx)
 	if not layer:
 		return
-	layer.visible = not layer.visible
-	design.notify_layer_modified()
-	_rebuild_layer_list()
+
+	var old_value: bool = layer.visible
+	var new_value: bool = not old_value
+
+	var do_cb := func():
+		layer.visible = new_value
+		if design:
+			design.notify_layer_modified()
+	var undo_cb := func():
+		layer.visible = old_value
+		if design:
+			design.notify_layer_modified()
+
+	_commit("Toggle Layer Visibility", do_cb, undo_cb)
 	changed.emit()
 
 func _move_layer_by_index(idx: int, direction: int) -> void:
@@ -273,13 +345,19 @@ func _move_layer_by_index(idx: int, direction: int) -> void:
 		return
 
 	var target: int = idx + direction
-	if not design.move_layer(idx, target):
-		return
+
+	var do_cb := func():
+		if design:
+			design.move_layer(idx, target)
+			design.notify_layer_modified()
+	var undo_cb := func():
+		if design:
+			design.move_layer(target, idx)
+			design.notify_layer_modified()
+
+	_commit("Move Layer", do_cb, undo_cb)
 
 	_selected_layer_index = target
-	design.notify_layer_modified()
-	_rebuild_layer_list()
-	_rebuild_detail_form()
 	changed.emit()
 
 func _delete_layer_by_index(idx: int) -> void:
@@ -288,25 +366,251 @@ func _delete_layer_by_index(idx: int) -> void:
 	if idx < 0 or idx >= design.get_layer_count():
 		return
 
-	design.remove_layer(idx)
+	var layer: BayterekLayer = design.get_layer(idx)
+	if not layer:
+		return
+	var captured_idx: int = idx
+
+	var do_cb := func():
+		if design:
+			design.remove_layer(captured_idx)
+			design.notify_layer_modified()
+	var undo_cb := func():
+		if not design:
+			return
+		var insert_at: int = clamp(captured_idx, 0, design.layers.size())
+		design.layers.insert(insert_at, layer)
+		design.notify_layer_modified()
+
+	_commit("Delete Layer", do_cb, undo_cb)
 
 	var new_idx: int = -1
 	var count: int = design.get_layer_count()
 	if count > 0:
 		new_idx = max(0, idx - 1)
-
 	_selected_layer_index = new_idx
-	_rebuild_layer_list()
-	_rebuild_detail_form()
 	changed.emit()
 
-func _on_layer_gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			var item: TreeItem = _layer_tree.get_item_at_position(event.position)
-			if item:
-				item.select(0)
-				_show_layer_context_menu(event.position)
+func _on_add_texture_pressed() -> void:
+	if not design:
+		return
+	if not design.can_add_layer():
+		BayterekToast.warning(_layer_tree, "Maximum 6 layers")
+		return
+
+	var layer := BayterekTextureLayer.new()
+	layer.layer_name = "Texture %d" % (design.get_layer_count() + 1)
+	layer.transform.size = design.get_computed_size()
+	var insert_at: int = design.get_layer_count()
+
+	var do_cb := func():
+		if design:
+			design.layers.insert(insert_at, layer)
+			design.notify_layer_modified()
+	var undo_cb := func():
+		if design:
+			design.layers.remove_at(insert_at)
+			design.notify_layer_modified()
+
+	_commit("Add Layer", do_cb, undo_cb)
+
+	_selected_layer_index = insert_at
+	changed.emit()
+
+func _duplicate_selected_layer() -> void:
+	if not design or _selected_layer_index < 0:
+		return
+	if not design.can_add_layer():
+		BayterekToast.warning(_layer_tree, "Maximum 6 layers")
+		return
+
+	var source: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not source:
+		return
+
+	var dup: BayterekLayer = source.duplicate_layer()
+	if not dup:
+		return
+	dup.layer_id = BayterekUUIDGenerator.v4()
+	dup.layer_name = "%s Copy" % source.layer_name
+
+	var insert_at: int = _selected_layer_index + 1
+
+	var do_cb := func():
+		if design:
+			design.layers.insert(insert_at, dup)
+			design.notify_layer_modified()
+	var undo_cb := func():
+		if design:
+			design.layers.remove_at(insert_at)
+			design.notify_layer_modified()
+
+	_commit("Duplicate Layer", do_cb, undo_cb)
+
+	_selected_layer_index = insert_at
+	changed.emit()
+
+func _rename_layer(idx: int, new_name: String) -> void:
+	if not design:
+		return
+	var layer: BayterekLayer = design.get_layer(idx)
+	if not layer:
+		return
+	var old_name: String = layer.layer_name
+	if old_name == new_name:
+		return
+
+	var do_cb := func():
+		layer.layer_name = new_name
+		if design:
+			design.notify_layer_modified()
+	var undo_cb := func():
+		layer.layer_name = old_name
+		if design:
+			design.notify_layer_modified()
+
+	_commit("Rename Layer", do_cb, undo_cb)
+	changed.emit()
+
+func _commit_name_change(idx: int, new_name: String, old_name: String) -> void:
+	if not design:
+		return
+	if idx < 0 or idx >= design.layers.size():
+		return
+	var layer: BayterekLayer = design.get_layer(idx)
+	if not layer:
+		return
+	var trimmed: String = new_name.strip_edges()
+	if trimmed.is_empty():
+		return
+	if trimmed == old_name:
+		return
+
+	var do_cb := func():
+		layer.layer_name = trimmed
+		if design:
+			design.notify_layer_modified()
+	var undo_cb := func():
+		layer.layer_name = old_name
+		if design:
+			design.notify_layer_modified()
+
+	_commit("Rename Layer", do_cb, undo_cb)
+	changed.emit()
+
+func _commit_nine_patch_margin(layer: BayterekTextureLayer, prop_name: String, old_value: int, new_value: int) -> void:
+	if not layer:
+		return
+	if old_value == new_value:
+		return
+
+	var do_cb := func():
+		layer.set(prop_name, new_value)
+		if design:
+			design.notify_layer_modified()
+	var undo_cb := func():
+		layer.set(prop_name, old_value)
+		if design:
+			design.notify_layer_modified()
+
+	_commit("Change Nine Patch Margin", do_cb, undo_cb)
+	changed.emit()
+
+func _toggle_bounds_for_selected() -> void:
+	if not design or _selected_layer_index < 0:
+		return
+	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not layer:
+		return
+
+	var old_bounds: String = design.bounds_layer_id
+	var new_bounds: String = "" if old_bounds == layer.layer_id else layer.layer_id
+
+	var do_cb := func():
+		if design:
+			design.bounds_layer_id = new_bounds
+			design.notify_layer_modified()
+	var undo_cb := func():
+		if design:
+			design.bounds_layer_id = old_bounds
+			design.notify_layer_modified()
+
+	_commit("Toggle Bounds Layer", do_cb, undo_cb)
+	changed.emit()
+
+func _toggle_absolute_for_selected() -> void:
+	if not design or _selected_layer_index < 0:
+		return
+	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not layer:
+		return
+
+	var old_value: bool = layer.absolute
+	var new_value: bool = not old_value
+
+	var do_cb := func():
+		layer.absolute = new_value
+		if design:
+			design.notify_layer_modified()
+	var undo_cb := func():
+		layer.absolute = old_value
+		if design:
+			design.notify_layer_modified()
+
+	_commit("Toggle Layer Absolute", do_cb, undo_cb)
+	changed.emit()
+
+# ============================================================
+# RENAME DIALOG
+# ============================================================
+
+func _rename_layer_dialog() -> void:
+	if not design or _selected_layer_index < 0:
+		return
+	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not layer:
+		return
+	var captured_idx: int = _selected_layer_index
+
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Rename Layer"
+	dialog.ok_button_text = "Rename"
+	dialog.cancel_button_text = "Cancel"
+	dialog.unresizable = true
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	dialog.add_child(vbox)
+
+	var name_row := HBoxContainer.new()
+	vbox.add_child(name_row)
+	var lbl := Label.new()
+	lbl.text = "Name:"
+	lbl.custom_minimum_size = Vector2(60, 0)
+	name_row.add_child(lbl)
+	var name_input := LineEdit.new()
+	name_input.text = layer.layer_name
+	name_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	name_row.add_child(name_input)
+
+	name_input.text_submitted.connect(func(_text: String) -> void:
+		dialog.get_ok_button().emit_signal("pressed")
+	)
+
+	dialog.confirmed.connect(func():
+		var new_name: String = name_input.text.strip_edges()
+		if not new_name.is_empty():
+			_rename_layer(captured_idx, new_name)
+			_rebuild_layer_list()
+			_rebuild_detail_form()
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func(): dialog.queue_free())
+
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(360, 140))
+	name_input.call_deferred("grab_focus")
+	name_input.call_deferred("select_all")
 
 # ============================================================
 # CONTEXT MENU
@@ -337,12 +641,10 @@ func _show_layer_context_menu(pos: Vector2) -> void:
 
 	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
 
-	# Bounds label + checkmark
 	var is_bounds: bool = (layer and design.bounds_layer_id == layer.layer_id)
 	_context_menu.set_item_text(bounds_i, "Remove from Bounds" if is_bounds else "Set as Bounds")
 	_context_menu.set_item_checked(bounds_i, is_bounds)
 
-	# Absolute label + checkmark
 	var is_abs: bool = (layer and layer.absolute)
 	_context_menu.set_item_text(abs_i, "Remove Absolute" if is_abs else "Set as Absolute")
 	_context_menu.set_item_checked(abs_i, is_abs)
@@ -360,125 +662,17 @@ func _on_context_menu_pressed(id: int) -> void:
 		CM_SET_BOUNDS: _toggle_bounds_for_selected()
 		CM_TOGGLE_ABSOLUTE: _toggle_absolute_for_selected()
 
-func _toggle_bounds_for_selected() -> void:
-	if not design or _selected_layer_index < 0:
-		return
-	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
-	if not layer:
-		return
-
-	if design.bounds_layer_id == layer.layer_id:
-		design.bounds_layer_id = ""
-	else:
-		design.bounds_layer_id = layer.layer_id
-
-	design.notify_layer_modified()
-	_rebuild_layer_list()
-	_rebuild_detail_form()
-	changed.emit()
-
-func _toggle_absolute_for_selected() -> void:
-	if not design or _selected_layer_index < 0:
-		return
-	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
-	if not layer:
-		return
-
-	layer.absolute = not layer.absolute
-
-	design.notify_layer_modified()
-	_rebuild_layer_list()
-	_rebuild_detail_form()
-	changed.emit()
-
-func _rename_layer_dialog() -> void:
-	if not design or _selected_layer_index < 0:
-		return
-	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
-	if not layer:
-		return
-
-	var dialog := ConfirmationDialog.new()
-	dialog.title = "Rename Layer"
-	dialog.ok_button_text = "Rename"
-	dialog.cancel_button_text = "Cancel"
-	dialog.unresizable = true
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	dialog.add_child(vbox)
-
-	var name_row := HBoxContainer.new()
-	vbox.add_child(name_row)
-	var lbl := Label.new()
-	lbl.text = "Name:"
-	lbl.custom_minimum_size = Vector2(60, 0)
-	name_row.add_child(lbl)
-	var name_input := LineEdit.new()
-	name_input.text = layer.layer_name
-	name_input.size_flags_horizontal = SIZE_EXPAND_FILL
-	name_row.add_child(name_input)
-
-	dialog.confirmed.connect(func():
-		var new_name: String = name_input.text.strip_edges()
-		if not new_name.is_empty():
-			layer.layer_name = new_name
-			design.notify_layer_modified()
-			_rebuild_layer_list()
-			_rebuild_detail_form()
-			changed.emit()
-		dialog.queue_free()
-	)
-	dialog.canceled.connect(func(): dialog.queue_free())
-
-	add_child(dialog)
-	dialog.popup_centered(Vector2i(360, 140))
-	name_input.call_deferred("grab_focus")
-	name_input.call_deferred("select_all")
-
-func _duplicate_selected_layer() -> void:
-	if not design or _selected_layer_index < 0:
-		return
-	if not design.can_add_layer():
-		BayterekToast.warning(_layer_tree, "Maximum 6 layers")
-		return
-
-	var source: BayterekLayer = design.get_layer(_selected_layer_index)
-	if not source:
-		return
-
-	var dup: BayterekLayer = source.duplicate_layer()
-	if not dup:
-		return
-	dup.layer_name = "%s Copy" % source.layer_name
-
-	var insert_at: int = _selected_layer_index + 1
-	design.layers.insert(insert_at, dup)
-	design.notify_layer_modified()
-
-	_selected_layer_index = insert_at
-	_rebuild_layer_list()
-	_rebuild_detail_form()
-	changed.emit()
+func _on_layer_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			var item: TreeItem = _layer_tree.get_item_at_position(event.position)
+			if item:
+				item.select(0)
+				_show_layer_context_menu(event.position)
 
 # ============================================================
-# ADD / DELETE / MOVE (toolbar handlers)
+# TOOLBAR HANDLERS
 # ============================================================
-
-func _on_add_texture_pressed() -> void:
-	if not design:
-		return
-	if not design.can_add_layer():
-		BayterekToast.warning(_layer_tree, "Maximum 6 layers")
-		return
-	var layer := BayterekTextureLayer.new()
-	layer.layer_name = "Texture %d" % (design.get_layer_count() + 1)
-	layer.transform.size = design.get_computed_size()
-	design.add_layer(layer)
-	_selected_layer_index = design.get_layer_count() - 1
-	_rebuild_layer_list()
-	_rebuild_detail_form()
-	changed.emit()
 
 func _on_delete_pressed() -> void:
 	if not design or _selected_layer_index < 0:
@@ -513,7 +707,19 @@ func _update_buttons_state() -> void:
 # DETAIL FORM
 # ============================================================
 
+## Full rebuild of the detail panel. Destroys all child widgets and
+## recreates them from scratch. Only call this for STRUCTURAL changes
+## (selection change, layer type change, etc.) — for value updates use
+## `_refresh_detail_form()` instead so the cached transform form and
+## its SpinBox children survive.
 func _rebuild_detail_form() -> void:
+	# Destroy the cached transform form so it's recreated below with
+	# the current layer's data.
+	if _transform_form and is_instance_valid(_transform_form):
+		_transform_form.queue_free()
+	_transform_form = null
+	_transform_form_layer_id = ""
+
 	for child in _detail_root.get_children():
 		_detail_root.remove_child(child)
 		child.queue_free()
@@ -531,6 +737,10 @@ func _rebuild_detail_form() -> void:
 	if not layer:
 		return
 
+	# Capture the current index at the time the form is built so the
+	# name field's commit callbacks always refer to the right layer.
+	var form_layer_index: int = _selected_layer_index
+
 	var name_row := HBoxContainer.new()
 	_detail_root.add_child(name_row)
 
@@ -542,7 +752,26 @@ func _rebuild_detail_form() -> void:
 	var name_input := LineEdit.new()
 	name_input.size_flags_horizontal = SIZE_EXPAND_FILL
 	name_input.text = layer.layer_name
+
+	var _focus_old_name: String = layer.layer_name
+
+	name_input.focus_entered.connect(func():
+		_focus_old_name = layer.layer_name
+	)
+
+	name_input.text_submitted.connect(func(_t: String):
+		_commit_name_change(form_layer_index, name_input.text, _focus_old_name)
+		name_input.release_focus()
+	)
+
+	name_input.focus_exited.connect(func():
+		if form_layer_index >= 0 and form_layer_index < design.layers.size():
+			_commit_name_change(form_layer_index, name_input.text, _focus_old_name)
+	)
+
 	name_input.text_changed.connect(func(t: String):
+		if not design:
+			return
 		layer.layer_name = t
 		design.notify_layer_modified()
 		_rebuild_layer_list()
@@ -550,7 +779,6 @@ func _rebuild_detail_form() -> void:
 	)
 	name_row.add_child(name_input)
 
-	# --- Bounds indicator ---
 	if design.bounds_layer_id == layer.layer_id:
 		var bounds_hint := Label.new()
 		bounds_hint.text = "◆ This layer defines the design's bounds (node hitbox size)"
@@ -558,7 +786,7 @@ func _rebuild_detail_form() -> void:
 		bounds_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_detail_root.add_child(bounds_hint)
 
-	# --- Visibility checkbox in detail panel ---
+	# --- Visibility checkbox ---
 	var vis_row := HBoxContainer.new()
 	vis_row.add_theme_constant_override("separation", 4)
 	_detail_root.add_child(vis_row)
@@ -566,7 +794,7 @@ func _rebuild_detail_form() -> void:
 	var vis_label := Label.new()
 	vis_label.text = "Visible"
 	vis_label.custom_minimum_size = Vector2(80, 0)
-	vis_label.tooltip_text = "Toggle this layer's visibility. Same as the eye button on the layer list."
+	vis_label.tooltip_text = "Toggle this layer's visibility."
 	vis_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	vis_row.add_child(vis_label)
 
@@ -574,14 +802,23 @@ func _rebuild_detail_form() -> void:
 	vis_check.text = "On"
 	vis_check.button_pressed = layer.visible
 	vis_check.toggled.connect(func(p: bool):
-		layer.visible = p
-		design.notify_layer_modified()
-		_rebuild_layer_list()
+		if not design:
+			return
+		var old_v: bool = not p
+		var new_v: bool = p
+		var do_cb := func():
+			layer.visible = new_v
+			if design:
+				design.notify_layer_modified()
+		var undo_cb := func():
+			layer.visible = old_v
+			if design:
+				design.notify_layer_modified()
+		_commit("Toggle Layer Visibility", do_cb, undo_cb)
 		changed.emit()
 	)
 	vis_row.add_child(vis_check)
 
-	# --- Export: visible ---
 	BayterekExportHelper.make_exportable(
 		vis_row,
 		"layers.%s.visible" % layer.layer_id,
@@ -589,7 +826,7 @@ func _rebuild_detail_form() -> void:
 		_on_export_changed
 	)
 
-	# --- Absolute (ignore node transform) ---
+	# --- Absolute ---
 	var abs_row := HBoxContainer.new()
 	abs_row.add_theme_constant_override("separation", 4)
 	_detail_root.add_child(abs_row)
@@ -597,7 +834,7 @@ func _rebuild_detail_form() -> void:
 	var abs_label := Label.new()
 	abs_label.text = "Absolute"
 	abs_label.custom_minimum_size = Vector2(80, 0)
-	abs_label.tooltip_text = "If ON, this layer ignores the node's rotation/skew. Useful for backgrounds or decorations that should stay upright."
+	abs_label.tooltip_text = "If ON, this layer ignores the node's rotation/skew."
 	abs_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	abs_row.add_child(abs_label)
 
@@ -605,9 +842,19 @@ func _rebuild_detail_form() -> void:
 	abs_check.text = "On"
 	abs_check.button_pressed = layer.absolute
 	abs_check.toggled.connect(func(p: bool):
-		layer.absolute = p
-		design.notify_layer_modified()
-		_rebuild_layer_list()
+		if not design:
+			return
+		var old_v: bool = not p
+		var new_v: bool = p
+		var do_cb := func():
+			layer.absolute = new_v
+			if design:
+				design.notify_layer_modified()
+		var undo_cb := func():
+			layer.absolute = old_v
+			if design:
+				design.notify_layer_modified()
+		_commit("Toggle Layer Absolute", do_cb, undo_cb)
 		changed.emit()
 	)
 	abs_row.add_child(abs_check)
@@ -619,7 +866,7 @@ func _rebuild_detail_form() -> void:
 		_on_export_changed
 	)
 
-	# --- Render Mode override ---
+	# --- Render Mode ---
 	var rmode_row := HBoxContainer.new()
 	rmode_row.add_theme_constant_override("separation", 4)
 	_detail_root.add_child(rmode_row)
@@ -644,8 +891,19 @@ func _rebuild_detail_form() -> void:
 		var new_mode_int = rmode_dropdown.get_item_id(idx)
 		if typeof(new_mode_int) != TYPE_INT:
 			return
-		layer.render_mode_override = new_mode_int as BayterekLayer.RenderModeOverride
-		design.notify_layer_modified()
+		if not design:
+			return
+		var old_mode = layer.render_mode_override
+		var new_mode = new_mode_int as BayterekLayer.RenderModeOverride
+		var do_cb := func():
+			layer.render_mode_override = new_mode
+			if design:
+				design.notify_layer_modified()
+		var undo_cb := func():
+			layer.render_mode_override = old_mode
+			if design:
+				design.notify_layer_modified()
+		_commit("Change Render Mode", do_cb, undo_cb)
 		changed.emit()
 	)
 	rmode_row.add_child(rmode_dropdown)
@@ -657,7 +915,7 @@ func _rebuild_detail_form() -> void:
 		_on_export_changed
 	)
 
-	# --- Texture Filter override ---
+	# --- Texture Filter ---
 	var tfilter_row := HBoxContainer.new()
 	tfilter_row.add_theme_constant_override("separation", 4)
 	_detail_root.add_child(tfilter_row)
@@ -665,7 +923,7 @@ func _rebuild_detail_form() -> void:
 	var tfilter_label := Label.new()
 	tfilter_label.text = "Texture Filter"
 	tfilter_label.custom_minimum_size = Vector2(80, 0)
-	tfilter_label.tooltip_text = "Inherit uses the design's filter. Override per layer for pixel-perfect textures."
+	tfilter_label.tooltip_text = "Inherit uses the design's filter."
 	tfilter_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	tfilter_row.add_child(tfilter_label)
 
@@ -682,8 +940,19 @@ func _rebuild_detail_form() -> void:
 		var new_filter_int = tfilter_dropdown.get_item_id(idx)
 		if typeof(new_filter_int) != TYPE_INT:
 			return
-		layer.texture_filter_override = new_filter_int as BayterekLayer.TextureFilterOverride
-		design.notify_layer_modified()
+		if not design:
+			return
+		var old_filter = layer.texture_filter_override
+		var new_filter = new_filter_int as BayterekLayer.TextureFilterOverride
+		var do_cb := func():
+			layer.texture_filter_override = new_filter
+			if design:
+				design.notify_layer_modified()
+		var undo_cb := func():
+			layer.texture_filter_override = old_filter
+			if design:
+				design.notify_layer_modified()
+		_commit("Change Texture Filter", do_cb, undo_cb)
 		changed.emit()
 	)
 	tfilter_row.add_child(tfilter_dropdown)
@@ -702,16 +971,76 @@ func _rebuild_detail_form() -> void:
 	transform_inner.add_theme_constant_override("separation", 6)
 	transform_fold.add_child(transform_inner)
 
-	var transform_form := BayterekLayerTransformForm.new()
-	transform_inner.add_child(transform_form)
-	transform_form.set_transform(layer.transform, design, layer.layer_id)
-	transform_form.changed.connect(func():
-		design.notify_layer_modified()
-		changed.emit()
+	# Reuse the cached transform form if it exists; only create it when
+	# it's missing. This is the key fix for the "Unable to start the
+	# timer" error: we never destroy and recreate the SpinBox children
+	# during a value refresh.
+	if not _transform_form or not is_instance_valid(_transform_form):
+		_transform_form = BayterekLayerTransformForm.new()
+		_transform_form.changed.connect(func():
+			if design:
+				design.notify_layer_modified()
+			changed.emit()
+		)
+		_transform_form_layer_id = ""
+		transform_inner.add_child(_transform_form)
+
+	_transform_form.set_transform(
+		layer.transform,
+		design,
+		layer.layer_id,
+		node_editor
 	)
+	_transform_form_layer_id = layer.layer_id
 
 	if layer is BayterekTextureLayer:
 		_build_texture_detail(layer)
+
+
+## Refreshes the detail panel's field values WITHOUT destroying and
+## recreating the widget tree.
+##
+## Use this whenever the selection changes or the design mutates but
+## the structure of the form stays the same (same layer type, same
+## fields). This is what we call from _on_layer_selected() and from
+## _on_design_layers_changed() to avoid the SpinBox timer issue.
+##
+## For structural changes (layer type changed, layer added/removed),
+## call _rebuild_detail_form() instead.
+func _refresh_detail_form() -> void:
+	if not _transform_form or not is_instance_valid(_transform_form):
+		_rebuild_detail_form()
+		return
+
+	if not design:
+		_rebuild_detail_form()
+		return
+
+	if _selected_layer_index < 0 or _selected_layer_index >= design.get_layer_count():
+		_rebuild_detail_form()
+		return
+
+	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not layer:
+		_rebuild_detail_form()
+		return
+
+	# If the layer's transform resource changed identity, or the layer
+	# id changed, we need a full rebuild to rewire all the export
+	# helpers (they hold references to the old layer's id).
+	if layer.layer_id != _transform_form_layer_id:
+		_rebuild_detail_form()
+		return
+
+	# Refresh just the transform form values in place. This does not
+	# destroy any SpinBox children, so their internal debounce Timers
+	# stay intact.
+	_transform_form.set_transform(
+		layer.transform,
+		design,
+		layer.layer_id,
+		node_editor
+	)
 
 func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	var icon_fold := _make_fold("Icon")
@@ -730,8 +1059,19 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	icon_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	icon_check.button_pressed = layer.icon_enabled
 	icon_check.toggled.connect(func(p: bool):
-		layer.icon_enabled = p
-		design.notify_layer_modified()
+		if not design:
+			return
+		var old_v = layer.icon_enabled
+		var new_v = p
+		var do_cb := func():
+			layer.icon_enabled = new_v
+			if design:
+				design.notify_layer_modified()
+		var undo_cb := func():
+			layer.icon_enabled = old_v
+			if design:
+				design.notify_layer_modified()
+		_commit("Toggle Icon Enabled", do_cb, undo_cb)
 		changed.emit()
 	)
 	icon_check_row.add_child(icon_check)
@@ -746,6 +1086,7 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	var icon_editor := BayterekLayerStateTextures.new()
 	icon_inner.add_child(icon_editor)
 	icon_editor.bind(layer)
+	icon_editor.bind_editor(node_editor)
 	icon_editor.bind_export(design, layer.layer_id, _on_export_changed)
 	icon_editor.changed.connect(func():
 		design.notify_layer_modified()
@@ -781,8 +1122,19 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		var mode_int = sm_dropdown.get_item_id(idx)
 		if typeof(mode_int) != TYPE_INT:
 			return
-		layer.stretch_mode = mode_int as BayterekTextureLayer.StretchMode
-		design.notify_layer_modified()
+		if not design:
+			return
+		var old_mode = layer.stretch_mode
+		var new_mode = mode_int as BayterekTextureLayer.StretchMode
+		var do_cb := func():
+			layer.stretch_mode = new_mode
+			if design:
+				design.notify_layer_modified()
+		var undo_cb := func():
+			layer.stretch_mode = old_mode
+			if design:
+				design.notify_layer_modified()
+		_commit("Change Stretch Mode", do_cb, undo_cb)
 		_rebuild_detail_form_deferred()
 		changed.emit()
 	)
@@ -822,7 +1174,7 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		var center_label := Label.new()
 		center_label.text = "Draw Center"
 		center_label.size_flags_horizontal = SIZE_EXPAND_FILL
-		center_label.tooltip_text = "If off, the middle region is left transparent (useful for frames/panels)."
+		center_label.tooltip_text = "If off, the middle region is left transparent."
 		center_label.mouse_filter = Control.MOUSE_FILTER_PASS
 		center_row.add_child(center_label)
 
@@ -830,8 +1182,19 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 		center_check.text = "On"
 		center_check.button_pressed = layer.nine_patch_draw_center
 		center_check.toggled.connect(func(p: bool):
-			layer.nine_patch_draw_center = p
-			design.notify_layer_modified()
+			if not design:
+				return
+			var old_v = layer.nine_patch_draw_center
+			var new_v = p
+			var do_cb := func():
+				layer.nine_patch_draw_center = new_v
+				if design:
+					design.notify_layer_modified()
+			var undo_cb := func():
+				layer.nine_patch_draw_center = old_v
+				if design:
+					design.notify_layer_modified()
+			_commit("Toggle Nine Patch Center", do_cb, undo_cb)
 			changed.emit()
 		)
 		center_row.add_child(center_check)
@@ -859,8 +1222,19 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	tint_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	tint_check.button_pressed = layer.tint_enabled
 	tint_check.toggled.connect(func(p: bool):
-		layer.tint_enabled = p
-		design.notify_layer_modified()
+		if not design:
+			return
+		var old_v = layer.tint_enabled
+		var new_v = p
+		var do_cb := func():
+			layer.tint_enabled = new_v
+			if design:
+				design.notify_layer_modified()
+		var undo_cb := func():
+			layer.tint_enabled = old_v
+			if design:
+				design.notify_layer_modified()
+		_commit("Toggle Tint Enabled", do_cb, undo_cb)
 		changed.emit()
 	)
 	tint_check_row.add_child(tint_check)
@@ -875,6 +1249,7 @@ func _build_texture_detail(layer: BayterekTextureLayer) -> void:
 	var tint_editor := BayterekLayerStateColors.new()
 	tint_inner.add_child(tint_editor)
 	tint_editor.bind(layer, "tint_configs")
+	tint_editor.bind_editor(node_editor)
 	tint_editor.bind_export(design, layer.layer_id, "tint_configs", _on_export_changed)
 	tint_editor.changed.connect(func():
 		design.notify_layer_modified()
@@ -904,9 +1279,26 @@ func _add_nine_patch_spin(parent: HBoxContainer, layer: BayterekTextureLayer, la
 	spin.step = 1
 	spin.rounded = true
 	spin.value = int(layer.get(prop_name))
+
+	var focus_old_value: int = int(layer.get(prop_name))
+
+	var line_edit: LineEdit = spin.get_line_edit()
+	if line_edit:
+		line_edit.focus_entered.connect(func():
+			focus_old_value = int(layer.get(prop_name))
+		)
+		line_edit.text_submitted.connect(func(_t: String):
+			_commit_nine_patch_margin(layer, prop_name, focus_old_value, int(spin.value))
+			line_edit.release_focus()
+		)
+		line_edit.focus_exited.connect(func():
+			_commit_nine_patch_margin(layer, prop_name, focus_old_value, int(spin.value))
+		)
+
 	spin.value_changed.connect(func(v: float):
 		layer.set(prop_name, int(v))
-		design.notify_layer_modified()
+		if design:
+			design.notify_layer_modified()
 		changed.emit()
 	)
 	parent.add_child(spin)

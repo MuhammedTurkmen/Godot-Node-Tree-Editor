@@ -2,6 +2,10 @@
 class_name BayterekLayerStateColors
 extends VBoxContainer
 ## 8-row state color editor.
+##
+## Every checkbox toggle and color pick are routed through the parent
+## Node Editor's UndoRedo instance so Ctrl+Z works on individual state
+## changes.
 
 signal changed
 
@@ -17,6 +21,7 @@ var _updating: bool = false
 var _rows: Dictionary = {}
 var _owner_layer: BayterekLayer = null
 var _config_key: String = ""
+var _node_editor: BayterekNodeEditorScreen = null
 
 var _ui_ready: bool = false
 var _context_menu: PopupMenu
@@ -66,11 +71,9 @@ func _build_context_menu() -> void:
 	add_child(_context_menu)
 
 # ============================================================
-# STATIC RESET (called by BayterekPlugin)
+# STATIC RESET
 # ============================================================
 
-## Clears the static copy/paste clipboard. Called on plugin enter/exit
-## so state doesn't leak between editor sessions.
 static func reset_copy_state() -> void:
 	_has_copied_color = false
 	_copied_color = Color.WHITE
@@ -85,11 +88,11 @@ func bind(layer: BayterekLayer, config_key: String) -> void:
 	if _ui_ready:
 		_refresh_from_data()
 
+## Provides access to the parent Node Editor for undoable operations.
+func bind_editor(node_editor: BayterekNodeEditorScreen) -> void:
+	_node_editor = node_editor
+
 ## Attaches export functionality to each state row.
-## `design` — the design the layer belongs to.
-## `layer_id` — the layer's UUID.
-## `sub_key` — "fill_configs" | "border_configs" | "tint_configs"
-## `on_changed` — callback when export state flips.
 func bind_export(design: BayterekNodeDesign, layer_id: String, sub_key: String, on_changed: Callable = Callable()) -> void:
 	_design = design
 
@@ -163,24 +166,85 @@ func _refresh_from_data() -> void:
 	_updating = false
 
 # ============================================================
+# UNDO-COMMIT HELPER
+# ============================================================
+
+func _commit(action_name: String, do_cb: Callable, undo_cb: Callable) -> void:
+	if _node_editor and _node_editor.has_method("commit_undoable"):
+		var ok: bool = _node_editor.commit_undoable(action_name, do_cb, undo_cb)
+		if ok:
+			return
+	do_cb.call()
+
+func _get_current_configs_snapshot() -> Dictionary:
+	if not _owner_layer:
+		return {}
+	var raw = _owner_layer.get(_config_key)
+	if raw is Dictionary:
+		return raw.duplicate(true)
+	return {}
+
+# ============================================================
 # HANDLERS
 # ============================================================
 
 func _on_check_toggled(pressed: bool, state: String) -> void:
 	if _updating or not _owner_layer:
 		return
-	_ensure_config(state)
-	_configs[state]["enabled"] = pressed
-	_push_configs_to_layer()
+
+	var old_configs: Dictionary = _get_current_configs_snapshot()
+	var new_configs: Dictionary = old_configs.duplicate(true)
+	_ensure_config_in(new_configs, state)
+	new_configs[state]["enabled"] = pressed
+
+	var layer_ref: BayterekLayer = _owner_layer
+	var config_key: String = _config_key
+
+	var do_cb := func():
+		layer_ref.set(config_key, new_configs.duplicate(true))
+		if layer_ref.has_method("notify_modified"):
+			layer_ref.notify_modified()
+	var undo_cb := func():
+		layer_ref.set(config_key, old_configs.duplicate(true))
+		if layer_ref.has_method("notify_modified"):
+			layer_ref.notify_modified()
+
+	_commit("Toggle Color State", do_cb, undo_cb)
 	changed.emit()
 
 func _on_color_changed(color: Color, state: String) -> void:
 	if _updating or not _owner_layer:
 		return
-	_ensure_config(state)
-	_configs[state]["color"] = color
-	_push_configs_to_layer()
+
+	var old_configs: Dictionary = _get_current_configs_snapshot()
+	var new_configs: Dictionary = old_configs.duplicate(true)
+	_ensure_config_in(new_configs, state)
+	new_configs[state]["color"] = color
+
+	var layer_ref: BayterekLayer = _owner_layer
+	var config_key: String = _config_key
+
+	var do_cb := func():
+		layer_ref.set(config_key, new_configs.duplicate(true))
+		if layer_ref.has_method("notify_modified"):
+			layer_ref.notify_modified()
+	var undo_cb := func():
+		layer_ref.set(config_key, old_configs.duplicate(true))
+		if layer_ref.has_method("notify_modified"):
+			layer_ref.notify_modified()
+
+	_commit("Change State Color", do_cb, undo_cb)
 	changed.emit()
+
+func _ensure_config_in(configs: Dictionary, state: String) -> void:
+	if not configs.has(state):
+		configs[state] = {"enabled": false, "color": Color.WHITE}
+	elif not configs[state] is Dictionary:
+		configs[state] = {"enabled": false, "color": Color.WHITE}
+
+# ============================================================
+# LEGACY HELPERS (kept for compatibility)
+# ============================================================
 
 func _ensure_config(state: String) -> void:
 	if not _configs.has(state):
@@ -236,14 +300,39 @@ func _paste_color(state: String) -> void:
 	if not _owner_layer or not _has_copied_color:
 		return
 
-	_ensure_config(state)
-	_configs[state]["color"] = _copied_color
+	var old_configs: Dictionary = _get_current_configs_snapshot()
+	var new_configs: Dictionary = old_configs.duplicate(true)
+	_ensure_config_in(new_configs, state)
+	new_configs[state]["color"] = _copied_color
 
-	_updating = true
-	var picker: ColorPickerButton = _rows[state].get("picker")
-	if picker:
-		picker.color = _copied_color
-	_updating = false
+	var layer_ref: BayterekLayer = _owner_layer
+	var config_key: String = _config_key
+	var pasted_color: Color = _copied_color
+	var captured_state: String = state
 
-	_push_configs_to_layer()
+	var do_cb := func():
+		layer_ref.set(config_key, new_configs.duplicate(true))
+		if layer_ref.has_method("notify_modified"):
+			layer_ref.notify_modified()
+		# Refresh the UI to show the new color.
+		if _rows.has(captured_state):
+			_updating = true
+			var picker: ColorPickerButton = _rows[captured_state].get("picker")
+			if picker:
+				picker.color = pasted_color
+			_updating = false
+	var undo_cb := func():
+		layer_ref.set(config_key, old_configs.duplicate(true))
+		if layer_ref.has_method("notify_modified"):
+			layer_ref.notify_modified()
+		if _rows.has(captured_state):
+			_updating = true
+			var picker: ColorPickerButton = _rows[captured_state].get("picker")
+			if picker:
+				var old_entry = old_configs.get(captured_state, {})
+				var old_color = old_entry.get("color", Color.WHITE) if old_entry is Dictionary else Color.WHITE
+				picker.color = old_color
+			_updating = false
+
+	_commit("Paste State Color", do_cb, undo_cb)
 	changed.emit()

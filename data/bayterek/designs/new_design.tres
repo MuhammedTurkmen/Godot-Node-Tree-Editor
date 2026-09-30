@@ -6,11 +6,11 @@
 [ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="2_a6nu6"]
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="3_3ujw7"]
 
-[sub_resource type="Resource" id="Resource_paddw"]
+[sub_resource type="Resource" id="Resource_3ujw7"]
 script = ExtResource("3_3ujw7")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_u1mso"]
+[sub_resource type="Resource" id="Resource_joamw"]
 script = ExtResource("2_a6nu6")
 icon_configs = {
 "normal": {
@@ -56,13 +56,12 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "53d8c69f-5115-4083-a7f6-d6d4adaecf4d"
-layer_name = "Texture 1"
-transform = SubResource("Resource_paddw")
-texture_filter_override = 2
+layer_id = "c64e3fe0-81ce-4894-895d-a0f6e8680266"
+layer_name = "Texture 2"
+transform = SubResource("Resource_3ujw7")
 
 [resource]
 script = ExtResource("2_8idq7")
 id = "new_design"
 name = "Eski"
-layers = Array[ExtResource("1_rlmi4")]([SubResource("Resource_u1mso")])
+layers = Array[ExtResource("1_rlmi4")]([SubResource("Resource_joamw")])

@@ -2,6 +2,11 @@
 class_name BayterekLayerTransformForm
 extends VBoxContainer
 ## Transform editor for a single BayterekLayerTransform.
+##
+## All transform field changes are routed through the parent Node Editor
+## screen's UndoRedo instance (when one is available), so Ctrl+Z works
+## on every field. The form captures old + new values on each change and
+## commits them as a single action named after the field.
 
 signal changed
 
@@ -10,6 +15,7 @@ const PIVOT_GRID_SIZE := 3
 var _transform: BayterekLayerTransform = null
 var _design: BayterekNodeDesign = null
 var _layer_id: String = ""
+var _node_editor: BayterekNodeEditorScreen = null
 var _updating: bool = false
 
 # --- Position ---
@@ -274,9 +280,10 @@ func _make_pair_row_container(
 
 	return {"row": row, "a": spin_a, "b": spin_b}
 
-func set_transform(t: BayterekLayerTransform, design: BayterekNodeDesign = null, layer_id: String = "") -> void:
+func set_transform(t: BayterekLayerTransform, design: BayterekNodeDesign = null, layer_id: String = "", node_editor: BayterekNodeEditorScreen = null) -> void:
 	_transform = t
 	_design = design
+	_node_editor = node_editor
 
 	if _layer_id != layer_id:
 		_exports_bound = false
@@ -367,45 +374,138 @@ func _refresh_from_data() -> void:
 
 	_updating = false
 
+# ============================================================
+# UNDO-COMMIT HELPER
+# ============================================================
+
+## Commits a transform change through the Node Editor's UndoRedo, or
+## falls back to executing directly if no editor is attached.
+##
+## The captured closure mutates `_transform` directly, which is safe
+## because the transform resource is shared between the design and the
+## node view. Undo replays the same closure with the old values.
+func _commit_transform(action_name: String, do_cb: Callable, undo_cb: Callable) -> void:
+	if _node_editor and _node_editor.has_method("commit_undoable"):
+		var ok: bool = _node_editor.commit_undoable(action_name, do_cb, undo_cb)
+		if ok:
+			return
+	do_cb.call()
+
+# ============================================================
+# HANDLERS
+# ============================================================
+
 func _on_pos_changed(_v: float) -> void:
 	if _updating or not _transform: return
-	_transform.position = Vector2(_pos_x.value, _pos_y.value)
+	var old_pos: Vector2 = _transform.position
+	var new_pos := Vector2(_pos_x.value, _pos_y.value)
+	if old_pos == new_pos:
+		return
+
+	var do_cb := func():
+		_transform.position = new_pos
+	var undo_cb := func():
+		_transform.position = old_pos
+
+	_commit_transform("Change Layer Position", do_cb, undo_cb)
 	changed.emit()
 
 func _on_size_changed(_v: float) -> void:
 	if _updating or not _transform: return
-	_transform.size = Vector2(_size_x.value, _size_y.value)
+	var old_size: Vector2 = _transform.size
+	var new_size := Vector2(_size_x.value, _size_y.value)
+	if old_size == new_size:
+		return
+
+	var do_cb := func():
+		_transform.size = new_size
+	var undo_cb := func():
+		_transform.size = old_size
+
+	_commit_transform("Change Layer Size", do_cb, undo_cb)
 	changed.emit()
 
 func _on_scale_changed(_v: float) -> void:
 	if _updating or not _transform: return
+	var old_scale: Vector2 = _transform.scale
 	var new_scale := Vector2(_scale_x.value, _scale_y.value)
 	if new_scale.x <= 0.0:
 		new_scale.x = 0.01
 	if new_scale.y <= 0.0:
 		new_scale.y = 0.01
-	_transform.scale = new_scale
+	if old_scale == new_scale:
+		return
+
+	var do_cb := func():
+		_transform.scale = new_scale
+	var undo_cb := func():
+		_transform.scale = old_scale
+
+	_commit_transform("Change Layer Scale", do_cb, undo_cb)
 	changed.emit()
 
 func _on_flip_toggled(_pressed: bool) -> void:
 	if _updating or not _transform: return
-	_transform.flip_x = _flip_x_check.button_pressed
-	_transform.flip_y = _flip_y_check.button_pressed
+	var old_x: bool = _transform.flip_x
+	var old_y: bool = _transform.flip_y
+	var new_x: bool = _flip_x_check.button_pressed
+	var new_y: bool = _flip_y_check.button_pressed
+	if old_x == new_x and old_y == new_y:
+		return
+
+	var do_cb := func():
+		_transform.flip_x = new_x
+		_transform.flip_y = new_y
+	var undo_cb := func():
+		_transform.flip_x = old_x
+		_transform.flip_y = old_y
+
+	_commit_transform("Toggle Layer Flip", do_cb, undo_cb)
 	changed.emit()
 
 func _on_rotation_changed(v: float) -> void:
 	if _updating or not _transform: return
-	_transform.rotation = v
+	var old_v: float = _transform.rotation
+	if old_v == v:
+		return
+
+	var do_cb := func():
+		_transform.rotation = v
+	var undo_cb := func():
+		_transform.rotation = old_v
+
+	_commit_transform("Change Layer Rotation", do_cb, undo_cb)
 	changed.emit()
 
 func _on_skew_changed(_v: float) -> void:
 	if _updating or not _transform: return
-	_transform.skew = Vector2(_skew_x.value, _skew_y.value)
+	var old_skew: Vector2 = _transform.skew
+	var new_skew := Vector2(_skew_x.value, _skew_y.value)
+	if old_skew == new_skew:
+		return
+
+	var do_cb := func():
+		_transform.skew = new_skew
+	var undo_cb := func():
+		_transform.skew = old_skew
+
+	_commit_transform("Change Layer Skew", do_cb, undo_cb)
 	changed.emit()
 
 func _on_pivot_preset_pressed(index: int) -> void:
 	if _updating or not _transform: return
-	_transform.pivot_mode = index as BayterekLayerTransform.PivotMode
+	var old_mode = _transform.pivot_mode
+	var new_mode = index as BayterekLayerTransform.PivotMode
+	if old_mode == new_mode:
+		return
+
+	var do_cb := func():
+		_transform.pivot_mode = new_mode
+	var undo_cb := func():
+		_transform.pivot_mode = old_mode
+
+	_commit_transform("Change Layer Pivot", do_cb, undo_cb)
+
 	var custom_visible: bool = (index == BayterekLayerTransform.PivotMode.CUSTOM)
 	_pivot_custom_x.visible = custom_visible
 	_pivot_custom_y.visible = custom_visible
@@ -413,7 +513,18 @@ func _on_pivot_preset_pressed(index: int) -> void:
 
 func _on_pivot_custom_pressed() -> void:
 	if _updating or not _transform: return
-	_transform.pivot_mode = BayterekLayerTransform.PivotMode.CUSTOM
+	var old_mode = _transform.pivot_mode
+	var new_mode = BayterekLayerTransform.PivotMode.CUSTOM
+	if old_mode == new_mode:
+		return
+
+	var do_cb := func():
+		_transform.pivot_mode = new_mode
+	var undo_cb := func():
+		_transform.pivot_mode = old_mode
+
+	_commit_transform("Change Layer Pivot", do_cb, undo_cb)
+
 	_pivot_custom_x.visible = true
 	_pivot_custom_y.visible = true
 	_pivot_custom_x.set_value_no_signal(_transform.pivot.x)
@@ -422,12 +533,31 @@ func _on_pivot_custom_pressed() -> void:
 
 func _on_custom_pivot_changed(_v: float) -> void:
 	if _updating or not _transform: return
-	_transform.pivot = Vector2(_pivot_custom_x.value, _pivot_custom_y.value)
+	var old_pivot: Vector2 = _transform.pivot
+	var new_pivot := Vector2(_pivot_custom_x.value, _pivot_custom_y.value)
+	if old_pivot == new_pivot:
+		return
+
+	var do_cb := func():
+		_transform.pivot = new_pivot
+	var undo_cb := func():
+		_transform.pivot = old_pivot
+
+	_commit_transform("Change Layer Pivot", do_cb, undo_cb)
 	changed.emit()
 
 func _on_scale_from_pivot_toggled(pressed: bool) -> void:
 	if _updating or not _transform: return
-	_transform.scale_from_pivot = pressed
+	var old_v: bool = _transform.scale_from_pivot
+	if old_v == pressed:
+		return
+
+	var do_cb := func():
+		_transform.scale_from_pivot = pressed
+	var undo_cb := func():
+		_transform.scale_from_pivot = old_v
+
+	_commit_transform("Toggle Scale From Pivot", do_cb, undo_cb)
 	changed.emit()
 
 func _on_export_changed(_field_path: String) -> void:
