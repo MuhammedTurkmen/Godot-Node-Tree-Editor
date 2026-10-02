@@ -42,6 +42,18 @@ signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 	"easing": "smooth",
 }
 
+# ============================================================
+# WIGGLE CONFIG (Aşama 6)
+# ============================================================
+## Master switch for wiggle animations on connections.
+##
+## When false, NO connection wiggles regardless of its per-line setting.
+## When true, each line's individual `wiggle_enabled` flag decides.
+##
+## The Tree Settings tab exposes this as a checkbox and persists it on
+## the tree resource (`tree.wiggle_enabled`).
+@export var wiggle_enabled: bool = false
+
 var main_container: Control
 var background_container: Control
 var group_frames_container: Control
@@ -86,6 +98,8 @@ func load_tree(tree_data: BayterekTree) -> void:
 
 	# Pull persisted UI preferences from the tree resource.
 	hover_animations_enabled = tree_data.hover_animations_enabled
+	# Aşama 6: master wiggle switch (global toggle from Settings).
+	wiggle_enabled = tree_data.wiggle_enabled
 
 	if _tree_data.tree_state and _tree_data.tree_state.version != _tree_data.version:
 		tree_version_mismatch.emit(_tree_data, _tree_data.tree_state.version)

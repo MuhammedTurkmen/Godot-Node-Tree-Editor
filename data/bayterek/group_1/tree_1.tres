@@ -60,31 +60,37 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "29037ade-42f5-47cd-92de-4527a355fb1f"
+layer_id = "8af79637-d4d1-484b-aa8c-e3ea20f6de6f"
 layer_name = "Texture 2"
 transform = SubResource("Resource_e1v5k")
 
-[sub_resource type="Resource" id="Resource_qlprm"]
+[sub_resource type="Resource" id="Resource_royti"]
 script = ExtResource("8_royti")
+thickness = 5.0
+wiggle_enabled = true
+wiggle_base_amplitude = 5.0
+wiggle_frequency = 8.0
+wiggle_pattern = 3
+wiggle_active_boost = 3.0
 
-[sub_resource type="Resource" id="Resource_k1nh3"]
+[sub_resource type="Resource" id="Resource_qlprm"]
 script = ExtResource("1_immpc")
 is_root = true
-id = 35
-name = "New Design"
+id = 65
+name = "Eski"
 design_id = "new_design"
-position = Vector2(-529.5293, 240.73975)
+position = Vector2(96, 0)
 line_data = {
-36: SubResource("Resource_qlprm")
+66: SubResource("Resource_royti")
 }
-out_nodes = Array[int]([36])
+out_nodes = Array[int]([66])
 layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_x1plc")])
 
-[sub_resource type="Resource" id="Resource_royti"]
+[sub_resource type="Resource" id="Resource_6p5mu"]
 script = ExtResource("7_6p5mu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_6p5mu"]
+[sub_resource type="Resource" id="Resource_5lgyx"]
 script = ExtResource("6_qlprm")
 icon_configs = {
 "normal": {
@@ -130,101 +136,47 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "efd7d022-7ec6-471f-8f1d-2073098cb7d4"
+layer_id = "21883c30-e8a9-48bb-8e7d-786acee2e4cf"
 layer_name = "Texture 2"
-transform = SubResource("Resource_royti")
+transform = SubResource("Resource_6p5mu")
 
 [sub_resource type="Resource" id="Resource_j5a67"]
 script = ExtResource("8_royti")
+thickness = 5.0
+wiggle_enabled = true
+wiggle_base_amplitude = 5.0
+wiggle_frequency = 8.0
+wiggle_pattern = 3
+wiggle_active_boost = 3.0
 
 [sub_resource type="Resource" id="Resource_wfhhu"]
-script = ExtResource("1_immpc")
-id = 36
-name = "New Design"
-design_id = "new_design"
-position = Vector2(-304, -122)
-line_data = {
-37: SubResource("Resource_j5a67")
-}
-out_nodes = Array[int]([37])
-in_nodes = Array[int]([35])
-layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_6p5mu")])
-
-[sub_resource type="Resource" id="Resource_5lgyx"]
-script = ExtResource("7_6p5mu")
-size = Vector2(100, 100)
+script = ExtResource("8_royti")
+thickness = 5.0
+wiggle_enabled = true
+wiggle_base_amplitude = 5.0
+wiggle_frequency = 8.0
+wiggle_pattern = 3
+wiggle_active_boost = 3.0
 
 [sub_resource type="Resource" id="Resource_nrko7"]
-script = ExtResource("6_qlprm")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("5_x1plc")
-}
-}
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(1, 0.8784314, 0.4, 1),
-"enabled": false
-},
-"normal": {
-"color": Color(0.49803922, 0.72156864, 1, 1),
-"enabled": false
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-layer_id = "0f3935db-2ecb-46bd-a6a9-66e8472241e5"
-layer_name = "Texture 2"
-transform = SubResource("Resource_5lgyx")
-
-[sub_resource type="Resource" id="Resource_l2tvo"]
-script = ExtResource("8_royti")
-
-[sub_resource type="Resource" id="Resource_k0kgc"]
 script = ExtResource("1_immpc")
-id = 37
-name = "New Design"
+id = 66
+name = "Eski"
 design_id = "new_design"
-position = Vector2(-160, -432)
+position = Vector2(320, -208)
 line_data = {
-38: SubResource("Resource_l2tvo")
+67: SubResource("Resource_j5a67"),
+68: SubResource("Resource_wfhhu")
 }
-out_nodes = Array[int]([38])
-in_nodes = Array[int]([36])
-layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_nrko7")])
+out_nodes = Array[int]([67, 68])
+in_nodes = Array[int]([65])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_5lgyx")])
 
 [sub_resource type="Resource" id="Resource_53451"]
 script = ExtResource("7_6p5mu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_x2q8f"]
+[sub_resource type="Resource" id="Resource_l2tvo"]
 script = ExtResource("6_qlprm")
 icon_configs = {
 "normal": {
@@ -270,26 +222,318 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "9b2d94e1-e640-4620-8027-a6c6b22b6272"
+layer_id = "31a6c54a-0fea-46e1-999c-f9e049d1f2e5"
 layer_name = "Texture 2"
 transform = SubResource("Resource_53451")
 
-[sub_resource type="Resource" id="Resource_3cysg"]
+[sub_resource type="Resource" id="Resource_k0kgc"]
 script = ExtResource("1_immpc")
-id = 38
-name = "New Design"
+id = 67
+name = "Eski"
 design_id = "new_design"
-position = Vector2(-208, -784)
-in_nodes = Array[int]([37])
-layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_x2q8f")])
+position = Vector2(128, -464)
+in_nodes = Array[int]([66])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_l2tvo")])
+
+[sub_resource type="Resource" id="Resource_x2q8f"]
+script = ExtResource("7_6p5mu")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_tmiro"]
+script = ExtResource("6_qlprm")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("5_x1plc")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "27923c7f-f425-4416-a183-de1a593b222c"
+layer_name = "Texture 2"
+transform = SubResource("Resource_x2q8f")
+
+[sub_resource type="Resource" id="Resource_3cysg"]
+script = ExtResource("8_royti")
+thickness = 5.0
+wiggle_enabled = true
+wiggle_base_amplitude = 5.0
+wiggle_frequency = 8.0
+wiggle_pattern = 3
+wiggle_active_boost = 3.0
+
+[sub_resource type="Resource" id="Resource_mklcx"]
+script = ExtResource("8_royti")
+thickness = 5.0
+wiggle_enabled = true
+wiggle_base_amplitude = 5.0
+wiggle_frequency = 8.0
+wiggle_pattern = 3
+wiggle_active_boost = 3.0
+
+[sub_resource type="Resource" id="Resource_safsq"]
+script = ExtResource("8_royti")
+thickness = 5.0
+wiggle_enabled = true
+wiggle_base_amplitude = 5.0
+wiggle_frequency = 8.0
+wiggle_pattern = 3
+wiggle_active_boost = 3.0
+
+[sub_resource type="Resource" id="Resource_ss5fq"]
+script = ExtResource("1_immpc")
+id = 68
+name = "Eski"
+design_id = "new_design"
+position = Vector2(448, -480)
+line_data = {
+69: SubResource("Resource_3cysg"),
+70: SubResource("Resource_mklcx"),
+71: SubResource("Resource_safsq")
+}
+out_nodes = Array[int]([69, 70, 71])
+in_nodes = Array[int]([66])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_tmiro")])
+
+[sub_resource type="Resource" id="Resource_botrw"]
+script = ExtResource("7_6p5mu")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_67hed"]
+script = ExtResource("6_qlprm")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("5_x1plc")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "e886ef83-5640-413a-8cff-78d0ada29fd6"
+layer_name = "Texture 2"
+transform = SubResource("Resource_botrw")
+
+[sub_resource type="Resource" id="Resource_vn7yg"]
+script = ExtResource("1_immpc")
+id = 69
+name = "Eski"
+design_id = "new_design"
+position = Vector2(189.42871, -667.1428)
+in_nodes = Array[int]([68])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_67hed")])
+
+[sub_resource type="Resource" id="Resource_bjop0"]
+script = ExtResource("7_6p5mu")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_pvlmy"]
+script = ExtResource("6_qlprm")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("5_x1plc")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "f6d3a9be-3e10-48cd-8c21-b03f91687dcf"
+layer_name = "Texture 2"
+transform = SubResource("Resource_bjop0")
+
+[sub_resource type="Resource" id="Resource_bxwvi"]
+script = ExtResource("1_immpc")
+id = 70
+name = "Eski"
+design_id = "new_design"
+position = Vector2(452.28564, -701.42834)
+in_nodes = Array[int]([68])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_pvlmy")])
+
+[sub_resource type="Resource" id="Resource_p8dnb"]
+script = ExtResource("7_6p5mu")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_451aj"]
+script = ExtResource("6_qlprm")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("5_x1plc")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "bcc59d0e-9e1c-4fcf-a18f-af5bd1f8f243"
+layer_name = "Texture 2"
+transform = SubResource("Resource_p8dnb")
+
+[sub_resource type="Resource" id="Resource_uf3jb"]
+script = ExtResource("1_immpc")
+id = 71
+name = "Eski"
+design_id = "new_design"
+position = Vector2(720, -528)
+in_nodes = Array[int]([68])
+layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_451aj")])
 
 [resource]
 script = ExtResource("4_ak1rv")
 id = "tree_1"
 name = "Tree 1"
-hover_animations_enabled = false
 tooltip_header_align = 1
-id_counter = 40
-nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_k1nh3"), SubResource("Resource_wfhhu"), SubResource("Resource_k0kgc"), SubResource("Resource_3cysg")])
-hierarchy_split_offset = -494
+id_counter = 71
+nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_qlprm"), SubResource("Resource_nrko7"), SubResource("Resource_k0kgc"), SubResource("Resource_ss5fq"), SubResource("Resource_vn7yg"), SubResource("Resource_bxwvi"), SubResource("Resource_uf3jb")])
+hierarchy_split_offset = -401
 prefabs_bar_visible = false
+default_line_thickness = 5.0
+default_start_offset = 0.0
+default_end_offset = 0.0
+wiggle_enabled = true
+wiggle_base_amplitude = 5.0
+wiggle_frequency = 8.0
+wiggle_pattern = 3
+wiggle_active_boost = 3.0

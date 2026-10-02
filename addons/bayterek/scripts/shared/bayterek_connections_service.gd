@@ -41,6 +41,10 @@ func create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButto
 	to_data.in_nodes.append(from_data.id)
 
 	var line_data := BayterekLineData.new()
+
+	if _tree_data:
+		_tree_data.apply_connection_defaults(line_data)
+
 	from_data.line_data[to_data.id] = line_data
 
 	var line := _create_line_from_data(from_data.id, to_data.id)
@@ -54,9 +58,11 @@ func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
 
 	line.width = 4.0
 	line.default_color = Color(0.7, 0.7, 0.7, 0.9)
-	line.texture_mode = BayterekLine2D.TextureMode.TILE
+	line.smooth_antialiasing = true
+	line.texture_mode = BayterekLine2D.TextureMode.NONE
 	line.round_joints = true
-	line.round_caps = true
+	line.cap_start = BayterekLine2D.CapStyle.BUTT
+	line.cap_end = BayterekLine2D.CapStyle.BUTT
 
 	var from_node: BayterekNodeButton = _tree_view.nodes_service.get_node(from_id)
 	if from_node and from_node.node_data:
@@ -64,9 +70,13 @@ func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
 			line.line_data = from_node.node_data.line_data[to_id]
 		else:
 			line.line_data = BayterekLineData.new()
+			if _tree_data:
+				_tree_data.apply_connection_defaults(line.line_data)
 			from_node.node_data.line_data[to_id] = line.line_data
 	else:
 		line.line_data = BayterekLineData.new()
+		if _tree_data:
+			_tree_data.apply_connection_defaults(line.line_data)
 
 	_tree_view.lines_container.add_child(line)
 	_lines[_key(from_id, to_id)] = line
@@ -157,9 +167,33 @@ func on_node_allocation_changed(node: BayterekNodeButton) -> void:
 
 	for to_id in node.node_data.out_nodes:
 		_refresh_line_state(node.id, to_id)
+		var line_out: BayterekConnection = get_line(node.id, to_id)
+		if line_out:
+			_update_wiggle_intensity(line_out)
 
 	for from_id in node.node_data.in_nodes:
 		_refresh_line_state(from_id, node.id)
+		var line_in: BayterekConnection = get_line(from_id, node.id)
+		if line_in:
+			_update_wiggle_intensity(line_in)
+
+
+func on_node_visual_offset_changed(node: BayterekNodeButton) -> void:
+	if not is_instance_valid(node) or not node.node_data:
+		return
+
+	for to_id in node.node_data.out_nodes:
+		var line: BayterekConnection = get_line(node.id, to_id)
+		if line:
+			_update_wiggle_intensity(line)
+			_update_line_points(line)
+
+	for from_id in node.node_data.in_nodes:
+		var line: BayterekConnection = get_line(from_id, node.id)
+		if line:
+			_update_wiggle_intensity(line)
+			_update_line_points(line)
+
 
 func _refresh_line_state(from_id: int, to_id: int) -> void:
 	var line: BayterekConnection = get_line(from_id, to_id)
@@ -190,10 +224,108 @@ func _refresh_line_state(from_id: int, to_id: int) -> void:
 
 	line.texture = texture
 
+	if _tree_data.state_color_enabled:
+		var is_alloc: bool = to_node.is_allocatable
+		if to_active:
+			line.default_color = _tree_data.default_line_color
+		elif is_alloc:
+			line.default_color = _tree_data.line_alloc_color
+		else:
+			line.default_color = _tree_data.line_non_alloc_color
+	else:
+		var data: BayterekLineData = line.line_data
+		if data:
+			line.default_color = data.color
+		else:
+			line.default_color = _tree_data.default_line_color
+
 	if not _tree_data.revealed and not from_active and not to_active:
 		line.visible = false
 	else:
 		line.visible = true
+
+# ============================================================
+# WIGGLE INTENSITY (SPEED-BASED)
+# ============================================================
+
+## Computes the wiggle intensity for a line based on how fast its
+## endpoint nodes are currently MOVING — not on their position.
+##
+## This is the key difference from the earlier versions: instead of
+## looking at `current_visual_distance` (the node's offset from rest),
+## we look at `current_visual_speed` (how fast that offset is changing).
+##
+## Behavior:
+##   - Node lifting fast      → speed high → wiggle full speed
+##   - Node settled at rest   → speed ~0   → wiggle fades out
+##   - Node descending fast   → speed high → wiggle full speed
+##   - Node fully stopped     → speed 0    → wiggle stops completely
+##
+## Because both endpoints are checked, hovering either end of a
+## connection will wiggle the line — but only WHILE that end is
+## actually moving. If the mouse stays on a node after the hover
+## animation finishes, the wiggle fades out naturally.
+##
+## The `wiggle_use_hover_intensity` flag controls whether the intensity
+## scales proportionally with speed (true) or is just an on/off switch
+## based on whether the node is moving at all (false).
+func _update_wiggle_intensity(line: BayterekConnection) -> void:
+	if not is_instance_valid(line):
+		return
+
+	var data: BayterekLineData = line.line_data
+	if not data or not data.wiggle_enabled:
+		line.set_wiggle_intensity(0.0, false)
+		return
+
+	# Master switch — tree-level wiggle must be on.
+	if _tree_data and not _tree_data.wiggle_enabled:
+		line.set_wiggle_intensity(0.0, false)
+		return
+
+	# Reference speed: what counts as "fast movement".
+	#
+	# The default hover-lift animation goes from 0 to ~8px over ~0.45s.
+	# At 60 FPS that's roughly 8 / (0.45 * 60) ≈ 0.30 px/frame at peak.
+	# We use this as the "full intensity" reference so a normal hover
+	# reaches intensity 1.0.
+	const REFERENCE_SPEED := 0.30
+
+	# Get both endpoint nodes.
+	var from_node: BayterekNodeButton = _tree_view.nodes_service.get_node(line.from_id)
+	var to_node: BayterekNodeButton = _tree_view.nodes_service.get_node(line.to_id)
+
+	var from_speed: float = 0.0
+	var to_speed: float = 0.0
+
+	if from_node and is_instance_valid(from_node):
+		from_speed = from_node.current_visual_speed
+	if to_node and is_instance_valid(to_node):
+		to_speed = to_node.current_visual_speed
+
+	# Line wiggles if EITHER endpoint is currently MOVING.
+	var peak_speed: float = maxf(from_speed, to_speed)
+
+	var raw_intensity: float = 0.0
+	if data.wiggle_use_hover_intensity:
+		# Proportional to node movement speed.
+		raw_intensity = peak_speed / REFERENCE_SPEED
+	else:
+		# On/off: any movement above the idle threshold triggers
+		# full intensity.
+		raw_intensity = 1.0 if peak_speed > 0.05 else 0.0
+
+	# Clamp to [0, 2].
+	raw_intensity = clampf(raw_intensity, 0.0, 2.0)
+
+	# Active boost is applied when EITHER endpoint is allocated/preallocated.
+	var any_active: bool = false
+	if from_node and (from_node.allocated or from_node.preallocated):
+		any_active = true
+	if to_node and (to_node.allocated or to_node.preallocated):
+		any_active = true
+
+	line.set_wiggle_intensity(raw_intensity, any_active)
 
 # ============================================================
 # PRIVATE — shape calculation
@@ -208,8 +340,20 @@ func _update_line_points(line: BayterekConnection) -> void:
 	if not from_node or not to_node:
 		return
 
-	var from_center: Vector2 = from_node.position + (from_node.size * 0.5)
-	var to_center: Vector2 = to_node.position + (to_node.size * 0.5)
+	var follow: bool = true
+	if _tree_data:
+		follow = _tree_data.wiggle_follow_node_animation
+
+	var from_visual_offset: Vector2 = Vector2.ZERO
+	if follow and from_node.has_method("get_visual_offset"):
+		from_visual_offset = from_node.get_visual_offset()
+
+	var to_visual_offset: Vector2 = Vector2.ZERO
+	if follow and to_node.has_method("get_visual_offset"):
+		to_visual_offset = to_node.get_visual_offset()
+
+	var from_center: Vector2 = from_node.position + from_visual_offset + (from_node.size * 0.5)
+	var to_center: Vector2 = to_node.position + to_visual_offset + (to_node.size * 0.5)
 
 	var from_half: Vector2 = from_node.size * 0.5
 	var to_half: Vector2 = to_node.size * 0.5
@@ -218,19 +362,26 @@ func _update_line_points(line: BayterekConnection) -> void:
 	if not data:
 		data = BayterekLineData.new()
 
+	var to_from_dir: Vector2 = to_center - from_center
+	var dir_len: float = to_from_dir.length()
+	var dir_norm: Vector2 = to_from_dir / dir_len if dir_len > 0.0001 else Vector2.RIGHT
+
+	var has_start_arrow: bool = (data.start_arrow != BayterekLineData.ArrowStyle.NONE
+		or data.arrow_texture_start != null)
+	var has_end_arrow: bool = (data.end_arrow != BayterekLineData.ArrowStyle.NONE
+		or data.arrow_texture_end != null)
+
 	var p0: Vector2
-	if data.start_arrow != BayterekLineData.ArrowStyle.NONE:
-		var start_padding: float = data.arrow_size * 0.5 + 4.0
-		p0 = _edge_point(from_center, to_center, from_half, start_padding)
+	if has_start_arrow:
+		p0 = _edge_point(from_center, to_center, from_half, data.start_offset)
 	else:
-		p0 = from_center
+		p0 = from_center + dir_norm * data.start_offset
 
 	var p2: Vector2
-	if data.end_arrow != BayterekLineData.ArrowStyle.NONE:
-		var end_padding: float = data.arrow_size * 0.5 + 4.0
-		p2 = _edge_point(to_center, from_center, to_half, end_padding)
+	if has_end_arrow:
+		p2 = _edge_point(to_center, from_center, to_half, data.end_offset)
 	else:
-		p2 = to_center
+		p2 = to_center - dir_norm * data.end_offset
 
 	match data.line_type:
 		BayterekLineData.LineType.STRAIGHT:
@@ -244,13 +395,57 @@ func _update_line_points(line: BayterekConnection) -> void:
 		BayterekLineData.LineType.STEP:
 			line.points = _step_points(p0, p2, data)
 
+	_apply_line_data_visuals(line, data)
+
+
+func _apply_line_data_visuals(line: BayterekConnection, data: BayterekLineData) -> void:
+	if not is_instance_valid(line) or not data:
+		return
+
+	line.width = data.thickness
+	line.default_color = data.color
+	line.smooth_antialiasing = data.smooth_antialiasing
+
 	line.dash_style = data.line_style as BayterekLine2D.DashStyle
 	line.dash_length = data.dash_length
 	line.dash_gap = data.dash_gap
+	line.dash_offset = data.dash_offset
+
+	line.cap_start = data.cap_start as BayterekLine2D.CapStyle
+	line.cap_end = data.cap_end as BayterekLine2D.CapStyle
+
+	if data.texture_mode != BayterekLineData.TextureMode.NONE and data.line_texture != null:
+		line.texture = data.line_texture
+		line.texture_mode = data.texture_mode as BayterekLine2D.TextureMode
+		line.texture_scale = data.texture_scale
+		line.texture_tint = data.texture_tint
+	else:
+		line.texture = null
+		line.texture_mode = BayterekLine2D.TextureMode.NONE
 
 	line.start_arrow = data.start_arrow as BayterekLine2D.ArrowStyle
 	line.end_arrow = data.end_arrow as BayterekLine2D.ArrowStyle
 	line.arrow_size = data.arrow_size
+	line.arrow_texture_start = data.arrow_texture_start
+	line.arrow_texture_end = data.arrow_texture_end
+	line.arrow_scale = data.arrow_scale
+	line.arrow_tint = data.arrow_tint
+	line.arrow_offset_x = data.arrow_offset_x
+
+	line.wiggle_base_amplitude = data.wiggle_base_amplitude
+	line.wiggle_frequency = data.wiggle_frequency
+	line.wiggle_speed = data.wiggle_speed
+	line.wiggle_phase_offset = data.wiggle_phase_offset
+	line.wiggle_pattern = data.wiggle_pattern as BayterekLine2D.WigglePattern
+	line.wiggle_random_seed = data.wiggle_random_seed
+	line.wiggle_active_boost = data.wiggle_active_boost
+
+	var should_wiggle: bool = data.wiggle_enabled
+	line.set_wiggle_enabled(should_wiggle)
+
+	if should_wiggle:
+		_update_wiggle_intensity(line)
+
 
 func _edge_point(source_center: Vector2, target_center: Vector2, half_extents: Vector2, padding: float = 0.0) -> Vector2:
 	var dir: Vector2 = target_center - source_center

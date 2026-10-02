@@ -20,6 +20,13 @@ signal frame_title_align_changed
 signal texture_filter_changed
 signal default_design_changed
 
+# Aşama 6 — Connections signals
+signal connection_style_changed
+signal connection_state_color_changed
+signal connection_offsets_changed
+signal connection_wiggle_changed
+signal connection_animation_tracking_changed
+
 var editor: BayterekEditor
 
 var _content: VBoxContainer
@@ -55,6 +62,27 @@ var _tooltip_body_align_dropdown: OptionButton
 var _tooltip_footer_align_dropdown: OptionButton
 
 var _default_design_dropdown: OptionButton
+
+# --- Aşama 6: Connections bölümü widget'ları ---
+var _conn_default_color: ColorPickerButton
+var _conn_default_thickness: SpinBox
+var _conn_antialiasing_check: CheckBox
+
+var _conn_state_colors_check: CheckBox
+var _conn_alloc_color: ColorPickerButton
+var _conn_non_alloc_color: ColorPickerButton
+
+var _conn_start_offset: SpinBox
+var _conn_end_offset: SpinBox
+
+var _conn_wiggle_enabled_check: CheckBox
+var _conn_wiggle_hover_intensity_check: CheckBox
+var _conn_wiggle_amplitude: SpinBox
+var _conn_wiggle_frequency: SpinBox
+var _conn_wiggle_speed: SpinBox
+var _conn_wiggle_pattern_dropdown: OptionButton
+var _conn_wiggle_active_boost: SpinBox
+var _conn_follow_animation_check: CheckBox
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -150,6 +178,139 @@ func _build_ui() -> void:
 	_line_active_input = BayterekInspectorTextureInput.new()
 	_line_active_input.title = "Active"
 	_content.add_child(_line_active_input)
+
+	# ============================================================
+	# CONNECTIONS (Aşama 6)
+	# ============================================================
+	_add_separator(_content)
+	_add_section_label(_content, "Connections — Default Style")
+
+	_conn_default_color = _make_color_row(_content, "Default Color",
+		"Color applied to newly-created connections. Existing lines keep their own color.")
+	_conn_default_color.color = Color(0.7, 0.7, 0.7, 0.9)
+	_conn_default_color.color_changed.connect(_on_conn_default_color_changed)
+
+	_conn_default_thickness = _make_float_row(_content, "Default Thickness",
+		"Line thickness in pixels. Applied to new connections.")
+	_conn_default_thickness.min_value = 0.5
+	_conn_default_thickness.max_value = 64.0
+	_conn_default_thickness.step = 0.5
+	_conn_default_thickness.value = 4.0
+	_conn_default_thickness.allow_greater = true
+	_conn_default_thickness.value_changed.connect(_on_conn_thickness_changed)
+
+	_conn_antialiasing_check = _make_check_row(_content, "Smooth (Antialiasing)",
+		"When OFF, lines are drawn without antialiasing — a crisp flat edge.")
+	_conn_antialiasing_check.button_pressed = true
+	_conn_antialiasing_check.toggled.connect(_on_conn_antialiasing_changed)
+
+	# --- State Colors ---
+	_add_separator(_content)
+	_add_section_label(_content, "Connections — State Colors")
+
+	_conn_state_colors_check = _make_check_row(_content, "Enable State Colors",
+		"When ON, connection colors reflect the TARGET node's allocateable state.")
+	_conn_state_colors_check.button_pressed = false
+	_conn_state_colors_check.toggled.connect(_on_conn_state_colors_toggled)
+
+	_conn_alloc_color = _make_color_row(_content, "Allocateable Color",
+		"Color applied when the target node is allocateable.")
+	_conn_alloc_color.color = Color(0.56, 0.96, 0.56)
+	_conn_alloc_color.color_changed.connect(_on_conn_alloc_color_changed)
+
+	_conn_non_alloc_color = _make_color_row(_content, "Non-Alloc Color",
+		"Color applied when the target node is NOT allocateable.")
+	_conn_non_alloc_color.color = Color(1.0, 0.4, 0.4)
+	_conn_non_alloc_color.color_changed.connect(_on_conn_non_alloc_color_changed)
+
+	# --- Offsets ---
+	_add_separator(_content)
+	_add_section_label(_content, "Connections — Offsets")
+
+	_conn_start_offset = _make_float_row(_content, "Default Start Offset",
+		"Pixels to push the line start away from the source node. Applied to new connections.")
+	_conn_start_offset.min_value = 0.0
+	_conn_start_offset.max_value = 200.0
+	_conn_start_offset.step = 1.0
+	_conn_start_offset.value = 8.0
+	_conn_start_offset.allow_greater = true
+	_conn_start_offset.value_changed.connect(_on_conn_start_offset_changed)
+
+	_conn_end_offset = _make_float_row(_content, "Default End Offset",
+		"Pixels to push the line end away from the target node. Applied to new connections.")
+	_conn_end_offset.min_value = 0.0
+	_conn_end_offset.max_value = 200.0
+	_conn_end_offset.step = 1.0
+	_conn_end_offset.value = 12.0
+	_conn_end_offset.allow_greater = true
+	_conn_end_offset.value_changed.connect(_on_conn_end_offset_changed)
+
+	# --- Wiggle ---
+	_add_separator(_content)
+	_add_section_label(_content, "Connections — Wiggle")
+
+	_conn_wiggle_enabled_check = _make_check_row(_content, "Enable Wiggle",
+		"Master toggle for connection wiggle animation. Individual lines can override this.")
+	_conn_wiggle_enabled_check.button_pressed = false
+	_conn_wiggle_enabled_check.toggled.connect(_on_conn_wiggle_enabled_changed)
+
+	_conn_wiggle_hover_intensity_check = _make_check_row(_content, "Use Hover Intensity",
+		"When ON, wiggle amplitude scales with the target node's hover distance.")
+	_conn_wiggle_hover_intensity_check.button_pressed = true
+	_conn_wiggle_hover_intensity_check.toggled.connect(_on_conn_hover_intensity_changed)
+
+	_conn_wiggle_amplitude = _make_float_row(_content, "Base Amplitude",
+		"Maximum lateral displacement in pixels (at the middle of the line).")
+	_conn_wiggle_amplitude.min_value = 0.0
+	_conn_wiggle_amplitude.max_value = 64.0
+	_conn_wiggle_amplitude.step = 0.5
+	_conn_wiggle_amplitude.value = 2.0
+	_conn_wiggle_amplitude.allow_greater = true
+	_conn_wiggle_amplitude.value_changed.connect(_on_conn_wiggle_amplitude_changed)
+
+	_conn_wiggle_frequency = _make_float_row(_content, "Frequency",
+		"Oscillation frequency in Hz.")
+	_conn_wiggle_frequency.min_value = 0.1
+	_conn_wiggle_frequency.max_value = 20.0
+	_conn_wiggle_frequency.step = 0.1
+	_conn_wiggle_frequency.value = 2.0
+	_conn_wiggle_frequency.allow_greater = true
+	_conn_wiggle_frequency.value_changed.connect(_on_conn_wiggle_frequency_changed)
+
+	_conn_wiggle_speed = _make_float_row(_content, "Speed",
+		"Global speed multiplier for the wiggle clock.")
+	_conn_wiggle_speed.min_value = 0.0
+	_conn_wiggle_speed.max_value = 10.0
+	_conn_wiggle_speed.step = 0.05
+	_conn_wiggle_speed.value = 1.0
+	_conn_wiggle_speed.allow_greater = true
+	_conn_wiggle_speed.value_changed.connect(_on_conn_wiggle_speed_changed)
+
+	_conn_wiggle_pattern_dropdown = _make_dropdown_row(
+		_content,
+		"Pattern",
+		"Waveform shape used for the wiggle.",
+		["Sine", "Perlin", "Random Jitter", "Triangle", "Bounce"]
+	)
+	_conn_wiggle_pattern_dropdown.item_selected.connect(_on_conn_wiggle_pattern_changed)
+
+	_conn_wiggle_active_boost = _make_float_row(_content, "Active Boost",
+		"Amplitude multiplier when the target node is allocated.")
+	_conn_wiggle_active_boost.min_value = 1.0
+	_conn_wiggle_active_boost.max_value = 5.0
+	_conn_wiggle_active_boost.step = 0.1
+	_conn_wiggle_active_boost.value = 1.5
+	_conn_wiggle_active_boost.allow_greater = true
+	_conn_wiggle_active_boost.value_changed.connect(_on_conn_wiggle_active_boost_changed)
+
+	# --- Animation Tracking ---
+	_add_separator(_content)
+	_add_section_label(_content, "Connections — Animation Tracking")
+
+	_conn_follow_animation_check = _make_check_row(_content, "Follow Node Animation",
+		"When ON, connection lines move with the node during hover animations.")
+	_conn_follow_animation_check.button_pressed = true
+	_conn_follow_animation_check.toggled.connect(_on_conn_follow_animation_changed)
 
 	# --- Interaction ---
 	_add_separator(_content)
@@ -314,6 +475,29 @@ func load_tree(tree_data: BayterekTree) -> void:
 
 	_rebuild_default_design_dropdown(tree_data.default_design_id)
 
+	# --- Aşama 6: Connections bölümü ---
+	_conn_default_color.color = tree_data.default_line_color
+	_conn_default_thickness.set_value_no_signal(tree_data.default_line_thickness)
+	_conn_antialiasing_check.button_pressed = tree_data.line_antialiasing
+
+	_conn_state_colors_check.button_pressed = tree_data.state_color_enabled
+	_conn_alloc_color.color = tree_data.line_alloc_color
+	_conn_non_alloc_color.color = tree_data.line_non_alloc_color
+
+	_conn_start_offset.set_value_no_signal(tree_data.default_start_offset)
+	_conn_end_offset.set_value_no_signal(tree_data.default_end_offset)
+
+	_conn_wiggle_enabled_check.button_pressed = tree_data.wiggle_enabled
+	_conn_wiggle_hover_intensity_check.button_pressed = tree_data.wiggle_use_hover_intensity
+	_conn_wiggle_amplitude.set_value_no_signal(tree_data.wiggle_base_amplitude)
+	_conn_wiggle_frequency.set_value_no_signal(tree_data.wiggle_frequency)
+	_conn_wiggle_speed.set_value_no_signal(tree_data.wiggle_speed)
+	if _conn_wiggle_pattern_dropdown:
+		_conn_wiggle_pattern_dropdown.select(tree_data.wiggle_pattern)
+	_conn_wiggle_active_boost.set_value_no_signal(tree_data.wiggle_active_boost)
+
+	_conn_follow_animation_check.button_pressed = tree_data.wiggle_follow_node_animation
+
 	_updating_ui = false
 
 # ============================================================
@@ -377,7 +561,7 @@ func _on_default_design_changed(index: int) -> void:
 	_notify_dirty()
 
 # ============================================================
-# HANDLERS
+# EXISTING HANDLERS
 # ============================================================
 
 func _on_version_changed(value: float) -> void:
@@ -611,6 +795,138 @@ func _on_tooltip_footer_align_changed(index: int) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
 	editor.tree.tooltip_footer_align = index
+	changed.emit()
+	_notify_dirty()
+
+# ============================================================
+# AŞAMA 6 — CONNECTIONS HANDLERS
+# ============================================================
+
+func _on_conn_default_color_changed(color: Color) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.default_line_color = color
+	connection_style_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_thickness_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.default_line_thickness = value
+	connection_style_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_antialiasing_changed(pressed: bool) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.line_antialiasing = pressed
+	connection_style_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_state_colors_toggled(pressed: bool) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.state_color_enabled = pressed
+	connection_state_color_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_alloc_color_changed(color: Color) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.line_alloc_color = color
+	connection_state_color_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_non_alloc_color_changed(color: Color) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.line_non_alloc_color = color
+	connection_state_color_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_start_offset_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.default_start_offset = value
+	connection_offsets_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_end_offset_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.default_end_offset = value
+	connection_offsets_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_wiggle_enabled_changed(pressed: bool) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.wiggle_enabled = pressed
+	connection_wiggle_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_hover_intensity_changed(pressed: bool) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.wiggle_use_hover_intensity = pressed
+	connection_wiggle_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_wiggle_amplitude_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.wiggle_base_amplitude = value
+	connection_wiggle_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_wiggle_frequency_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.wiggle_frequency = value
+	connection_wiggle_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_wiggle_speed_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.wiggle_speed = value
+	connection_wiggle_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_wiggle_pattern_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.wiggle_pattern = index
+	connection_wiggle_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_wiggle_active_boost_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.wiggle_active_boost = value
+	connection_wiggle_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_follow_animation_changed(pressed: bool) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.wiggle_follow_node_animation = pressed
+	connection_animation_tracking_changed.emit()
 	changed.emit()
 	_notify_dirty()
 

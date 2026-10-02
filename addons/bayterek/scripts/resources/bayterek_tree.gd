@@ -60,6 +60,37 @@ extends Resource
 ## Default design applied to newly created nodes.
 @export_storage var default_design_id: String = ""
 
+# ============================================================
+# CONNECTION DEFAULTS (Aşama 6)
+# ============================================================
+#
+# These are applied to newly-created BayterekLineData resources. Changing
+# them also updates existing lines (except those with per-field overrides
+# — see BayterekLineData.overridden_fields).
+
+@export_storage var default_line_color: Color = Color(0.7, 0.7, 0.7, 0.9)
+@export_storage var default_line_thickness: float = 4.0
+@export_storage var state_color_enabled: bool = false
+@export_storage var line_alloc_color: Color = Color(0.56, 0.96, 0.56)
+@export_storage var line_non_alloc_color: Color = Color(1.0, 0.4, 0.4)
+@export_storage var default_start_offset: float = 8.0
+@export_storage var default_end_offset: float = 12.0
+@export_storage var default_arrow_scale: Vector2 = Vector2.ONE
+@export_storage var line_antialiasing: bool = true
+
+# ============================================================
+# WIGGLE DEFAULTS (Aşama 6)
+# ============================================================
+
+@export_storage var wiggle_enabled: bool = false
+@export_storage var wiggle_base_amplitude: float = 2.0
+@export_storage var wiggle_frequency: float = 2.0
+@export_storage var wiggle_speed: float = 1.0
+@export_storage var wiggle_pattern: int = 0
+@export_storage var wiggle_active_boost: float = 1.5
+@export_storage var wiggle_use_hover_intensity: bool = true
+@export_storage var wiggle_follow_node_animation: bool = true
+
 var tree_state: BayterekTreeState
 
 func _init() -> void:
@@ -134,3 +165,89 @@ func get_group_of_node(node_id: int) -> BayterekNodeGroup:
 				return null
 			return get_group_by_id(node_data.group_id)
 	return null
+
+# ============================================================
+# CONNECTION DEFAULTS APPLICATION
+# ============================================================
+
+## Applies the tree's connection defaults to a BayterekLineData.
+##
+## RESPECTS PER-FIELD OVERRIDES:
+##   If a field was marked as overridden (via `set_overridden(true)`),
+##   this function will NOT touch it. This lets the user customize a
+##   single connection in the Inspector, then change tree defaults
+##   without blowing away their customization.
+##
+## If `force` is true, all overrides are cleared and every field is
+## reset — useful for a "reset to defaults" action.
+func apply_connection_defaults(line_data: BayterekLineData, force: bool = false) -> void:
+	if not line_data:
+		return
+
+	if force:
+		line_data.clear_all_overrides()
+
+	# --- Base style ---
+	if force or not line_data.is_overridden("color"):
+		line_data.color = default_line_color
+	if force or not line_data.is_overridden("thickness"):
+		line_data.thickness = default_line_thickness
+	if force or not line_data.is_overridden("smooth_antialiasing"):
+		line_data.smooth_antialiasing = line_antialiasing
+
+	# --- Offsets ---
+	if force or not line_data.is_overridden("start_offset"):
+		line_data.start_offset = default_start_offset
+	if force or not line_data.is_overridden("end_offset"):
+		line_data.end_offset = default_end_offset
+
+	# --- Arrow ---
+	if force or not line_data.is_overridden("arrow_scale"):
+		line_data.arrow_scale = default_arrow_scale
+
+	# --- Wiggle ---
+	if force or not line_data.is_overridden("wiggle_enabled"):
+		line_data.wiggle_enabled = wiggle_enabled
+	if force or not line_data.is_overridden("wiggle_base_amplitude"):
+		line_data.wiggle_base_amplitude = wiggle_base_amplitude
+	if force or not line_data.is_overridden("wiggle_frequency"):
+		line_data.wiggle_frequency = wiggle_frequency
+	if force or not line_data.is_overridden("wiggle_speed"):
+		line_data.wiggle_speed = wiggle_speed
+	if force or not line_data.is_overridden("wiggle_pattern"):
+		line_data.wiggle_pattern = wiggle_pattern as BayterekLineData.WigglePattern
+	if force or not line_data.is_overridden("wiggle_active_boost"):
+		line_data.wiggle_active_boost = wiggle_active_boost
+	if force or not line_data.is_overridden("wiggle_use_hover_intensity"):
+		line_data.wiggle_use_hover_intensity = wiggle_use_hover_intensity
+
+# ============================================================
+# BULK DEFAULTS APPLICATION
+# ============================================================
+
+## Re-applies connection defaults to EVERY line in the tree.
+##
+## Called by BayterekEditor when the user changes a Settings-tab value,
+## so the change is reflected live on all existing connections (except
+## those with per-field overrides).
+##
+## `force` — if true, overrides are cleared and every line is reset
+## unconditionally.
+##
+## Returns the number of lines that were affected.
+func apply_defaults_to_all_lines(force: bool = false) -> int:
+	var count: int = 0
+
+	for node_data in nodes:
+		if not node_data:
+			continue
+		if not node_data.line_data:
+			continue
+
+		for to_id in node_data.line_data.keys():
+			var line_data = node_data.line_data[to_id]
+			if line_data is BayterekLineData:
+				apply_connection_defaults(line_data, force)
+				count += 1
+
+	return count

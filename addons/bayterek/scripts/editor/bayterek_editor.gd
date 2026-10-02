@@ -197,38 +197,26 @@ func _show_chain_mode_notification() -> void:
 # HOVER ANIMATIONS TOGGLE (persistent)
 # ============================================================
 
-## Toggles hover animations on/off and persists the setting to the
-## tree resource, so it survives editor sessions and file saves.
-##
-## Called from View → Hover Animations.
 func _toggle_hover_animations() -> void:
 	if not tree:
 		return
 	if not tree_view:
 		return
 
-	# Flip the persisted value.
 	tree.hover_animations_enabled = not tree.hover_animations_enabled
-
-	# Sync the live tree view.
 	tree_view.hover_animations_enabled = tree.hover_animations_enabled
 
-	# Update the View menu checkmark.
 	_pass_state_to_hover_menu(tree.hover_animations_enabled)
 
-	# If we just turned animations OFF, cancel any currently-playing
-	# hover animations so nodes don't stay in a lifted state.
 	if not tree.hover_animations_enabled:
 		_stop_all_node_animations()
 
 	var state: String = "ON" if tree.hover_animations_enabled else "OFF"
 	BayterekToast.info(tree_view, "Hover Animations: [b]%s[/b]" % state)
 
-	# Mark dirty so the setting is saved on next Ctrl+S / autosave.
 	set_dirty(true)
 
 
-## Updates the View → Hover Animations checkmark to reflect `value`.
 func _pass_state_to_hover_menu(value: bool) -> void:
 	if not menu_bar:
 		return
@@ -241,9 +229,6 @@ func _pass_state_to_hover_menu(value: bool) -> void:
 			break
 
 
-## Stops any hover animation currently playing on every node.
-## Called when the user turns hover animations off so nodes that were
-## mid-hover return to their resting state.
 func _stop_all_node_animations() -> void:
 	if not tree_view or not tree_view.nodes_service:
 		return
@@ -252,8 +237,6 @@ func _stop_all_node_animations() -> void:
 			continue
 		if node.has_method("stop_animation"):
 			node.stop_animation()
-		# Also reset the visual transform in case the animation was
-		# persistent and left the node offset.
 		if node.has_method("reset_visual_transform"):
 			node.reset_visual_transform()
 
@@ -261,18 +244,12 @@ func _stop_all_node_animations() -> void:
 # GROUP FRAMES TOGGLE (centralized)
 # ============================================================
 
-## Toggles visibility of all group frames in the current tree.
-## Delegates to `_set_show_group_frames` so the View menu, the Settings
-## checkbox, and the live frames all stay in sync.
 func _toggle_group_frames() -> void:
 	if not tree:
 		return
 	_set_show_group_frames(not tree.show_group_frames)
 
 
-## Centralized setter for `tree.show_group_frames`. Called by BOTH the
-## View menu toggle and the Settings tab checkbox, so both entry points
-## stay perfectly in sync (and the frames update live).
 func _set_show_group_frames(value: bool, show_toast: bool = true) -> void:
 	if not tree:
 		return
@@ -280,22 +257,16 @@ func _set_show_group_frames(value: bool, show_toast: bool = true) -> void:
 	var state_changed: bool = tree.show_group_frames != value
 	tree.show_group_frames = value
 
-	# 1. View menu checkmark.
 	_pass_state_to_view_menu(value)
-
-	# 2. Settings tab checkbox.
 	_pass_state_to_settings_editor(value)
 
-	# 3. Live frames.
 	if state_changed and tree_view and tree_view.group_frames_service:
 		tree_view.group_frames_service.refresh_all()
 
-	# 4. Toast (optional).
 	if show_toast and state_changed and tree_view:
 		var state: String = "ON" if value else "OFF"
 		BayterekToast.info(tree_view, "Group Frames: [b]%s[/b]" % state)
 
-	# 5. Dirty.
 	if state_changed:
 		set_dirty(true)
 
@@ -320,6 +291,80 @@ func _pass_state_to_settings_editor(value: bool) -> void:
 	settings_editor._updating_ui = true
 	settings_editor._show_group_frames_check.button_pressed = value
 	settings_editor._updating_ui = false
+
+# ============================================================
+# REDRAW CANVAS (View → Redraw)
+# ============================================================
+
+func _redraw_canvas() -> void:
+	if not tree_view:
+		BayterekToast.warning(tree_view, "No canvas to refresh")
+		return
+
+	var nodes_refreshed: int = 0
+	var lines_refreshed: int = 0
+	var frames_refreshed: int = 0
+
+	# --- 1. Apply tree defaults to all lines (respecting overrides). ---
+	if tree:
+		tree.apply_defaults_to_all_lines(false)
+
+	# --- 2 + 3. Refresh every connection's visuals + geometry. ---
+	if tree_view.connections_service:
+		var svc = tree_view.connections_service
+		for line in svc._lines.values():
+			if not is_instance_valid(line):
+				continue
+			var data: BayterekLineData = line.line_data
+			if not data:
+				continue
+			svc._apply_line_data_visuals(line, data)
+			# Belt-and-braces: force wiggle_enabled sync.
+			line.set_wiggle_enabled(data.wiggle_enabled)
+			lines_refreshed += 1
+
+		svc.update_all_lines()
+
+	# --- 4. Refresh every node ---
+	if tree_view.nodes_service:
+		for node in tree_view.nodes_service.get_all_nodes():
+			if not is_instance_valid(node):
+				continue
+			if node.has_method("refresh_visuals"):
+				node.refresh_visuals()
+				nodes_refreshed += 1
+
+	# --- 5. Refresh every group frame ---
+	if tree_view.group_frames_service:
+		tree_view.group_frames_service.refresh_all()
+		frames_refreshed = tree_view.group_frames_service._frames.size()
+
+	# --- 6. Refresh the tooltip ---
+	if tree_view.has_method("refresh_tooltip_content"):
+		tree_view.refresh_tooltip_content()
+	if tree_view.has_method("refresh_tooltip_position"):
+		tree_view.refresh_tooltip_position()
+
+	# --- 7. Update camera bounds ---
+	_apply_size_to_view()
+
+	# --- 8. Force a repaint ---
+	if tree_view:
+		tree_view.queue_redraw()
+
+	BayterekToast.success(
+		tree_view,
+		"Canvas redrawn: [b]%d[/b] nodes, [b]%d[/b] lines, [b]%d[/b] frames" % [
+			nodes_refreshed, lines_refreshed, frames_refreshed
+		]
+	)
+
+	BayterekLogger.info(
+		"Canvas redraw: %d nodes, %d lines, %d frames" % [
+			nodes_refreshed, lines_refreshed, frames_refreshed
+		],
+		"editor"
+	)
 
 # ============================================================
 # UI SETUP
@@ -359,6 +404,7 @@ func _build_ui() -> void:
 	menu_bar.size_flags_horizontal = SIZE_EXPAND_FILL
 	left_container.add_child(menu_bar)
 
+	# --- File Menu ---
 	var file_btn := MenuButton.new()
 	file_btn.text = "File"
 	var file_popup: PopupMenu = file_btn.get_popup()
@@ -367,6 +413,7 @@ func _build_ui() -> void:
 	file_popup.id_pressed.connect(_on_file_menu_pressed)
 	menu_bar.add_child(file_btn)
 
+	# --- Edit Menu ---
 	var edit_btn := MenuButton.new()
 	edit_btn.text = "Edit"
 	var edit_popup: PopupMenu = edit_btn.get_popup()
@@ -375,6 +422,7 @@ func _build_ui() -> void:
 	edit_popup.id_pressed.connect(_on_edit_menu_pressed)
 	menu_bar.add_child(edit_btn)
 
+	# --- View Menu ---
 	var view_btn := MenuButton.new()
 	view_btn.text = "View"
 	var view_popup: PopupMenu = view_btn.get_popup()
@@ -387,10 +435,15 @@ func _build_ui() -> void:
 	view_popup.set_item_checked(view_popup.get_item_index(3), tree.show_group_frames if tree else true)
 	view_popup.set_item_tooltip(view_popup.get_item_index(3), "Show colored bounding boxes around node groups.")
 	view_popup.add_separator()
+	view_popup.add_item("Redraw Canvas", 4)
+	view_popup.set_item_tooltip(view_popup.get_item_index(4),
+		"Force a full visual refresh of the canvas. Use this if something looks stuck.")
+	view_popup.add_separator()
 	_build_tooltip_submenu(view_popup)
 	view_popup.id_pressed.connect(_on_view_menu_pressed)
 	menu_bar.add_child(view_btn)
 
+	# --- Tab Container ---
 	tab_container = TabContainer.new()
 	tab_container.name = "TabContainer"
 	tab_container.custom_minimum_size = Vector2(320, 0)
@@ -418,6 +471,7 @@ func _build_ui() -> void:
 	tab_container.add_child(attributes_editor)
 	tab_container.set_tab_title(2, "Attributes")
 
+	# --- Prefabs Bar ---
 	prefabs_bar = BayterekPrefabsBar.new()
 	prefabs_bar.name = "PrefabsBar"
 	v_split.add_child(prefabs_bar)
@@ -536,6 +590,11 @@ func _create_tree_view() -> void:
 		settings_editor.texture_filter_changed.connect(_on_settings_texture_filter_changed)
 		settings_editor.chain_connection_mode_changed.connect(_on_settings_chain_connection_changed)
 		settings_editor.show_group_frames_changed.connect(_on_settings_show_group_frames_changed)
+		settings_editor.connection_style_changed.connect(_on_settings_connection_style_changed)
+		settings_editor.connection_state_color_changed.connect(_on_settings_connection_state_color_changed)
+		settings_editor.connection_offsets_changed.connect(_on_settings_connection_offsets_changed)
+		settings_editor.connection_wiggle_changed.connect(_on_settings_connection_wiggle_changed)
+		settings_editor.connection_animation_tracking_changed.connect(_on_settings_connection_animation_tracking_changed)
 
 	if attributes_editor:
 		attributes_editor.editor = self
@@ -1691,9 +1750,6 @@ func _do_set_node_root(node_ids: Array, root_flags: Array) -> void:
 # INPUT (keyboard)
 # ============================================================
 
-## Global keyboard handler. Delegates to BayterekShortcuts, which
-## already guards against intercepting keys while a text input widget
-## has focus (see bayterek_shortcuts.gd → _is_text_input_focused()).
 func _input(event: InputEvent) -> void:
 	if not _shortcuts:
 		return
@@ -1705,7 +1761,6 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Local mirror of BayterekShortcuts._is_text_input_focused().
 func _is_text_input_focused() -> bool:
 	var vp: Viewport = get_viewport()
 	if not vp:
@@ -1823,8 +1878,6 @@ func _line_data_to_dict(ld: BayterekLineData) -> Dictionary:
 		"arrow_size": ld.arrow_size,
 	}
 
-## Reads the system clipboard and, if it contains a valid Bayterek node
-## payload, pastes those nodes into the current tree.
 func _paste_nodes() -> void:
 	if not tree_view or not tree_view.nodes_service:
 		return
@@ -1934,7 +1987,6 @@ func _paste_nodes() -> void:
 	set_dirty(true)
 
 
-## Returns true if `text` might be a Bayterek clipboard payload.
 func _looks_like_bayterek_payload(text: String) -> bool:
 	if text.is_empty():
 		return false
@@ -1946,7 +1998,6 @@ func _looks_like_bayterek_payload(text: String) -> bool:
 	return true
 
 
-## Parses `text` as JSON WITHOUT pushing errors to the console.
 func _safe_json_parse(text: String) -> Variant:
 	var json := JSON.new()
 	var err: int = json.parse(text)
@@ -2184,11 +2235,6 @@ func _icon_configs_to_dict(configs: Dictionary) -> Dictionary:
 		}
 	return out
 
-## Reconstructs a BayterekLayer from a dict (paste path).
-##
-## IMPORTANT: this method always assigns a FRESH layer_id. Without this,
-## a pasted node's layers would share the same layer_id as the source
-## node's layers, and get_layer_by_id() would return the wrong instance.
 func _dict_to_layer(d: Dictionary) -> BayterekLayer:
 	var type_str: String = d.get("_type", "")
 
@@ -2371,9 +2417,106 @@ func _on_settings_texture_filter_changed() -> void:
 func _on_settings_chain_connection_changed() -> void:
 	pass
 
-## Called when the Settings tab's "Show Frames" checkbox changes.
 func _on_settings_show_group_frames_changed(pressed: bool) -> void:
 	_set_show_group_frames(pressed, false)
+
+# ============================================================
+# CONNECTION SETTINGS HANDLERS (Aşama 6 + 7)
+# ============================================================
+
+func _on_settings_connection_style_changed() -> void:
+	if not tree or not tree_view or not tree_view.connections_service:
+		set_dirty(true)
+		return
+
+	tree.apply_defaults_to_all_lines(false)
+
+	var svc = tree_view.connections_service
+	for line in svc._lines.values():
+		if not is_instance_valid(line):
+			continue
+		var data: BayterekLineData = line.line_data
+		if not data:
+			continue
+		svc._apply_line_data_visuals(line, data)
+		line.set_wiggle_enabled(data.wiggle_enabled)
+
+	svc.update_all_lines()
+	set_dirty(true)
+
+
+func _on_settings_connection_state_color_changed() -> void:
+	if not tree_view or not tree_view.connections_service:
+		set_dirty(true)
+		return
+
+	var svc = tree_view.connections_service
+	for node in tree_view.nodes_service.get_all_nodes():
+		if is_instance_valid(node):
+			svc.on_node_allocation_changed(node)
+
+	svc.update_all_lines()
+	set_dirty(true)
+
+
+func _on_settings_connection_offsets_changed() -> void:
+	if not tree or not tree_view or not tree_view.connections_service:
+		set_dirty(true)
+		return
+
+	tree.apply_defaults_to_all_lines(false)
+	tree_view.connections_service.update_all_lines()
+	set_dirty(true)
+
+
+## Called when wiggle settings change.
+##
+## Applies the new defaults to all lines (that aren't overridden),
+## updates the tree view's master switch, forces each line's per-line
+## `wiggle_enabled` flag to match its LineData, and refreshes everything.
+##
+## The `line.set_wiggle_enabled(data.wiggle_enabled)` call is CRITICAL:
+## it toggles the Line2D's internal `_process()` loop so the wiggle
+## animation actually starts running.
+func _on_settings_connection_wiggle_changed() -> void:
+	if not tree or not tree_view or not tree_view.connections_service:
+		set_dirty(true)
+		return
+
+	tree_view.wiggle_enabled = tree.wiggle_enabled
+
+	tree.apply_defaults_to_all_lines(false)
+
+	var svc = tree_view.connections_service
+	for line in svc._lines.values():
+		if not is_instance_valid(line):
+			continue
+		var data: BayterekLineData = line.line_data
+		if not data:
+			continue
+		svc._apply_line_data_visuals(line, data)
+		# Force the per-line process loop to match the current data.
+		line.set_wiggle_enabled(data.wiggle_enabled)
+
+	svc.update_all_lines()
+	for node in tree_view.nodes_service.get_all_nodes():
+		if is_instance_valid(node):
+			svc.on_node_visual_offset_changed(node)
+
+	set_dirty(true)
+
+
+func _on_settings_connection_animation_tracking_changed() -> void:
+	if not tree_view or not tree_view.connections_service:
+		set_dirty(true)
+		return
+
+	tree_view.connections_service.update_all_lines()
+	set_dirty(true)
+
+# ============================================================
+# PREFAB / DESIGN DROPS
+# ============================================================
 
 func _on_prefab_dropped_from_canvas(prefab: BayterekPrefab, tree_pos: Vector2) -> void:
 	if not tree_view or not tree_view.nodes_service:
@@ -2441,6 +2584,8 @@ func _on_view_menu_pressed(id: int) -> void:
 			_toggle_hover_animations()
 		3:
 			_toggle_group_frames()
+		4:
+			_redraw_canvas()
 
 func do_undo() -> void:
 	if undo_redo and undo_redo.has_undo():

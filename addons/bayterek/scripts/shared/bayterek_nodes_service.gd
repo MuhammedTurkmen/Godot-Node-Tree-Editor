@@ -13,9 +13,13 @@ signal node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 
 var _nodes: Dictionary = {}
 
-# --- Batch refresh queue ---
+# --- Batch refresh queue (state changes) ---
 var _refresh_queue: Dictionary = {}
 var _refresh_scheduled: bool = false
+
+# --- Batch visual-offset queue (Aşama 3 — animations move nodes) ---
+var _visual_refresh_queue: Dictionary = {}
+var _visual_refresh_scheduled: bool = false
 
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
@@ -163,7 +167,8 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	return node
 
 # ============================================================
-# AUTO-ROOT HELPER# ============================================================
+# AUTO-ROOT HELPER
+# ============================================================
 
 func _tree_has_root() -> bool:
 	if not _tree_data or not _tree_data.nodes:
@@ -180,6 +185,11 @@ func _tree_has_root() -> bool:
 func delete_node(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data:
 		return
+
+	# Remove from any pending batch queues so a freed node can't be
+	# processed by a deferred flush.
+	_visual_refresh_queue.erase(node)
+	_refresh_queue.erase(node)
 
 	_nodes.erase(node.node_data.id)
 	_tree_data.nodes.erase(node.node_data)
@@ -442,6 +452,8 @@ func _connect_node_signals(node: BayterekNodeButton) -> void:
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
 	node.right_clicked.connect(_on_node_right_clicked)
+	# Aşama 3: node's visual offset changes → glue connection lines.
+	node.visual_offset_changed.connect(_on_node_visual_offset_changed)
 
 # ============================================================
 # SIGNAL HANDLERS
@@ -465,6 +477,34 @@ func _on_node_drag_ended(node: BayterekNodeButton) -> void:
 
 func _on_node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
 	node_right_clicked.emit(node, screen_pos)
+
+# ============================================================
+# VISUAL OFFSET TRACKING (Aşama 3)
+# ============================================================
+
+## Called when a node's visual offset changes (hover lift, exit descent,
+## pop scale, etc). We coalesce multiple per-frame updates into a single
+## deferred flush so a hover_exit of N nodes doesn't cause N separate
+## connection-line recomputations.
+func _on_node_visual_offset_changed(node: BayterekNodeButton, _offset: Vector2, _distance: float) -> void:
+	if not is_instance_valid(node):
+		return
+	_visual_refresh_queue[node] = true
+	if not _visual_refresh_scheduled:
+		_visual_refresh_scheduled = true
+		call_deferred("_flush_visual_refresh_queue")
+
+
+func _flush_visual_refresh_queue() -> void:
+	_visual_refresh_scheduled = false
+	if not _tree_view or not _tree_view.connections_service:
+		_visual_refresh_queue.clear()
+		return
+
+	for node in _visual_refresh_queue.keys():
+		if is_instance_valid(node):
+			_tree_view.connections_service.on_node_visual_offset_changed(node)
+	_visual_refresh_queue.clear()
 
 # ============================================================
 # DUPLICATE NODE

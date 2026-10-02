@@ -6,27 +6,41 @@ extends BaseButton
 ## Two-layer structure:
 ##   BayterekNodeButton (Control)     ← hitbox. position is STABLE.
 ##     └── VisualRoot (Control)       ← animations move this, NOT the outer node.
-##           ├── SelectBorder (Panel)
-##           ├── Crown (Label)
-##           └── TextureLayerRoot (Node2D)
 ##
-## Why two layers:
-##   Animations (lift, pop, shake) change the VISUAL position/scale/rotation.
-##   The outer Control's layout rect stays fixed, so:
-##     - Mouse input always hits the same place (no jitter).
-##     - Tooltips, drag, selection, connections are stable.
-##     - The user can click the node's "home" spot even while it's animating.
+## Speed tracking:
+##   Every frame we compute how fast `_visual_root.position` moved since
+##   the previous frame. That value (`current_visual_speed`) drives the
+##   wiggle system — the faster the node moves, the faster the attached
+##   lines wiggle.
+##
+##   When the node stops moving (even with the mouse still over it),
+##   `current_visual_speed` snaps to EXACTLY 0 (not lerped), so the
+##   wiggle system knows to stop cleanly. This avoids the asymptotic
+##   decay that otherwise leaves a tiny residual wiggle forever.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
 const RENDER_MODE_VECTOR := 0
 const RENDER_MODE_PIXEL := 1
 
+## Below this distance (in pixels), a visual offset change is considered
+## insignificant and does NOT emit `visual_offset_changed`.
+const VISUAL_OFFSET_EMIT_THRESHOLD := 0.05
+
+## Below this smoothed speed (pixels/frame), the node is considered
+## "stopped" and current_visual_speed is FORCED to exactly 0.
+##
+## This is the key value that makes wiggle stop cleanly: without it,
+## the lerp-based smoothing approaches 0 asymptotically, leaving a
+## tiny residual speed that keeps wiggle alive indefinitely.
+const SPEED_IDLE_THRESHOLD := 0.02
+
 signal node_hovered(node: BayterekNodeButton, is_hovered: bool)
 signal drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal drag_ended(node: BayterekNodeButton)
 signal right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
+signal visual_offset_changed(node: BayterekNodeButton, offset: Vector2, distance: float)
 
 var node_data: BayterekNode
 var prefab: BayterekPrefab
@@ -44,7 +58,22 @@ var state: Bayterek.AllocationState = Bayterek.AllocationState.NORMAL
 
 var is_allocatable: bool = false
 
-## Node-wide transform data (persisted).
+## Current visual offset distance (length of `_visual_root.position`).
+var current_visual_distance: float = 0.0
+
+## Current visual movement SPEED (pixels per frame).
+##
+## Snaps to EXACTLY 0 when the node stops moving. This is what makes
+## the wiggle stop cleanly without leaving residual motion.
+var current_visual_speed: float = 0.0
+
+## Internal: previous frame's visual offset (for speed calc).
+var _previous_visual_offset: Vector2 = Vector2.ZERO
+
+## Internal: flag tracking whether we were moving last frame, so we
+## can emit one final "stopped" signal on the transition.
+var _was_moving: bool = false
+
 var node_rotation: float:
 	get: return node_data.node_rotation if node_data else 0.0
 	set(v):
@@ -57,16 +86,14 @@ var node_skew: Vector2:
 		if node_data:
 			node_data.node_skew = v
 
-## --- Two-layer UI ---
-var _visual_root: Control             # animations target this
+# --- Two-layer UI ---
+var _visual_root: Control
 var _select_border: Panel
 var _crown_label: Label
 var _texture_layer_root: Node2D
 
-## layer_id -> BayterekLayerNode
 var _layer_nodes: Dictionary = {}
 
-## Animation support
 var _animator: BayterekNodeAnimator = null
 
 var _is_dragging: bool = false
@@ -109,17 +136,11 @@ var design_id: String:
 			node_data.design_id = v
 			rebuild_from_design()
 
+# ============================================================
+# LIFECYCLE
+# ============================================================
+
 func _ready() -> void:
-	# ------------------------------------------------------------------
-	# CRITICAL: pin anchors to the top-left corner so Godot never tries
-	# to override our size at the end of _ready(). Without this, we'd
-	# get "Nodes with non-equal opposite anchors will have their size
-	# overridden after _ready()" whenever we assign `size` directly.
-	#
-	# We want top-left anchoring because `position` is set explicitly
-	# from the tree-space coordinates, and `size` is set from the
-	# design's bounds — both are absolute values, not relative ones.
-	# ------------------------------------------------------------------
 	anchor_left = 0.0
 	anchor_top = 0.0
 	anchor_right = 0.0
@@ -132,20 +153,61 @@ func _ready() -> void:
 	_build_children()
 	_build_animator()
 
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	# ------------------------------------------------------------------
+	# SPEED TRACKING (with hard-zero snap)
+	# ------------------------------------------------------------------
+	var current_offset: Vector2 = _visual_root.position if _visual_root else Vector2.ZERO
+	var frame_delta: Vector2 = current_offset - _previous_visual_offset
+	_previous_visual_offset = current_offset
+
+	var instant_speed: float = frame_delta.length()
+
+	# Hard-stop: if the node is essentially not moving this frame, force
+	# the smoothed speed to EXACTLY zero. Without this, the lerp-based
+	# smoothing approaches zero asymptotically and a tiny residual
+	# speed keeps the wiggle alive forever.
+	if instant_speed < SPEED_IDLE_THRESHOLD:
+		current_visual_speed = 0.0
+	else:
+		current_visual_speed = lerpf(current_visual_speed, instant_speed, 0.5)
+		# Snap to zero if the smoothed value dipped below the threshold.
+		if current_visual_speed < SPEED_IDLE_THRESHOLD:
+			current_visual_speed = 0.0
+
+	current_visual_distance = current_offset.length()
+
+	# ------------------------------------------------------------------
+	# SIGNAL EMISSION
+	# ------------------------------------------------------------------
+	# Emit `visual_offset_changed` every frame while the node is moving,
+	# and once more on the frame it stops so the wiggle system knows to
+	# begin its fade-out.
+	var is_moving_now: bool = current_visual_speed > 0.0
+
+	if is_moving_now:
+		visual_offset_changed.emit(self, current_offset, current_visual_distance)
+		_was_moving = true
+	elif _was_moving:
+		# Just stopped: one final notification with speed now zero.
+		visual_offset_changed.emit(self, current_offset, current_visual_distance)
+		_was_moving = false
+
+
 func _build_children() -> void:
-	# --- VisualRoot ---
 	_visual_root = Control.new()
 	_visual_root.name = "VisualRoot"
 	_visual_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_visual_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_visual_root)
 
-	# --- Texture layers (under VisualRoot) ---
 	_texture_layer_root = Node2D.new()
 	_texture_layer_root.name = "TextureLayerRoot"
 	_visual_root.add_child(_texture_layer_root)
 
-	# --- Selection border ---
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -164,7 +226,6 @@ func _build_children() -> void:
 	_select_border.visible = false
 	_visual_root.add_child(_select_border)
 
-	# --- Crown label ---
 	_crown_label = Label.new()
 	_crown_label.name = "Crown"
 	_crown_label.text = "👑"
@@ -212,15 +273,18 @@ func get_animator() -> BayterekNodeAnimator:
 	return _animator
 
 # ============================================================
-# VISUAL TRANSFORM API (animations go through these)
+# VISUAL TRANSFORM API
 # ============================================================
 
 func set_visual_offset(offset: Vector2) -> void:
-	if _visual_root:
-		_visual_root.position = offset
+	if not _visual_root:
+		return
+	_visual_root.position = offset
+
 
 func get_visual_offset() -> Vector2:
 	return _visual_root.position if _visual_root else Vector2.ZERO
+
 
 func set_visual_rotation(deg: float) -> void:
 	if not _visual_root:
@@ -228,8 +292,10 @@ func set_visual_rotation(deg: float) -> void:
 	_visual_root.pivot_offset = _visual_root.size * 0.5
 	_visual_root.rotation = deg_to_rad(deg)
 
+
 func get_visual_rotation() -> float:
 	return rad_to_deg(_visual_root.rotation) if _visual_root else 0.0
+
 
 func set_visual_scale(v: Vector2) -> void:
 	if v.x <= 0.0:
@@ -244,8 +310,10 @@ func set_visual_scale(v: Vector2) -> void:
 		_visual_root.pivot_offset = _visual_root.size * 0.5
 		_visual_root.scale = v
 
+
 func get_visual_scale() -> Vector2:
 	return _visual_root.scale if _visual_root else Vector2.ONE
+
 
 func reset_visual_transform() -> void:
 	if not _visual_root:
@@ -366,12 +434,6 @@ func _apply_texture_filter() -> void:
 	else:
 		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
-## The outer Control's size = design's natural size.
-## VisualRoot's size mirrors it and holds the visual pivot.
-##
-## Direct assignment (no set_deferred). Because _ready() pins all
-## anchors to the top-left corner, Godot has no reason to override the
-## size at the end of _ready(), so we don't need the deferred trick.
 func _sync_size_with_design() -> void:
 	if not node_data:
 		return
@@ -384,20 +446,16 @@ func _sync_size_with_design() -> void:
 	if target.x <= 0.0 or target.y <= 0.0:
 		target = Vector2(100, 100)
 
-	# Outer Control — the hitbox.
 	if size != target:
 		size = target
 	if custom_minimum_size != target:
 		custom_minimum_size = target
 
-	# VisualRoot — same size as the hitbox, pivot at center.
 	if _visual_root:
 		_visual_root.position = Vector2.ZERO
 		_visual_root.size = target
 		_visual_root.custom_minimum_size = target
 		_visual_root.pivot_offset = target * 0.5
-
-		# Apply the persisted visual scale.
 		_visual_root.scale = node_data.scale
 
 func set_state(new_state: Bayterek.AllocationState) -> void:
@@ -457,8 +515,6 @@ func _update_layer_nodes() -> void:
 
 	var design_size: Vector2 = node_data.design_size
 
-	# VisualRoot is the coordinate space for layers. Use its size
-	# (same as the hitbox).
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var bounds_center: Vector2 = visual_bounds.position + visual_bounds.size * 0.5
 
@@ -502,7 +558,7 @@ func _update_layer_nodes() -> void:
 		ln.z_index = layer_index
 
 # ============================================================
-# DRAW (shape katmanı silindi, boş)
+# DRAW
 # ============================================================
 
 func _draw() -> void:
@@ -564,7 +620,7 @@ func _on_mouse_exited() -> void:
 	node_hovered.emit(self, false)
 
 # ============================================================
-# TOOLTIP FORMATTING
+# TOOLTIP
 # ============================================================
 
 func format_tooltip_sections() -> Dictionary:

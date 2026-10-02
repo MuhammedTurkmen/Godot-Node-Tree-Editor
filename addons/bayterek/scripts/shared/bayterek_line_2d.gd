@@ -1,53 +1,26 @@
 @tool
 class_name BayterekLine2D
 extends Control
-## Custom Line2D replacement.
-##
-## Godot 4's Line2D has a broken LINE_TEXTURE_TILE mode: texture tiling
-## silently fails on compressed textures, and dash patterns cannot be
-## achieved by splitting the points array. This class draws lines manually
-## with full control over:
-##
-##   - texture tiling along the polyline
-##   - dash / dot / dash-dot patterns
-##   - line width, color, and endpoint style
-##   - arrow / t-bar / square endpoints
-##   - any shape: straight, bezier, arc, step
+## Custom polyline renderer for Bayterek connections.
 
-# --- Line geometry ---
-var points: PackedVector2Array = PackedVector2Array() : set = set_points
-var width: float = 4.0 : set = set_width
+# ============================================================
+# ENUMS
+# ============================================================
 
-# --- Visual style ---
-var default_color: Color = Color(0.7, 0.7, 0.7, 0.9) : set = set_default_color
-var texture: Texture2D = null : set = set_texture
-
-## How to draw the texture along the line.
 enum TextureMode {
 	NONE,
 	TILE,
 	STRETCH,
+	TILE_FIT_HEIGHT,
 }
-var texture_mode: TextureMode = TextureMode.NONE : set = set_texture_mode
 
-# --- Dash pattern ---
 enum DashStyle {
 	SOLID,
 	DASHED,
 	DOTTED,
 	DASH_DOT,
 }
-var dash_style: DashStyle = DashStyle.SOLID : set = set_dash_style
-var dash_length: float = 12.0 : set = set_dash_length
-var dash_gap: float = 6.0 : set = set_dash_gap
 
-# --- Rendering options ---
-## Round the joints (adds small circles at each point).
-var round_joints: bool = false : set = set_round_joints
-## Round the endpoints (adds small circles at start and end).
-var round_caps: bool = false : set = set_round_caps
-
-# --- Arrow styles ---
 enum ArrowStyle {
 	NONE,
 	ARROW,
@@ -57,19 +30,177 @@ enum ArrowStyle {
 	DIAMOND,
 }
 
+enum CapStyle {
+	BUTT,
+	ROUND,
+	SQUARE,
+}
+
+enum WigglePattern {
+	SINE,
+	PERLIN,
+	RANDOM_JITTER,
+	TRIANGLE,
+	BOUNCE,
+}
+
+# ============================================================
+# CONSTANTS
+# ============================================================
+
+## STRAIGHT çizgileri otomatik alt bölümlere ayır (wiggle görünsün).
+const STRAIGHT_SUBDIVISIONS := 16
+
+## Effective frequency below this stops everything.
+##
+## This is a HARD-STOP: when the incoming intensity is essentially 0,
+## we snap `_effective_frequency` to 0 and call `set_process(false)`.
+## No asymptotic tail, no residual wiggle.
+const FREQ_STOP_THRESHOLD := 0.05
+
+## How fast `_effective_frequency` ramps toward its target.
+const FREQ_RESPONSIVENESS := 3.0
+
+## Below this intensity value we treat the wiggle as completely off.
+const INTENSITY_HARD_STOP := 0.001
+
+# ============================================================
+# GEOMETRY
+# ============================================================
+
+var points: PackedVector2Array = PackedVector2Array() : set = set_points
+var width: float = 4.0 : set = set_width
+
+# ============================================================
+# VISUAL STYLE
+# ============================================================
+
+var default_color: Color = Color(0.7, 0.7, 0.7, 0.9) : set = set_default_color
+var smooth_antialiasing: bool = true : set = set_smooth_antialiasing
+
+# ============================================================
+# TEXTURE
+# ============================================================
+
+var texture: Texture2D = null : set = set_texture
+var texture_mode: TextureMode = TextureMode.NONE : set = set_texture_mode
+var texture_scale: Vector2 = Vector2.ONE : set = set_texture_scale
+var texture_tint: Color = Color.WHITE : set = set_texture_tint
+
+# ============================================================
+# DASH PATTERN
+# ============================================================
+
+var dash_style: DashStyle = DashStyle.SOLID : set = set_dash_style
+var dash_length: float = 12.0 : set = set_dash_length
+var dash_gap: float = 6.0 : set = set_dash_gap
+var dash_offset: float = 0.0 : set = set_dash_offset
+
+# ============================================================
+# CAPS AND JOINTS
+# ============================================================
+
+var cap_start: CapStyle = CapStyle.BUTT : set = set_cap_start
+var cap_end: CapStyle = CapStyle.BUTT : set = set_cap_end
+var round_joints: bool = false : set = set_round_joints
+
+# ============================================================
+# ARROWS
+# ============================================================
+
 var start_arrow: ArrowStyle = ArrowStyle.NONE : set = set_start_arrow
 var end_arrow: ArrowStyle = ArrowStyle.NONE : set = set_end_arrow
 var arrow_size: float = 12.0 : set = set_arrow_size
+var arrow_texture_start: Texture2D = null : set = set_arrow_texture_start
+var arrow_texture_end: Texture2D = null : set = set_arrow_texture_end
+var arrow_scale: Vector2 = Vector2.ONE : set = set_arrow_scale
+var arrow_tint: Color = Color.WHITE : set = set_arrow_tint
+var arrow_offset_x: float = 0.0 : set = set_arrow_offset_x
 
-# --- Cache ---
+# ============================================================
+# WIGGLE
+# ============================================================
+
+var wiggle_enabled: bool = false
+var wiggle_base_amplitude: float = 2.0
+var wiggle_frequency: float = 2.0
+var wiggle_speed: float = 1.0
+var wiggle_phase_offset: float = 0.0
+var wiggle_pattern: WigglePattern = WigglePattern.SINE
+var wiggle_random_seed: int = 0
+var wiggle_intensity: float = 0.0
+var wiggle_active_boost: float = 1.5
+var wiggle_target_is_active: bool = false
+
+var _effective_frequency: float = 0.0
+var _wiggle_clock: float = 0.0
+var _jitter_value: float = 0.0
+var _jitter_refresh_timer: float = 0.0
+const JITTER_REFRESH_INTERVAL := 0.05
+
+# ============================================================
+# CACHE
+# ============================================================
+
 var _cached_segments: Array = []
 var _cache_dirty: bool = true
 
+# ============================================================
+# LIFECYCLE
+# ============================================================
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	set_process(false)
+	_seed_from_instance_if_needed()
 
+
+func _process(delta: float) -> void:
+	# ------------------------------------------------------------------
+	# HARD STOP
+	# ------------------------------------------------------------------
+	# If the target frequency is essentially zero, snap everything to
+	# zero and stop the process loop immediately. No asymptotic tail.
+	var target_freq: float = wiggle_frequency * wiggle_intensity
+
+	if target_freq < FREQ_STOP_THRESHOLD:
+		_effective_frequency = 0.0
+		set_process(false)
+		_invalidate_cache()
+		return
+
+	# ------------------------------------------------------------------
+	# SMOOTH RAMP
+	# ------------------------------------------------------------------
+	var lerp_factor: float = 1.0 - exp(-FREQ_RESPONSIVENESS * delta)
+	_effective_frequency = lerpf(_effective_frequency, target_freq, lerp_factor)
+
+	# If we dipped below the stop threshold, hard-stop.
+	if _effective_frequency < FREQ_STOP_THRESHOLD:
+		_effective_frequency = 0.0
+		set_process(false)
+		_invalidate_cache()
+		return
+
+	# ------------------------------------------------------------------
+	# CLOCK
+	# ------------------------------------------------------------------
+	_wiggle_clock += delta * wiggle_speed * _effective_frequency
+
+	if wiggle_pattern == WigglePattern.RANDOM_JITTER:
+		_jitter_refresh_timer -= delta
+		if _jitter_refresh_timer <= 0.0:
+			_jitter_refresh_timer = JITTER_REFRESH_INTERVAL
+			_jitter_value = randf() * 2.0 - 1.0
+
+	queue_redraw()
+
+
+func _seed_from_instance_if_needed() -> void:
+	if wiggle_random_seed == 0:
+		wiggle_random_seed = int(get_instance_id()) & 0x7FFFFFFF
+	_jitter_value = _pseudo_rand(-1.0, 1.0, float(wiggle_random_seed))
 
 # ============================================================
 # SETTERS
@@ -79,90 +210,174 @@ func set_points(new_points: PackedVector2Array) -> void:
 	points = new_points
 	_invalidate_cache()
 
-
 func set_width(new_width: float) -> void:
 	width = max(0.0, new_width)
 	_invalidate_cache()
-
 
 func set_default_color(new_color: Color) -> void:
 	default_color = new_color
 	queue_redraw()
 
+func set_smooth_antialiasing(v: bool) -> void:
+	smooth_antialiasing = v
+	queue_redraw()
 
 func set_texture(new_texture: Texture2D) -> void:
 	texture = new_texture
 	_invalidate_cache()
 
-
 func set_texture_mode(new_mode: TextureMode) -> void:
 	texture_mode = new_mode
 	_invalidate_cache()
 
+func set_texture_scale(s: Vector2) -> void:
+	texture_scale = s
+	_invalidate_cache()
+
+func set_texture_tint(c: Color) -> void:
+	texture_tint = c
+	queue_redraw()
 
 func set_dash_style(new_style: DashStyle) -> void:
 	dash_style = new_style
 	_invalidate_cache()
 
-
 func set_dash_length(new_length: float) -> void:
 	dash_length = max(1.0, new_length)
 	_invalidate_cache()
-
 
 func set_dash_gap(new_gap: float) -> void:
 	dash_gap = max(0.0, new_gap)
 	_invalidate_cache()
 
+func set_dash_offset(v: float) -> void:
+	dash_offset = v
+	_invalidate_cache()
 
-func set_round_joints(value: bool) -> void:
-	round_joints = value
+func set_cap_start(v: CapStyle) -> void:
+	cap_start = v
 	queue_redraw()
 
-
-func set_round_caps(value: bool) -> void:
-	round_caps = value
+func set_cap_end(v: CapStyle) -> void:
+	cap_end = v
 	queue_redraw()
 
+func set_round_joints(v: bool) -> void:
+	round_joints = v
+	queue_redraw()
 
 func set_start_arrow(new_style: ArrowStyle) -> void:
 	start_arrow = new_style
 	queue_redraw()
 
-
 func set_end_arrow(new_style: ArrowStyle) -> void:
 	end_arrow = new_style
 	queue_redraw()
-
 
 func set_arrow_size(new_size: float) -> void:
 	arrow_size = max(1.0, new_size)
 	queue_redraw()
 
+func set_arrow_texture_start(t: Texture2D) -> void:
+	arrow_texture_start = t
+	queue_redraw()
+
+func set_arrow_texture_end(t: Texture2D) -> void:
+	arrow_texture_end = t
+	queue_redraw()
+
+func set_arrow_scale(s: Vector2) -> void:
+	arrow_scale = s
+	queue_redraw()
+
+func set_arrow_tint(c: Color) -> void:
+	arrow_tint = c
+	queue_redraw()
+
+func set_arrow_offset_x(v: float) -> void:
+	arrow_offset_x = v
+	queue_redraw()
 
 # ============================================================
-# PUBLIC HELPERS (Line2D-compatible API)
+# WIGGLE SETTERS
+# ============================================================
+
+func set_wiggle_enabled(enabled: bool) -> void:
+	if wiggle_enabled == enabled:
+		if enabled and not is_processing() and wiggle_intensity > INTENSITY_HARD_STOP:
+			set_process(true)
+		return
+
+	wiggle_enabled = enabled
+	_invalidate_cache()
+
+	if enabled:
+		set_process(true)
+	else:
+		# Let _process decide when to stop based on intensity.
+		pass
+
+
+## Called by the connections service whenever the source/target node's
+## speed changes.
+##
+## KEY BEHAVIOR: if the incoming intensity is essentially zero, we
+## HARD-STOP the wiggle — no smooth ramp-down, no residual motion.
+## This is what makes "mouse leaves node → node settles → wiggle stops"
+## behave exactly as the user expects.
+func set_wiggle_intensity(intensity: float, target_is_active: bool) -> void:
+	var new_intensity: float = maxf(0.0, intensity)
+
+	# --- HARD STOP ---
+	# If intensity is below the hard-stop threshold, kill everything
+	# immediately: zero out effective frequency, stop processing,
+	# redraw one last time with the un-wiggled geometry.
+	if new_intensity < INTENSITY_HARD_STOP:
+		var was_wiggling: bool = wiggle_intensity > INTENSITY_HARD_STOP or _effective_frequency > 0.0
+
+		wiggle_intensity = 0.0
+		wiggle_target_is_active = target_is_active
+
+		if was_wiggling:
+			_effective_frequency = 0.0
+			set_process(false)
+			_invalidate_cache()
+
+		return
+
+	# --- NORMAL UPDATE ---
+	if is_equal_approx(new_intensity, wiggle_intensity) and target_is_active == wiggle_target_is_active:
+		return
+
+	wiggle_intensity = new_intensity
+	wiggle_target_is_active = target_is_active
+
+	if wiggle_enabled and wiggle_intensity > INTENSITY_HARD_STOP:
+		if not is_processing():
+			set_process(true)
+
+	if wiggle_enabled:
+		queue_redraw()
+
+# ============================================================
+# PUBLIC HELPERS
 # ============================================================
 
 func clear_points() -> void:
 	points = PackedVector2Array()
 	_invalidate_cache()
 
-
 func add_point(p: Vector2) -> void:
 	points.append(p)
 	_invalidate_cache()
 
-
 func get_point_count() -> int:
 	return points.size()
-
 
 func get_point_position(index: int) -> Vector2:
 	if index < 0 or index >= points.size():
 		return Vector2.ZERO
 	return points[index]
-
 
 # ============================================================
 # DRAW
@@ -174,20 +389,15 @@ func _draw() -> void:
 	if width <= 0.0:
 		return
 
-	# --- 1. Compute the visual segments (accounting for dash pattern) ---
 	var segments: Array = _get_draw_segments()
 
-	# --- 2. Draw each segment ---
 	for seg in segments:
-		var a: Vector2 = seg[0]
-		var b: Vector2 = seg[1]
-		_draw_segment(a, b)
+		_draw_segment(seg[0], seg[1])
 
-	# --- 3. Round joints / caps ---
-	if round_joints or round_caps:
-		_draw_caps(segments)
+	if round_joints:
+		_draw_round_joints(segments)
 
-	# --- 4. Endpoint arrows ---
+	_draw_caps(segments)
 	_draw_arrows(segments)
 
 
@@ -198,70 +408,67 @@ func _draw_segment(a: Vector2, b: Vector2) -> void:
 		return
 
 	if texture_mode == TextureMode.NONE or texture == null:
-		# Solid color line
-		draw_line(a, b, default_color, width, true)
+		draw_line(a, b, default_color, width, smooth_antialiasing)
 		return
 
-	if texture_mode == TextureMode.STRETCH:
-		# Stretch the whole texture across the segment
-		_draw_textured_line_stretch(a, b, seg_len)
+	match texture_mode:
+		TextureMode.STRETCH:
+			_draw_textured_stretch(a, b, seg_len)
+		TextureMode.TILE:
+			_draw_textured_tile(a, b, seg_len, false)
+		TextureMode.TILE_FIT_HEIGHT:
+			_draw_textured_tile(a, b, seg_len, true)
+
+
+func _draw_textured_stretch(a: Vector2, b: Vector2, seg_len: float) -> void:
+	if seg_len < 0.001:
 		return
-
-	# TILE mode
-	_draw_textured_line_tile(a, b, seg_len)
-
-
-## Draw a textured line with the texture stretched once along the segment.
-func _draw_textured_line_stretch(a: Vector2, b: Vector2, seg_len: float) -> void:
 	var dir: Vector2 = (b - a) / seg_len
 	var perp: Vector2 = Vector2(-dir.y, dir.x)
-
 	var tex_size: Vector2 = texture.get_size()
 	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
 		return
 
 	var half_w: float = width * 0.5
-
-	# 4 corners of the quad
 	var p0: Vector2 = a - perp * half_w
 	var p1: Vector2 = b - perp * half_w
 	var p2: Vector2 = b + perp * half_w
 	var p3: Vector2 = a + perp * half_w
 
-	var poly: PackedVector2Array = PackedVector2Array([p0, p1, p2, p3])
-	var uvs: PackedVector2Array = PackedVector2Array([
-		Vector2(0, 0),
-		Vector2(1, 0),
-		Vector2(1, 1),
-		Vector2(0, 1),
+	var poly := PackedVector2Array([p0, p1, p2, p3])
+	var uvs := PackedVector2Array([
+		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1),
 	])
-	var colors: PackedColorArray = PackedColorArray([
-		default_color, default_color, default_color, default_color
-	])
-
+	var colors := PackedColorArray([texture_tint, texture_tint, texture_tint, texture_tint])
 	draw_polygon(poly, colors, uvs, texture)
 
 
-## Draw a textured line where the texture tiles along the segment length.
-func _draw_textured_line_tile(a: Vector2, b: Vector2, seg_len: float) -> void:
+func _draw_textured_tile(a: Vector2, b: Vector2, seg_len: float, fit_height: bool) -> void:
+	if seg_len < 0.001:
+		return
 	var dir: Vector2 = (b - a) / seg_len
 	var perp: Vector2 = Vector2(-dir.y, dir.x)
-
 	var tex_size: Vector2 = texture.get_size()
 	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
 		return
 
-	# How many texture pixels map to one world pixel along the line?
-	# We want the texture to appear at its native scale (1:1) so a 32x6
-	# texture drawn on a 4px thick line will show 4px of the texture's
-	# height and tile horizontally at its native 32px interval.
-	var tile_length: float = tex_size.x
-	var half_w: float = width * 0.5
+	var tile_length: float = tex_size.x * texture_scale.x
+	if tile_length < 1.0:
+		tile_length = 1.0
 
+	var half_w: float = width * 0.5
 	var travelled: float = 0.0
+
+	var v0: float = 0.0
+	var v1: float = 1.0
+	if not fit_height:
+		var span: float = width / tex_size.y
+		v0 = 0.5 - span * 0.5
+		v1 = 0.5 + span * 0.5
+
 	while travelled < seg_len:
-		var tile_start: Vector2 = a + dir * travelled
 		var this_tile: float = min(tile_length, seg_len - travelled)
+		var tile_start: Vector2 = a + dir * travelled
 		var tile_end: Vector2 = a + dir * (travelled + this_tile)
 
 		var p0: Vector2 = tile_start - perp * half_w
@@ -269,26 +476,28 @@ func _draw_textured_line_tile(a: Vector2, b: Vector2, seg_len: float) -> void:
 		var p2: Vector2 = tile_end + perp * half_w
 		var p3: Vector2 = tile_start + perp * half_w
 
-		# UVs: horizontal fraction = this_tile / tile_length,
-		# vertical fraction = width / tex_size.y (crop or stretch).
 		var u_frac: float = this_tile / tile_length
-		var v_frac: float = width / tex_size.y
 
-		var poly: PackedVector2Array = PackedVector2Array([p0, p1, p2, p3])
-		var uvs: PackedVector2Array = PackedVector2Array([
-			Vector2(0, 0),
-			Vector2(u_frac, 0),
-			Vector2(u_frac, v_frac),
-			Vector2(0, v_frac),
+		var poly := PackedVector2Array([p0, p1, p2, p3])
+		var uvs := PackedVector2Array([
+			Vector2(0.0, v0),
+			Vector2(u_frac, v0),
+			Vector2(u_frac, v1),
+			Vector2(0.0, v1),
 		])
-		var colors: PackedColorArray = PackedColorArray([
-			default_color, default_color, default_color, default_color
-		])
-
+		var colors := PackedColorArray([texture_tint, texture_tint, texture_tint, texture_tint])
 		draw_polygon(poly, colors, uvs, texture)
 
 		travelled += this_tile
 
+
+func _draw_round_joints(segments: Array) -> void:
+	if segments.size() < 2:
+		return
+	var radius: float = width * 0.5
+	for i in range(segments.size() - 1):
+		var joint: Vector2 = segments[i][1]
+		draw_circle(joint, radius, default_color)
 
 func _draw_caps(segments: Array) -> void:
 	if segments.is_empty():
@@ -296,21 +505,45 @@ func _draw_caps(segments: Array) -> void:
 
 	var radius: float = width * 0.5
 
-	if round_joints:
-		# Draw a filled circle at each intermediate joint
-		for i in range(segments.size() - 1):
-			var joint: Vector2 = segments[i][1]
-			draw_circle(joint, radius, default_color)
+	match cap_start:
+		CapStyle.ROUND:
+			var p0: Vector2 = segments[0][0]
+			draw_circle(p0, radius, default_color)
+		CapStyle.SQUARE:
+			var a0: Vector2 = segments[0][0]
+			var b0: Vector2 = segments[0][1]
+			var dir0: Vector2 = (b0 - a0)
+			if dir0.length() > 0.001:
+				dir0 = dir0.normalized()
+				var ext: Vector2 = a0 - dir0 * radius
+				var perp: Vector2 = Vector2(-dir0.y, dir0.x) * radius
+				draw_colored_polygon(
+					PackedVector2Array([a0 - perp, a0 + perp, ext + perp, ext - perp]),
+					default_color
+				)
+		_:
+			pass
 
-	if round_caps:
-		# Draw filled circles at the two endpoints of the whole line
-		draw_circle(segments[0][0], radius, default_color)
-		draw_circle(segments[segments.size() - 1][1], radius, default_color)
+	match cap_end:
+		CapStyle.ROUND:
+			var p1: Vector2 = segments[segments.size() - 1][1]
+			draw_circle(p1, radius, default_color)
+		CapStyle.SQUARE:
+			var last_seg: Array = segments[segments.size() - 1]
+			var a1: Vector2 = last_seg[0]
+			var b1: Vector2 = last_seg[1]
+			var dir1: Vector2 = (b1 - a1)
+			if dir1.length() > 0.001:
+				dir1 = dir1.normalized()
+				var ext2: Vector2 = b1 + dir1 * radius
+				var perp2: Vector2 = Vector2(-dir1.y, dir1.x) * radius
+				draw_colored_polygon(
+					PackedVector2Array([b1 - perp2, b1 + perp2, ext2 + perp2, ext2 - perp2]),
+					default_color
+				)
+		_:
+			pass
 
-
-# ============================================================
-# ARROW DRAWING
-# ============================================================
 
 func _draw_arrows(segments: Array) -> void:
 	if segments.is_empty():
@@ -319,88 +552,117 @@ func _draw_arrows(segments: Array) -> void:
 	var first_seg: Array = segments[0]
 	var last_seg: Array = segments[segments.size() - 1]
 
-	# Start arrow: draws at the very first point, pointing outward (away from
-	# the line). Direction is (first_seg[1] - first_seg[0]).normalized().
-	if start_arrow != ArrowStyle.NONE:
+	if start_arrow != ArrowStyle.NONE or arrow_texture_start != null:
 		var dir: Vector2 = first_seg[1] - first_seg[0]
 		if dir.length() > 0.001:
-			_draw_arrow_at(first_seg[0], -dir.normalized(), start_arrow)
+			var tip: Vector2 = first_seg[0]
+			var outward: Vector2 = -dir.normalized()
+			_draw_arrow_endpoint(tip, outward, start_arrow, arrow_texture_start)
 
-	# End arrow: draws at the very last point, pointing outward.
-	if end_arrow != ArrowStyle.NONE:
+	if end_arrow != ArrowStyle.NONE or arrow_texture_end != null:
 		var dir2: Vector2 = last_seg[1] - last_seg[0]
 		if dir2.length() > 0.001:
-			_draw_arrow_at(last_seg[1], dir2.normalized(), end_arrow)
+			var tip2: Vector2 = last_seg[1]
+			var outward2: Vector2 = dir2.normalized()
+			_draw_arrow_endpoint(tip2, outward2, end_arrow, arrow_texture_end)
 
 
-## Draws an endpoint decoration at `tip`. `direction` is the unit vector
-## the decoration should point toward (i.e. it sits on the line and points
-## away from it).
-func _draw_arrow_at(tip: Vector2, direction: Vector2, style: ArrowStyle) -> void:
+func _draw_arrow_endpoint(tip: Vector2, outward: Vector2, style: ArrowStyle, arrow_tex: Texture2D) -> void:
+	var offset_tip: Vector2 = tip + outward * arrow_offset_x
+
+	if arrow_tex != null:
+		_draw_arrow_texture(offset_tip, outward, arrow_tex)
+		return
+
+	_draw_arrow_shape(offset_tip, outward, style)
+
+
+func _draw_arrow_texture(tip: Vector2, outward: Vector2, tex: Texture2D) -> void:
+	var tex_size: Vector2 = tex.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+
+	var angle: float = atan2(outward.y, outward.x)
+
+	var scaled_size: Vector2 = Vector2(
+		tex_size.x * arrow_scale.x,
+		tex_size.y * arrow_scale.y
+	)
+
+	var center_local: Vector2 = Vector2(scaled_size.x * 0.5, 0.0)
+	var rotated_offset: Vector2 = center_local.rotated(angle)
+	var center: Vector2 = tip + rotated_offset
+
+	var xform := Transform2D(angle, center)
+	xform = xform.scaled(Vector2(arrow_scale.x, arrow_scale.y))
+
+	draw_set_transform_matrix(xform)
+	var rect := Rect2(-tex_size * 0.5, tex_size)
+	draw_texture_rect(tex, rect, false, arrow_tint)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+
+func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> void:
 	var size: float = arrow_size
-	var perp: Vector2 = Vector2(-direction.y, direction.x)
-	var back: Vector2 = tip - direction * size
+	var perp: Vector2 = Vector2(-outward.y, outward.x)
+	var apex: Vector2 = tip + outward * size
 
 	match style:
 		ArrowStyle.ARROW:
-			# Triangle: tip, two back corners
-			var left: Vector2 = back + perp * (size * 0.5)
-			var right: Vector2 = back - perp * (size * 0.5)
-			draw_colored_polygon(
-				PackedVector2Array([tip, left, right]),
-				default_color
-			)
-
+			var left: Vector2 = tip + perp * (size * 0.5)
+			var right: Vector2 = tip - perp * (size * 0.5)
+			draw_colored_polygon(PackedVector2Array([apex, left, right]), default_color)
 		ArrowStyle.T_BAR:
-			# Perpendicular bar at the tip
 			var half: float = size * 0.5
-			var a: Vector2 = tip + perp * half
-			var b: Vector2 = tip - perp * half
-			draw_line(a, b, default_color, max(2.0, width), true)
-
+			var a: Vector2 = apex + perp * half
+			var b: Vector2 = apex - perp * half
+			draw_line(a, b, default_color, max(2.0, width), smooth_antialiasing)
 		ArrowStyle.SQUARE:
-			# Filled square behind the tip
 			var half_w: float = max(width, size * 0.4) * 0.5
-			var top_left: Vector2 = tip + perp * half_w
-			var top_right: Vector2 = tip - perp * half_w
-			var bottom_left: Vector2 = back + perp * half_w
-			var bottom_right: Vector2 = back - perp * half_w
+			var top_left: Vector2 = apex + perp * half_w
+			var top_right: Vector2 = apex - perp * half_w
+			var bottom_left: Vector2 = tip + perp * half_w
+			var bottom_right: Vector2 = tip - perp * half_w
 			draw_colored_polygon(
 				PackedVector2Array([top_left, top_right, bottom_right, bottom_left]),
 				default_color
 			)
-
 		ArrowStyle.CIRCLE:
-			draw_circle(tip - direction * (size * 0.35), size * 0.5, default_color)
-
+			draw_circle(tip + outward * (size * 0.5), size * 0.5, default_color)
 		ArrowStyle.DIAMOND:
-			var center: Vector2 = tip - direction * (size * 0.5)
+			var center: Vector2 = tip + outward * (size * 0.5)
 			var left: Vector2 = center + perp * (size * 0.5)
 			var right: Vector2 = center - perp * (size * 0.5)
-			var front: Vector2 = tip
-			var back_pt: Vector2 = center - direction * (size * 0.5)
+			var back_pt: Vector2 = tip
 			draw_colored_polygon(
-				PackedVector2Array([front, left, back_pt, right]),
+				PackedVector2Array([apex, left, back_pt, right]),
 				default_color
 			)
 
-
 # ============================================================
-# SEGMENT COMPUTATION (shape + dash)
+# SEGMENT COMPUTATION
 # ============================================================
 
-## Returns an Array of [Vector2, Vector2] pairs — each pair is a solid
-## sub-segment that should be drawn (dash pattern already applied).
 func _get_draw_segments() -> Array:
 	if not _cache_dirty:
 		return _cached_segments
 
-	# 1. Base segments = each consecutive pair of points
-	var base_segments: Array = []
-	for i in range(points.size() - 1):
-		base_segments.append([points[i], points[i + 1]])
+	var working_points: PackedVector2Array = points
 
-	# 2. Apply dash pattern if needed
+	# Wiggle is only active if effective frequency is above threshold.
+	var wiggle_wants_geometry: bool = wiggle_enabled and _effective_frequency > FREQ_STOP_THRESHOLD
+
+	# Subdivide straight 2-point lines so wiggle has interior points.
+	if wiggle_wants_geometry and working_points.size() == 2 and STRAIGHT_SUBDIVISIONS > 1:
+		working_points = _subdivide_polyline(working_points, STRAIGHT_SUBDIVISIONS)
+
+	if wiggle_wants_geometry and working_points.size() >= 3:
+		working_points = _apply_wiggle(working_points)
+
+	var base_segments: Array = []
+	for i in range(working_points.size() - 1):
+		base_segments.append([working_points[i], working_points[i + 1]])
+
 	var result: Array = []
 	match dash_style:
 		DashStyle.SOLID:
@@ -417,28 +679,153 @@ func _get_draw_segments() -> Array:
 		_:
 			result = base_segments
 
-	_cached_segments = result
-	_cache_dirty = false
-	return result
+	if not wiggle_wants_geometry:
+		_cached_segments = result
+		_cache_dirty = false
 
+	return result
 
 func _invalidate_cache() -> void:
 	_cache_dirty = true
 	queue_redraw()
 
+# ------------------------------------------------------------
+# SUBDIVISION
+# ------------------------------------------------------------
 
-# ============================================================
-# DASH PATTERN COMPUTATION
-# ============================================================
+func _subdivide_polyline(src: PackedVector2Array, subdivisions: int) -> PackedVector2Array:
+	if src.size() < 2 or subdivisions < 2:
+		return src
 
-## Splits base segments into dashes: on_length drawn, off_length skipped.
+	var out := PackedVector2Array()
+	var n: int = src.size()
+
+	for i in range(n - 1):
+		var a: Vector2 = src[i]
+		var b: Vector2 = src[i + 1]
+
+		if i == 0:
+			out.append(a)
+
+		for j in range(1, subdivisions + 1):
+			var t: float = float(j) / float(subdivisions)
+			out.append(a.lerp(b, t))
+
+	return out
+
+# ------------------------------------------------------------
+# WIGGLE GEOMETRY
+# ------------------------------------------------------------
+
+func _apply_wiggle(src: PackedVector2Array) -> PackedVector2Array:
+	var n: int = src.size()
+	if n < 3:
+		return src
+
+	var result := PackedVector2Array()
+	result.resize(n)
+
+	result[0] = src[0]
+	result[n - 1] = src[n - 1]
+
+	var amp: float = wiggle_base_amplitude * wiggle_intensity
+	if wiggle_target_is_active:
+		amp *= wiggle_active_boost
+	if amp <= 0.0001:
+		return src
+
+	var clock: float = _wiggle_clock
+
+	for i in range(1, n - 1):
+		var prev: Vector2 = src[i - 1]
+		var next: Vector2 = src[i + 1]
+		var dir: Vector2 = next - prev
+		var dir_len: float = dir.length()
+
+		if dir_len < 0.0001:
+			result[i] = src[i]
+			continue
+
+		var perp: Vector2 = Vector2(-dir.y, dir.x) / dir_len
+		var t: float = float(i) / float(n - 1)
+		var taper: float = sin(PI * t)
+		var wave: float = _evaluate_waveform(i, t, clock)
+
+		result[i] = src[i] + perp * amp * wave * taper
+
+	return result
+
+
+func _evaluate_waveform(i: int, t: float, clock: float) -> float:
+	var phase: float = wiggle_phase_offset
+
+	match wiggle_pattern:
+		WigglePattern.SINE:
+			return sin(clock * TAU + phase + t * 1.5)
+
+		WigglePattern.PERLIN:
+			var sample: float = _perlin_1d(t * 2.0 + clock + phase)
+			return sample * 2.0 - 1.0
+
+		WigglePattern.RANDOM_JITTER:
+			var per_point: float = _pseudo_rand(-0.3, 0.3, float(wiggle_random_seed + i * 17))
+			return clampf(_jitter_value + per_point, -1.0, 1.0)
+
+		WigglePattern.TRIANGLE:
+			var p: float = fposmod(clock + phase + t * 1.5, 1.0)
+			return absf(p * 2.0 - 1.0) * 2.0 - 1.0
+
+		WigglePattern.BOUNCE:
+			var cycle_pos: float = fposmod(clock + phase * 0.3, 1.0)
+			var env: float = _ease_out_bounce(cycle_pos)
+			var carrier: float = sin(clock * TAU + phase + t * 1.5)
+			return carrier * env
+
+	return 0.0
+
+
+func _ease_out_bounce(x: float) -> float:
+	var n1: float = 7.5625
+	var d1: float = 2.75
+	var v: float = x
+	if v < 1.0 / d1:
+		return 1.0 - (n1 * v * v)
+	elif v < 2.0 / d1:
+		v -= 1.5 / d1
+		return 1.0 - (n1 * v * v + 0.75)
+	elif v < 2.5 / d1:
+		v -= 2.25 / d1
+		return 1.0 - (n1 * v * v + 0.9375)
+	else:
+		v -= 2.625 / d1
+		return 1.0 - (n1 * v * v + 0.984375)
+
+
+func _perlin_1d(x: float) -> float:
+	var v: float = 0.0
+	v += sin(x * 1.0 + wiggle_random_seed * 0.001) * 0.5
+	v += sin(x * 2.3 + wiggle_random_seed * 0.002) * 0.25
+	v += sin(x * 4.7 + wiggle_random_seed * 0.003) * 0.125
+	v += sin(x * 9.1 + wiggle_random_seed * 0.005) * 0.0625
+	return clampf(v * 0.5 + 0.5, 0.0, 1.0)
+
+
+func _pseudo_rand(lo: float, hi: float, seed_val: float) -> float:
+	var n: float = sin(seed_val * 12.9898) * 43758.5453
+	n = n - floor(n)
+	return lo + (hi - lo) * n
+
+# ------------------------------------------------------------
+# DASH PATTERN
+# ------------------------------------------------------------
+
 func _apply_dash_pattern(base_segments: Array, on_length: float, off_length: float) -> Array:
 	var result: Array = []
 	if on_length <= 0.1:
 		return base_segments
 
 	var pattern_cycle: float = on_length + off_length
-	var distance: float = 0.0
+	var distance: float = dash_offset
 
 	for seg in base_segments:
 		var seg_start: Vector2 = seg[0]
@@ -472,13 +859,10 @@ func _apply_dash_pattern(base_segments: Array, on_length: float, off_length: flo
 
 	return result
 
-
-## Splits base segments into dash-dot pattern:
-## long, gap, short, gap, repeat.
 func _apply_dash_dot_pattern(base_segments: Array, long_len: float, short_len: float, gap: float) -> Array:
 	var result: Array = []
 	var pattern_cycle: float = long_len + gap + short_len + gap
-	var distance: float = 0.0
+	var distance: float = dash_offset
 
 	for seg in base_segments:
 		var seg_start: Vector2 = seg[0]
