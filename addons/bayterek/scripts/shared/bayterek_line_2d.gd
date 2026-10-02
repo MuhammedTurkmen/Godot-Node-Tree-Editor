@@ -44,24 +44,20 @@ enum WigglePattern {
 	BOUNCE,
 }
 
+## How the wiggle direction is chosen at each interior point.
+enum WiggleDirectionMode {
+	PERPENDICULAR,
+	FOLLOW_NODE_MOTION,
+	AXIS_LOCK,
+}
+
 # ============================================================
 # CONSTANTS
 # ============================================================
 
-## STRAIGHT çizgileri otomatik alt bölümlere ayır (wiggle görünsün).
 const STRAIGHT_SUBDIVISIONS := 16
-
-## Effective frequency below this stops everything.
-##
-## This is a HARD-STOP: when the incoming intensity is essentially 0,
-## we snap `_effective_frequency` to 0 and call `set_process(false)`.
-## No asymptotic tail, no residual wiggle.
 const FREQ_STOP_THRESHOLD := 0.05
-
-## How fast `_effective_frequency` ramps toward its target.
 const FREQ_RESPONSIVENESS := 3.0
-
-## Below this intensity value we treat the wiggle as completely off.
 const INTENSITY_HARD_STOP := 0.001
 
 # ============================================================
@@ -132,6 +128,13 @@ var wiggle_intensity: float = 0.0
 var wiggle_active_boost: float = 1.5
 var wiggle_target_is_active: bool = false
 
+## Direction mode for the wiggle displacement.
+var wiggle_direction_mode: WiggleDirectionMode = WiggleDirectionMode.PERPENDICULAR
+
+## Current direction of motion for the SOURCE node (pixels/frame).
+## Used by FOLLOW_NODE_MOTION and AXIS_LOCK modes.
+var wiggle_source_velocity: Vector2 = Vector2.ZERO
+
 var _effective_frequency: float = 0.0
 var _wiggle_clock: float = 0.0
 var _jitter_value: float = 0.0
@@ -157,35 +160,24 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	# ------------------------------------------------------------------
-	# HARD STOP
-	# ------------------------------------------------------------------
-	# If the target frequency is essentially zero, snap everything to
-	# zero and stop the process loop immediately. No asymptotic tail.
 	var target_freq: float = wiggle_frequency * wiggle_intensity
 
+	# Hard stop — no asymptotic tail.
 	if target_freq < FREQ_STOP_THRESHOLD:
 		_effective_frequency = 0.0
 		set_process(false)
 		_invalidate_cache()
 		return
 
-	# ------------------------------------------------------------------
-	# SMOOTH RAMP
-	# ------------------------------------------------------------------
 	var lerp_factor: float = 1.0 - exp(-FREQ_RESPONSIVENESS * delta)
 	_effective_frequency = lerpf(_effective_frequency, target_freq, lerp_factor)
 
-	# If we dipped below the stop threshold, hard-stop.
 	if _effective_frequency < FREQ_STOP_THRESHOLD:
 		_effective_frequency = 0.0
 		set_process(false)
 		_invalidate_cache()
 		return
 
-	# ------------------------------------------------------------------
-	# CLOCK
-	# ------------------------------------------------------------------
 	_wiggle_clock += delta * wiggle_speed * _effective_frequency
 
 	if wiggle_pattern == WigglePattern.RANDOM_JITTER:
@@ -313,25 +305,12 @@ func set_wiggle_enabled(enabled: bool) -> void:
 
 	if enabled:
 		set_process(true)
-	else:
-		# Let _process decide when to stop based on intensity.
-		pass
 
 
-## Called by the connections service whenever the source/target node's
-## speed changes.
-##
-## KEY BEHAVIOR: if the incoming intensity is essentially zero, we
-## HARD-STOP the wiggle — no smooth ramp-down, no residual motion.
-## This is what makes "mouse leaves node → node settles → wiggle stops"
-## behave exactly as the user expects.
 func set_wiggle_intensity(intensity: float, target_is_active: bool) -> void:
 	var new_intensity: float = maxf(0.0, intensity)
 
-	# --- HARD STOP ---
-	# If intensity is below the hard-stop threshold, kill everything
-	# immediately: zero out effective frequency, stop processing,
-	# redraw one last time with the un-wiggled geometry.
+	# Hard stop.
 	if new_intensity < INTENSITY_HARD_STOP:
 		var was_wiggling: bool = wiggle_intensity > INTENSITY_HARD_STOP or _effective_frequency > 0.0
 
@@ -345,7 +324,6 @@ func set_wiggle_intensity(intensity: float, target_is_active: bool) -> void:
 
 		return
 
-	# --- NORMAL UPDATE ---
 	if is_equal_approx(new_intensity, wiggle_intensity) and target_is_active == wiggle_target_is_active:
 		return
 
@@ -358,6 +336,12 @@ func set_wiggle_intensity(intensity: float, target_is_active: bool) -> void:
 
 	if wiggle_enabled:
 		queue_redraw()
+
+
+## Called by the connections service to update the source node's
+## motion direction. Used by FOLLOW_NODE_MOTION and AXIS_LOCK modes.
+func set_wiggle_source_velocity(velocity: Vector2) -> void:
+	wiggle_source_velocity = velocity
 
 # ============================================================
 # PUBLIC HELPERS
@@ -649,10 +633,8 @@ func _get_draw_segments() -> Array:
 
 	var working_points: PackedVector2Array = points
 
-	# Wiggle is only active if effective frequency is above threshold.
 	var wiggle_wants_geometry: bool = wiggle_enabled and _effective_frequency > FREQ_STOP_THRESHOLD
 
-	# Subdivide straight 2-point lines so wiggle has interior points.
 	if wiggle_wants_geometry and working_points.size() == 2 and STRAIGHT_SUBDIVISIONS > 1:
 		working_points = _subdivide_polyline(working_points, STRAIGHT_SUBDIVISIONS)
 
@@ -717,6 +699,25 @@ func _subdivide_polyline(src: PackedVector2Array, subdivisions: int) -> PackedVe
 # WIGGLE GEOMETRY
 # ------------------------------------------------------------
 
+## Displaces every interior point. The displacement direction depends on
+## `wiggle_direction_mode`:
+##
+##   PERPENDICULAR      → displacement is perpendicular to the local
+##                        line direction (classic sway).
+##
+##   FOLLOW_NODE_MOTION → displacement follows `wiggle_source_velocity`
+##                        (the source node's current motion direction).
+##
+##   AXIS_LOCK          → displacement is locked to the world axis (X or
+##                        Y) that matches the source node's motion axis.
+##                        A node moving vertically sways its lines
+##                        vertically; a node moving horizontally sways
+##                        its lines horizontally. This makes "aligned"
+##                        lines feel stable — a vertical connection
+##                        under a vertical node motion never sways
+##                        sideways.
+##
+## In all modes the endpoints stay fixed and the middle sways the most.
 func _apply_wiggle(src: PackedVector2Array) -> PackedVector2Array:
 	var n: int = src.size()
 	if n < 3:
@@ -736,6 +737,28 @@ func _apply_wiggle(src: PackedVector2Array) -> PackedVector2Array:
 
 	var clock: float = _wiggle_clock
 
+	# --- Pre-compute a global displacement direction for motion-based modes.
+	var motion_dir: Vector2 = wiggle_source_velocity
+	var motion_len: float = motion_dir.length()
+
+	# Follow-motion direction (normalized). Zero if not moving.
+	var follow_dir: Vector2 = Vector2.ZERO
+	if motion_len > 0.0001:
+		follow_dir = motion_dir / motion_len
+
+	# Axis-lock direction: pick the dominant world axis of motion.
+	# A node moving mostly vertically → vertical sway. Mostly horizontally
+	# → horizontal sway. If the node isn't moving, we fall back to
+	# perpendicular on a per-point basis.
+	var axis_lock_dir: Vector2 = Vector2.ZERO
+	var axis_lock_valid: bool = false
+	if motion_len > 0.0001:
+		if absf(motion_dir.x) > absf(motion_dir.y):
+			axis_lock_dir = Vector2(signf(motion_dir.x), 0.0)
+		else:
+			axis_lock_dir = Vector2(0.0, signf(motion_dir.y))
+		axis_lock_valid = true
+
 	for i in range(1, n - 1):
 		var prev: Vector2 = src[i - 1]
 		var next: Vector2 = src[i + 1]
@@ -746,7 +769,28 @@ func _apply_wiggle(src: PackedVector2Array) -> PackedVector2Array:
 			result[i] = src[i]
 			continue
 
-		var perp: Vector2 = Vector2(-dir.y, dir.x) / dir_len
+		# Fallback perpendicular (line normal).
+		var perp_local: Vector2 = Vector2(-dir.y, dir.x) / dir_len
+
+		# Pick the displacement direction based on the mode.
+		var perp: Vector2
+		match wiggle_direction_mode:
+			WiggleDirectionMode.FOLLOW_NODE_MOTION:
+				if follow_dir != Vector2.ZERO:
+					perp = follow_dir
+				else:
+					perp = perp_local
+
+			WiggleDirectionMode.AXIS_LOCK:
+				if axis_lock_valid:
+					perp = axis_lock_dir
+				else:
+					perp = perp_local
+
+			_:
+				# PERPENDICULAR (default).
+				perp = perp_local
+
 		var t: float = float(i) / float(n - 1)
 		var taper: float = sin(PI * t)
 		var wave: float = _evaluate_waveform(i, t, clock)
@@ -858,6 +902,7 @@ func _apply_dash_pattern(base_segments: Array, on_length: float, off_length: flo
 		distance += seg_len
 
 	return result
+
 
 func _apply_dash_dot_pattern(base_segments: Array, long_len: float, short_len: float, gap: float) -> Array:
 	var result: Array = []

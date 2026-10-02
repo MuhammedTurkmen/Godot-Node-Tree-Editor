@@ -60,18 +60,18 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "5964a013-06d5-4a8b-8949-85c0d933267f"
+layer_id = "999faab7-9f5c-41dd-894b-3b4241fabbda"
 layer_name = "Texture 2"
 transform = SubResource("Resource_e1v5k")
 
 [sub_resource type="Resource" id="Resource_royti"]
 script = ExtResource("8_royti")
 thickness = 5.0
-wiggle_enabled = true
-wiggle_base_amplitude = 5.0
+wiggle_base_amplitude = 3.0
 wiggle_frequency = 8.0
-wiggle_pattern = 3
+wiggle_phase_offset = 2.4526435322306543
 wiggle_active_boost = 3.0
+wiggle_direction_mode = 2
 
 [sub_resource type="Resource" id="Resource_qlprm"]
 script = ExtResource("1_immpc")
@@ -136,27 +136,27 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "06441e9a-0133-40ed-9969-eb2f208540fe"
+layer_id = "e6535230-97f8-4755-a035-c706d0695b95"
 layer_name = "Texture 2"
 transform = SubResource("Resource_6p5mu")
 
 [sub_resource type="Resource" id="Resource_j5a67"]
 script = ExtResource("8_royti")
 thickness = 5.0
-wiggle_enabled = true
-wiggle_base_amplitude = 5.0
+wiggle_base_amplitude = 3.0
 wiggle_frequency = 8.0
-wiggle_pattern = 3
+wiggle_phase_offset = 4.8345322006200835
 wiggle_active_boost = 3.0
+wiggle_direction_mode = 2
 
 [sub_resource type="Resource" id="Resource_wfhhu"]
 script = ExtResource("8_royti")
 thickness = 5.0
-wiggle_enabled = true
-wiggle_base_amplitude = 5.0
+wiggle_base_amplitude = 3.0
 wiggle_frequency = 8.0
-wiggle_pattern = 3
+wiggle_phase_offset = 4.607215422615281
 wiggle_active_boost = 3.0
+wiggle_direction_mode = 2
 
 [sub_resource type="Resource" id="Resource_nrko7"]
 script = ExtResource("1_immpc")
@@ -222,7 +222,7 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "83449672-9139-43ba-a6fd-695f5930cce9"
+layer_id = "4a005190-1908-4dbd-bc02-796253d547a7"
 layer_name = "Texture 2"
 transform = SubResource("Resource_53451")
 
@@ -285,43 +285,43 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "7c8f4faf-cf1d-4bd1-ad0e-01f0ebdd2b33"
+layer_id = "29bcfa08-39a8-407f-9131-8d1f3e0cc6ab"
 layer_name = "Texture 2"
 transform = SubResource("Resource_x2q8f")
 
 [sub_resource type="Resource" id="Resource_3cysg"]
 script = ExtResource("8_royti")
 thickness = 5.0
-wiggle_enabled = true
-wiggle_base_amplitude = 5.0
+wiggle_base_amplitude = 3.0
 wiggle_frequency = 8.0
-wiggle_pattern = 3
+wiggle_phase_offset = 1.0010183378946238
 wiggle_active_boost = 3.0
+wiggle_direction_mode = 2
 
 [sub_resource type="Resource" id="Resource_mklcx"]
 script = ExtResource("8_royti")
 thickness = 5.0
-wiggle_enabled = true
-wiggle_base_amplitude = 5.0
+wiggle_base_amplitude = 3.0
 wiggle_frequency = 8.0
-wiggle_pattern = 3
+wiggle_phase_offset = 1.2834625504640673
 wiggle_active_boost = 3.0
+wiggle_direction_mode = 2
 
 [sub_resource type="Resource" id="Resource_safsq"]
 script = ExtResource("8_royti")
 thickness = 5.0
-wiggle_enabled = true
-wiggle_base_amplitude = 5.0
+wiggle_base_amplitude = 3.0
 wiggle_frequency = 8.0
-wiggle_pattern = 3
+wiggle_phase_offset = 4.895603810737781
 wiggle_active_boost = 3.0
+wiggle_direction_mode = 2
 
 [sub_resource type="Resource" id="Resource_ss5fq"]
 script = ExtResource("1_immpc")
 id = 68
 name = "Eski"
 design_id = "new_design"
-position = Vector2(448, -480)
+position = Vector2(496, -448)
 line_data = {
 69: SubResource("Resource_3cysg"),
 70: SubResource("Resource_mklcx"),
@@ -381,7 +381,7 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "ea2571f8-cb5c-4d4d-a1aa-20fd8b6b5cb0"
+layer_id = "b8386810-67ce-4cc9-b134-36bfd41a656c"
 layer_name = "Texture 2"
 transform = SubResource("Resource_botrw")
 
@@ -444,7 +444,7 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "d7779c9e-5ec6-4829-8b5c-bb3423ef197a"
+layer_id = "80dd62cf-2fd6-45f7-a774-dfa60459b637"
 layer_name = "Texture 2"
 transform = SubResource("Resource_bjop0")
 
@@ -453,7 +453,7 @@ script = ExtResource("1_immpc")
 id = 70
 name = "Eski"
 design_id = "new_design"
-position = Vector2(452.28564, -701.42834)
+position = Vector2(496, -640)
 in_nodes = Array[int]([68])
 layers = Array[ExtResource("4_x1plc")]([SubResource("Resource_pvlmy")])
 
@@ -507,7 +507,7 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "c0eb1dc2-d6e1-467c-beeb-71fe5daf73c8"
+layer_id = "8faab7f9-ab23-4365-a00e-76536b77d559"
 layer_name = "Texture 2"
 transform = SubResource("Resource_p8dnb")
 
@@ -532,8 +532,7 @@ prefabs_bar_visible = false
 default_line_thickness = 5.0
 default_start_offset = 0.0
 default_end_offset = 0.0
-wiggle_enabled = true
-wiggle_base_amplitude = 5.0
+wiggle_base_amplitude = 3.0
 wiggle_frequency = 8.0
-wiggle_pattern = 3
 wiggle_active_boost = 3.0
+wiggle_direction_mode = 2

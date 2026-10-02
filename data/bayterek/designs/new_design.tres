@@ -6,6 +6,62 @@
 [ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="2_a6nu6"]
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="3_3ujw7"]
 
+[sub_resource type="Resource" id="Resource_paddw"]
+script = ExtResource("3_3ujw7")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_u1mso"]
+script = ExtResource("2_a6nu6")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("2_3ujw7")
+}
+}
+tint_enabled = true
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0, 0, 0, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "fe8d2cf9-3996-4591-9c6d-d082d9437f7a"
+layer_name = "Shadow"
+transform = SubResource("Resource_paddw")
+absolute = true
+
 [sub_resource type="Resource" id="Resource_3ujw7"]
 script = ExtResource("3_3ujw7")
 size = Vector2(100, 100)
@@ -57,11 +113,11 @@ tint_configs = {
 }
 }
 layer_id = "c64e3fe0-81ce-4894-895d-a0f6e8680266"
-layer_name = "Texture 2"
+layer_name = "Icon"
 transform = SubResource("Resource_3ujw7")
 
 [resource]
 script = ExtResource("2_8idq7")
 id = "new_design"
 name = "Eski"
-layers = Array[ExtResource("1_rlmi4")]([SubResource("Resource_joamw")])
+layers = Array[ExtResource("1_rlmi4")]([SubResource("Resource_u1mso"), SubResource("Resource_joamw")])

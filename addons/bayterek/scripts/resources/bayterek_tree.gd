@@ -16,15 +16,11 @@ extends Resource
 @export_storage var refund_confirm: bool = false
 
 ## Whether group frames (colored bounding boxes around node groups)
-## are drawn. Default is TRUE in the editor so the user always sees
-## which nodes belong to which group. At runtime, projects that don't
-## want group frames should set this to false in the tree settings.
+## are drawn.
 @export_storage var show_group_frames: bool = true
 @export_storage var group_frame_title_align: int = 0
 
 ## Whether hover enter/exit animations play on nodes in the tree canvas.
-## Toggled from View → Hover Animations. Persisted across editor sessions
-## and file saves.
 @export_storage var hover_animations_enabled: bool = true
 
 @export_storage var tooltip_header_align: int = 0
@@ -61,12 +57,8 @@ extends Resource
 @export_storage var default_design_id: String = ""
 
 # ============================================================
-# CONNECTION DEFAULTS (Aşama 6)
+# CONNECTION DEFAULTS
 # ============================================================
-#
-# These are applied to newly-created BayterekLineData resources. Changing
-# them also updates existing lines (except those with per-field overrides
-# — see BayterekLineData.overridden_fields).
 
 @export_storage var default_line_color: Color = Color(0.7, 0.7, 0.7, 0.9)
 @export_storage var default_line_thickness: float = 4.0
@@ -79,7 +71,7 @@ extends Resource
 @export_storage var line_antialiasing: bool = true
 
 # ============================================================
-# WIGGLE DEFAULTS (Aşama 6)
+# WIGGLE DEFAULTS
 # ============================================================
 
 @export_storage var wiggle_enabled: bool = false
@@ -90,6 +82,13 @@ extends Resource
 @export_storage var wiggle_active_boost: float = 1.5
 @export_storage var wiggle_use_hover_intensity: bool = true
 @export_storage var wiggle_follow_node_animation: bool = true
+
+## Global wiggle direction mode.
+##   0 = Perpendicular   (classic — perpendicular to the line)
+##   1 = Follow Node Motion  (line sways in the direction the node is moving)
+##   2 = Axis Lock       (sway is locked to the world axis matching the
+##                        node's motion — vertical motion sways vertically)
+@export_storage var wiggle_direction_mode: int = 0
 
 var tree_state: BayterekTreeState
 
@@ -174,9 +173,7 @@ func get_group_of_node(node_id: int) -> BayterekNodeGroup:
 ##
 ## RESPECTS PER-FIELD OVERRIDES:
 ##   If a field was marked as overridden (via `set_overridden(true)`),
-##   this function will NOT touch it. This lets the user customize a
-##   single connection in the Inspector, then change tree defaults
-##   without blowing away their customization.
+##   this function will NOT touch it.
 ##
 ## If `force` is true, all overrides are cleared and every field is
 ## reset — useful for a "reset to defaults" action.
@@ -220,6 +217,8 @@ func apply_connection_defaults(line_data: BayterekLineData, force: bool = false)
 		line_data.wiggle_active_boost = wiggle_active_boost
 	if force or not line_data.is_overridden("wiggle_use_hover_intensity"):
 		line_data.wiggle_use_hover_intensity = wiggle_use_hover_intensity
+	if force or not line_data.is_overridden("wiggle_direction_mode"):
+		line_data.wiggle_direction_mode = wiggle_direction_mode as BayterekLineData.WiggleDirectionMode
 
 # ============================================================
 # BULK DEFAULTS APPLICATION
@@ -230,11 +229,6 @@ func apply_connection_defaults(line_data: BayterekLineData, force: bool = false)
 ## Called by BayterekEditor when the user changes a Settings-tab value,
 ## so the change is reflected live on all existing connections (except
 ## those with per-field overrides).
-##
-## `force` — if true, overrides are cleared and every line is reset
-## unconditionally.
-##
-## Returns the number of lines that were affected.
 func apply_defaults_to_all_lines(force: bool = false) -> int:
 	var count: int = 0
 

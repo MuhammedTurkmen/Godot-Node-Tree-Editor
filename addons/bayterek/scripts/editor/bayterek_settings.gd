@@ -81,6 +81,7 @@ var _conn_wiggle_amplitude: SpinBox
 var _conn_wiggle_frequency: SpinBox
 var _conn_wiggle_speed: SpinBox
 var _conn_wiggle_pattern_dropdown: OptionButton
+var _conn_wiggle_direction_dropdown: OptionButton
 var _conn_wiggle_active_boost: SpinBox
 var _conn_follow_animation_check: CheckBox
 
@@ -180,7 +181,7 @@ func _build_ui() -> void:
 	_content.add_child(_line_active_input)
 
 	# ============================================================
-	# CONNECTIONS (Aşama 6)
+	# CONNECTIONS (Aşama 6 + 7)
 	# ============================================================
 	_add_separator(_content)
 	_add_section_label(_content, "Connections — Default Style")
@@ -228,7 +229,7 @@ func _build_ui() -> void:
 	_add_section_label(_content, "Connections — Offsets")
 
 	_conn_start_offset = _make_float_row(_content, "Default Start Offset",
-		"Pixels to push the line start away from the source node. Applied to new connections.")
+		"Pixels to push the line start away from the source node.")
 	_conn_start_offset.min_value = 0.0
 	_conn_start_offset.max_value = 200.0
 	_conn_start_offset.step = 1.0
@@ -237,7 +238,7 @@ func _build_ui() -> void:
 	_conn_start_offset.value_changed.connect(_on_conn_start_offset_changed)
 
 	_conn_end_offset = _make_float_row(_content, "Default End Offset",
-		"Pixels to push the line end away from the target node. Applied to new connections.")
+		"Pixels to push the line end away from the target node.")
 	_conn_end_offset.min_value = 0.0
 	_conn_end_offset.max_value = 200.0
 	_conn_end_offset.step = 1.0
@@ -255,7 +256,7 @@ func _build_ui() -> void:
 	_conn_wiggle_enabled_check.toggled.connect(_on_conn_wiggle_enabled_changed)
 
 	_conn_wiggle_hover_intensity_check = _make_check_row(_content, "Use Hover Intensity",
-		"When ON, wiggle amplitude scales with the target node's hover distance.")
+		"When ON, wiggle speed scales with the node's movement speed.")
 	_conn_wiggle_hover_intensity_check.button_pressed = true
 	_conn_wiggle_hover_intensity_check.toggled.connect(_on_conn_hover_intensity_changed)
 
@@ -293,6 +294,14 @@ func _build_ui() -> void:
 		["Sine", "Perlin", "Random Jitter", "Triangle", "Bounce"]
 	)
 	_conn_wiggle_pattern_dropdown.item_selected.connect(_on_conn_wiggle_pattern_changed)
+
+	_conn_wiggle_direction_dropdown = _make_dropdown_row(
+		_content,
+		"Direction",
+		"How the wiggle direction is chosen.",
+		["Perpendicular", "Follow Node Motion", "Axis Lock"]
+	)
+	_conn_wiggle_direction_dropdown.item_selected.connect(_on_conn_wiggle_direction_changed)
 
 	_conn_wiggle_active_boost = _make_float_row(_content, "Active Boost",
 		"Amplitude multiplier when the target node is allocated.")
@@ -475,7 +484,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 
 	_rebuild_default_design_dropdown(tree_data.default_design_id)
 
-	# --- Aşama 6: Connections bölümü ---
+	# --- Connections bölümü ---
 	_conn_default_color.color = tree_data.default_line_color
 	_conn_default_thickness.set_value_no_signal(tree_data.default_line_thickness)
 	_conn_antialiasing_check.button_pressed = tree_data.line_antialiasing
@@ -494,6 +503,8 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_conn_wiggle_speed.set_value_no_signal(tree_data.wiggle_speed)
 	if _conn_wiggle_pattern_dropdown:
 		_conn_wiggle_pattern_dropdown.select(tree_data.wiggle_pattern)
+	if _conn_wiggle_direction_dropdown:
+		_conn_wiggle_direction_dropdown.select(tree_data.wiggle_direction_mode)
 	_conn_wiggle_active_boost.set_value_no_signal(tree_data.wiggle_active_boost)
 
 	_conn_follow_animation_check.button_pressed = tree_data.wiggle_follow_node_animation
@@ -739,16 +750,6 @@ func _on_refund_confirm_changed(pressed: bool) -> void:
 	changed.emit()
 	_notify_dirty()
 
-## Called when the user toggles the "Show Frames" checkbox in the
-## Settings tab. Delegates to the editor's centralized setter so the
-## View menu checkmark and the live frames stay in sync with the checkbox.
-##
-## We pass `show_toast = false` because the user is right next to the
-## checkbox — a toast would just be redundant noise.
-##
-## Note: the editor's centralized setter will also re-sync THIS checkbox
-## (via `_pass_state_to_settings_editor`), but that update is guarded by
-## `_updating_ui`, so the `toggled` signal won't loop.
 func _on_show_group_frames_changed(pressed: bool) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
@@ -756,8 +757,6 @@ func _on_show_group_frames_changed(pressed: bool) -> void:
 	if editor.has_method("_set_show_group_frames"):
 		editor._set_show_group_frames(pressed, false)
 	else:
-		# Fallback: direct assignment (only used if the editor is missing
-		# the centralized setter — e.g. older versions).
 		editor.tree.show_group_frames = pressed
 		if editor.tree_view and editor.tree_view.group_frames_service:
 			editor.tree_view.group_frames_service.refresh_all()
@@ -799,7 +798,7 @@ func _on_tooltip_footer_align_changed(index: int) -> void:
 	_notify_dirty()
 
 # ============================================================
-# AŞAMA 6 — CONNECTIONS HANDLERS
+# CONNECTION SETTINGS HANDLERS
 # ============================================================
 
 func _on_conn_default_color_changed(color: Color) -> void:
@@ -910,6 +909,14 @@ func _on_conn_wiggle_pattern_changed(index: int) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
 	editor.tree.wiggle_pattern = index
+	connection_wiggle_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_conn_wiggle_direction_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.wiggle_direction_mode = index
 	connection_wiggle_changed.emit()
 	changed.emit()
 	_notify_dirty()

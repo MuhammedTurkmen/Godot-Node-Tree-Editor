@@ -7,11 +7,12 @@ extends BaseButton
 ##   BayterekNodeButton (Control)     ← hitbox. position is STABLE.
 ##     └── VisualRoot (Control)       ← animations move this, NOT the outer node.
 ##
-## Speed tracking:
+## Speed & velocity tracking:
 ##   Every frame we compute how fast `_visual_root.position` moved since
-##   the previous frame. That value (`current_visual_speed`) drives the
-##   wiggle system — the faster the node moves, the faster the attached
-##   lines wiggle.
+##   the previous frame, both as a scalar (`current_visual_speed`) and
+##   as a signed vector (`current_visual_velocity`). The scalar drives
+##   the wiggle *intensity*, the vector drives the wiggle *direction*
+##   when the line is in FOLLOW_NODE_MOTION mode.
 ##
 ##   When the node stops moving (even with the mouse still over it),
 ##   `current_visual_speed` snaps to EXACTLY 0 (not lerped), so the
@@ -66,6 +67,14 @@ var current_visual_distance: float = 0.0
 ## Snaps to EXACTLY 0 when the node stops moving. This is what makes
 ## the wiggle stop cleanly without leaving residual motion.
 var current_visual_speed: float = 0.0
+
+## Current visual movement VELOCITY (pixels per frame, signed).
+##
+## Unlike `current_visual_speed`, this retains the DIRECTION of motion.
+## The wiggle system uses it when `wiggle_direction_mode` is set to
+## FOLLOW_NODE_MOTION, so lines can wiggle in the same direction the
+## node is currently moving.
+var current_visual_velocity: Vector2 = Vector2.ZERO
 
 ## Internal: previous frame's visual offset (for speed calc).
 var _previous_visual_offset: Vector2 = Vector2.ZERO
@@ -158,7 +167,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	# ------------------------------------------------------------------
-	# SPEED TRACKING (with hard-zero snap)
+	# SPEED + VELOCITY TRACKING (with hard-zero snap)
 	# ------------------------------------------------------------------
 	var current_offset: Vector2 = _visual_root.position if _visual_root else Vector2.ZERO
 	var frame_delta: Vector2 = current_offset - _previous_visual_offset
@@ -166,33 +175,34 @@ func _process(_delta: float) -> void:
 
 	var instant_speed: float = frame_delta.length()
 
-	# Hard-stop: if the node is essentially not moving this frame, force
-	# the smoothed speed to EXACTLY zero. Without this, the lerp-based
-	# smoothing approaches zero asymptotically and a tiny residual
-	# speed keeps the wiggle alive forever.
+	# Hard-stop: if the node is essentially not moving this frame,
+	# force both the smoothed speed AND the velocity to exactly zero.
 	if instant_speed < SPEED_IDLE_THRESHOLD:
 		current_visual_speed = 0.0
+		current_visual_velocity = Vector2.ZERO
 	else:
+		# Smooth the speed scalar.
 		current_visual_speed = lerpf(current_visual_speed, instant_speed, 0.5)
-		# Snap to zero if the smoothed value dipped below the threshold.
+		# Smooth the velocity vector the same way (preserves direction).
+		current_visual_velocity = current_visual_velocity.lerp(frame_delta, 0.5)
+
+		# Snap to zero if the smoothed speed dipped below idle threshold.
 		if current_visual_speed < SPEED_IDLE_THRESHOLD:
 			current_visual_speed = 0.0
+			current_visual_velocity = Vector2.ZERO
 
 	current_visual_distance = current_offset.length()
 
 	# ------------------------------------------------------------------
 	# SIGNAL EMISSION
 	# ------------------------------------------------------------------
-	# Emit `visual_offset_changed` every frame while the node is moving,
-	# and once more on the frame it stops so the wiggle system knows to
-	# begin its fade-out.
 	var is_moving_now: bool = current_visual_speed > 0.0
 
 	if is_moving_now:
 		visual_offset_changed.emit(self, current_offset, current_visual_distance)
 		_was_moving = true
 	elif _was_moving:
-		# Just stopped: one final notification with speed now zero.
+		# Just stopped: one final notification.
 		visual_offset_changed.emit(self, current_offset, current_visual_distance)
 		_was_moving = false
 
