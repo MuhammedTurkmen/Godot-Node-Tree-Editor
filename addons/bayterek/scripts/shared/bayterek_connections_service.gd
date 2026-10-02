@@ -78,6 +78,15 @@ func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
 		if _tree_data:
 			_tree_data.apply_connection_defaults(line.line_data)
 
+	# --- AUTO PHASE OFFSET ---
+	# Assign a deterministic per-line phase offset derived from the
+	# endpoint IDs. This makes multiple lines attached to the same node
+	# wiggle out-of-sync with each other, producing a natural wave feel.
+	#
+	# The offset is only applied when the user hasn't explicitly
+	# overridden `wiggle_phase_offset`. Manual overrides win.
+	_apply_auto_phase_offset(line.line_data, from_id, to_id)
+
 	_tree_view.lines_container.add_child(line)
 	_lines[_key(from_id, to_id)] = line
 
@@ -86,6 +95,40 @@ func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
 
 	line_created.emit(line, from_id, to_id)
 	return line
+
+
+## Applies a deterministic per-line phase offset derived from the
+## connection's endpoint IDs.
+##
+## The phase is expressed in radians (0..TAU). Two lines with the same
+## `from_id + to_id` will ALWAYS get the same phase, so the wiggle
+## pattern stays stable across editor sessions and reloads.
+##
+## The mixing function uses large primes and bit-shift XOR steps to
+## ensure that nearby IDs (e.g. 5→10 vs 5→11) produce visibly different
+## phases. This prevents the "all lines move together" look.
+##
+## If the user has explicitly set `wiggle_phase_offset` on the line
+## (marked as overridden from the Inspector), we skip — their value
+## wins.
+func _apply_auto_phase_offset(data: BayterekLineData, from_id: int, to_id: int) -> void:
+	if not data:
+		return
+	if data.is_overridden("wiggle_phase_offset"):
+		return
+
+	# Deterministic hash of the two endpoint IDs.
+	var h: int = (from_id * 73856093) ^ (to_id * 19349663)
+	# Extra bit mixing so the low bits aren't biased for small IDs.
+	h = h ^ (h >> 13)
+	h = h * 1274126177
+	h = h ^ (h >> 16)
+
+	# Use the low 16 bits as a fraction in [0, 1).
+	var frac: float = float(h & 0xFFFF) / 65536.0
+
+	# Convert fraction of a full cycle into radians.
+	data.wiggle_phase_offset = frac * TAU
 
 # ============================================================
 # DELETION
@@ -251,24 +294,14 @@ func _refresh_line_state(from_id: int, to_id: int) -> void:
 ## Computes the wiggle intensity for a line based on how fast its
 ## endpoint nodes are currently MOVING — not on their position.
 ##
-## This is the key difference from the earlier versions: instead of
-## looking at `current_visual_distance` (the node's offset from rest),
-## we look at `current_visual_speed` (how fast that offset is changing).
-##
 ## Behavior:
 ##   - Node lifting fast      → speed high → wiggle full speed
 ##   - Node settled at rest   → speed ~0   → wiggle fades out
 ##   - Node descending fast   → speed high → wiggle full speed
 ##   - Node fully stopped     → speed 0    → wiggle stops completely
 ##
-## Because both endpoints are checked, hovering either end of a
-## connection will wiggle the line — but only WHILE that end is
-## actually moving. If the mouse stays on a node after the hover
-## animation finishes, the wiggle fades out naturally.
-##
-## The `wiggle_use_hover_intensity` flag controls whether the intensity
-## scales proportionally with speed (true) or is just an on/off switch
-## based on whether the node is moving at all (false).
+## Both endpoints are checked. Hovering either end of a connection
+## will wiggle the line — but only while that end is actually moving.
 func _update_wiggle_intensity(line: BayterekConnection) -> void:
 	if not is_instance_valid(line):
 		return
@@ -278,20 +311,17 @@ func _update_wiggle_intensity(line: BayterekConnection) -> void:
 		line.set_wiggle_intensity(0.0, false)
 		return
 
-	# Master switch — tree-level wiggle must be on.
 	if _tree_data and not _tree_data.wiggle_enabled:
 		line.set_wiggle_intensity(0.0, false)
 		return
 
 	# Reference speed: what counts as "fast movement".
 	#
-	# The default hover-lift animation goes from 0 to ~8px over ~0.45s.
-	# At 60 FPS that's roughly 8 / (0.45 * 60) ≈ 0.30 px/frame at peak.
-	# We use this as the "full intensity" reference so a normal hover
-	# reaches intensity 1.0.
+	# Default hover-lift goes 0 → ~8px over ~0.45s, so peak speed is
+	# about 8 / (0.45 * 60) ≈ 0.30 px/frame. We use that as the "full
+	# intensity" reference.
 	const REFERENCE_SPEED := 0.30
 
-	# Get both endpoint nodes.
 	var from_node: BayterekNodeButton = _tree_view.nodes_service.get_node(line.from_id)
 	var to_node: BayterekNodeButton = _tree_view.nodes_service.get_node(line.to_id)
 
@@ -303,22 +333,17 @@ func _update_wiggle_intensity(line: BayterekConnection) -> void:
 	if to_node and is_instance_valid(to_node):
 		to_speed = to_node.current_visual_speed
 
-	# Line wiggles if EITHER endpoint is currently MOVING.
+	# Line wiggles if EITHER endpoint is moving.
 	var peak_speed: float = maxf(from_speed, to_speed)
 
 	var raw_intensity: float = 0.0
 	if data.wiggle_use_hover_intensity:
-		# Proportional to node movement speed.
 		raw_intensity = peak_speed / REFERENCE_SPEED
 	else:
-		# On/off: any movement above the idle threshold triggers
-		# full intensity.
 		raw_intensity = 1.0 if peak_speed > 0.05 else 0.0
 
-	# Clamp to [0, 2].
 	raw_intensity = clampf(raw_intensity, 0.0, 2.0)
 
-	# Active boost is applied when EITHER endpoint is allocated/preallocated.
 	var any_active: bool = false
 	if from_node and (from_node.allocated or from_node.preallocated):
 		any_active = true
