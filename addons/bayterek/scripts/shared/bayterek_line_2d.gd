@@ -81,6 +81,16 @@ var smooth_antialiasing: bool = true : set = set_smooth_antialiasing
 ## assign this directly. Call `queue_redraw()` manually after changing it.
 var flat_mode: bool = false
 
+## Per-line texture filter override.
+##   0 = Inherit (use CanvasItem default = linear)
+##   1 = Linear
+##   2 = Nearest
+var texture_filter_override: int = 0 :
+	set(v):
+		texture_filter_override = v
+		_apply_texture_filter()
+		queue_redraw()
+
 # ============================================================
 # TEXTURE
 # ============================================================
@@ -158,6 +168,7 @@ var _cache_dirty: bool = true
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_apply_texture_filter()
 	set_process(false)
 	_seed_from_instance_if_needed()
 
@@ -291,6 +302,19 @@ func set_arrow_tint(c: Color) -> void:
 func set_arrow_offset_x(v: float) -> void:
 	arrow_offset_x = v
 	queue_redraw()
+
+# ============================================================
+# TEXTURE FILTER
+# ============================================================
+
+func _apply_texture_filter() -> void:
+	match texture_filter_override:
+		1:
+			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		2:
+			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_:
+			texture_filter = CanvasItem.TEXTURE_FILTER_PARENT_NODE
 
 # ============================================================
 # WIGGLE SETTERS
@@ -606,7 +630,6 @@ func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> voi
 
 	match style:
 		ArrowStyle.ARROW:
-			# Triangle: base at tip, apex outward.
 			var apex: Vector2 = tip + outward * size
 			var left: Vector2 = tip + perp * (size * 0.5)
 			var right: Vector2 = tip - perp * (size * 0.5)
@@ -614,12 +637,7 @@ func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> voi
 
 		ArrowStyle.T_BAR:
 			# Perpendicular bar centered ON the tip.
-			#
-			# IMPORTANT: The bar's LENGTH runs along `perp` and its
-			# THICKNESS runs along `outward`. If we offset the four
-			# corners along `perp` for both length AND thickness, the
-			# quad collapses into a degenerate line and Godot throws
-			# "Invalid polygon data, triangulation failed".
+			# Length runs along `perp`, thickness runs along `outward`.
 			var half_len: float = size * 0.6
 			var thickness: float = max(width * 1.5, size * 0.35)
 			var half_th: float = thickness * 0.5
@@ -629,8 +647,6 @@ func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> voi
 			var left_end: Vector2 = tip + perp * half_len
 			var right_end: Vector2 = tip - perp * half_len
 
-			# 4 corners, walked in a consistent loop:
-			#   left_out → right_out → right_in → left_in
 			var p0: Vector2 = left_end + along_outward
 			var p1: Vector2 = right_end + along_outward
 			var p2: Vector2 = right_end - along_outward
@@ -639,7 +655,6 @@ func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> voi
 			draw_colored_polygon(PackedVector2Array([p0, p1, p2, p3]), default_color)
 
 		ArrowStyle.SQUARE:
-			# True square: size × size, centered on the tip.
 			var half_s: float = size * 0.5
 			var back: Vector2 = tip - outward * half_s
 			var front: Vector2 = tip + outward * half_s
@@ -653,12 +668,9 @@ func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> voi
 			)
 
 		ArrowStyle.CIRCLE:
-			# Circle: diameter = size, centered on the tip.
 			draw_circle(tip, size * 0.5, default_color)
 
 		ArrowStyle.DIAMOND:
-			# Diamond centered on the tip. Size multiplier 1.3× so it's
-			# visually comparable to the triangle arrow.
 			var d_size: float = size * 0.65
 			var apex: Vector2 = tip + outward * d_size
 			var back_pt: Vector2 = tip - outward * d_size

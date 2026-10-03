@@ -47,22 +47,19 @@ enum WigglePattern {
 	BOUNCE,
 }
 
-## How the wiggle direction is chosen at each interior point.
-##
-##   PERPENDICULAR       → classic wiggle: displacement is perpendicular
-##                         to the local line direction.
-##
-##   FOLLOW_NODE_MOTION  → displacement follows the SOURCE node's
-##                         movement direction.
-##
-##   AXIS_LOCK           → the wiggle displacement is locked to the
-##                         world axis (X or Y) that matches the node's
-##                         motion axis.
 enum WiggleDirectionMode {
 	PERPENDICULAR,
 	FOLLOW_NODE_MOTION,
 	AXIS_LOCK,
 }
+
+## Per-line texture filter override.
+##   0 = Inherit (use tree's filter)
+##   1 = Linear (smooth)
+##   2 = Nearest (pixel art)
+const TEXTURE_FILTER_INHERIT := 0
+const TEXTURE_FILTER_LINEAR := 1
+const TEXTURE_FILTER_NEAREST := 2
 
 # ============================================================
 # GEOMETRY
@@ -89,8 +86,6 @@ enum WiggleDirectionMode {
 @export var start_offset: float = 0.0
 @export var end_offset: float = 0.0
 
-## Extra backoff (in pixels) so the line stops BEFORE the arrow tip.
-## 0 = auto (arrow_size * 0.5 when the corresponding arrow is set).
 @export var start_arrow_backoff: float = 0.0
 @export var end_arrow_backoff: float = 0.0
 
@@ -101,10 +96,10 @@ enum WiggleDirectionMode {
 @export var color: Color = Color(0.7, 0.7, 0.7, 0.9)
 @export var thickness: float = 4.0
 @export var smooth_antialiasing: bool = true
-
-## When true, the line is drawn with a HARD single-color fill — no
-## gradient at the edges, no antialiasing alpha falloff.
 @export var flat_mode: bool = false
+
+## Per-line texture filter. Uses the TEXTURE_FILTER_* constants above.
+@export var texture_filter_override: int = TEXTURE_FILTER_INHERIT
 
 # ============================================================
 # LINE TEXTURE
@@ -195,6 +190,7 @@ func duplicate_line_data() -> BayterekLineData:
 	copy.thickness = thickness
 	copy.smooth_antialiasing = smooth_antialiasing
 	copy.flat_mode = flat_mode
+	copy.texture_filter_override = texture_filter_override
 	copy.texture_mode = texture_mode
 	copy.line_texture = line_texture
 	copy.texture_scale = texture_scale
@@ -232,15 +228,6 @@ func has_end_arrow_texture() -> bool:
 	return arrow_texture_end != null
 
 
-## Returns the effective start backoff.
-##
-## RULES:
-##   - If the user has explicitly set `start_arrow_backoff > 0`,
-##     that value is always used.
-##   - T_BAR never pushes the line back — it sits flush on the line tip.
-##   - Every other arrow type (or a custom arrow texture) uses
-##     arrow_size * 0.5 as the default backoff, so the line stops
-##     before the arrow tip.
 func get_effective_start_backoff() -> float:
 	if start_arrow_backoff > 0.0:
 		return start_arrow_backoff
@@ -251,8 +238,6 @@ func get_effective_start_backoff() -> float:
 	return 0.0
 
 
-## Returns the effective end backoff. Same rules as
-## `get_effective_start_backoff()`, but for the END arrow.
 func get_effective_end_backoff() -> float:
 	if end_arrow_backoff > 0.0:
 		return end_arrow_backoff
