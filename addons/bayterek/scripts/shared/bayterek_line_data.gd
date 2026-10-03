@@ -50,21 +50,14 @@ enum WigglePattern {
 ## How the wiggle direction is chosen at each interior point.
 ##
 ##   PERPENDICULAR       → classic wiggle: displacement is perpendicular
-##                         to the local line direction.  A horizontal
-##                         line sways vertically, a vertical line sways
-##                         horizontally.
+##                         to the local line direction.
 ##
 ##   FOLLOW_NODE_MOTION  → displacement follows the SOURCE node's
-##                         movement direction. If the node is lifting
-##                         upward, the line wiggles upward; if it's
-##                         descending, the wiggle is downward.
+##                         movement direction.
 ##
 ##   AXIS_LOCK           → the wiggle displacement is locked to the
 ##                         world axis (X or Y) that matches the node's
-##                         motion axis. A node moving vertically makes
-##                         its lines sway vertically (never sideways);
-##                         a node moving horizontally makes its lines
-##                         sway horizontally (never up/down).
+##                         motion axis.
 enum WiggleDirectionMode {
 	PERPENDICULAR,
 	FOLLOW_NODE_MOTION,
@@ -96,6 +89,11 @@ enum WiggleDirectionMode {
 @export var start_offset: float = 0.0
 @export var end_offset: float = 0.0
 
+## Extra backoff (in pixels) so the line stops BEFORE the arrow tip.
+## 0 = auto (arrow_size * 0.5 when the corresponding arrow is set).
+@export var start_arrow_backoff: float = 0.0
+@export var end_arrow_backoff: float = 0.0
+
 # ============================================================
 # VISUAL STYLE
 # ============================================================
@@ -103,6 +101,10 @@ enum WiggleDirectionMode {
 @export var color: Color = Color(0.7, 0.7, 0.7, 0.9)
 @export var thickness: float = 4.0
 @export var smooth_antialiasing: bool = true
+
+## When true, the line is drawn with a HARD single-color fill — no
+## gradient at the edges, no antialiasing alpha falloff.
+@export var flat_mode: bool = false
 
 # ============================================================
 # LINE TEXTURE
@@ -144,15 +146,6 @@ enum WiggleDirectionMode {
 @export var wiggle_use_hover_intensity: bool = true
 @export var wiggle_active_boost: float = 1.5
 
-## How the wiggle direction is chosen.
-##
-##   PERPENDICULAR      → classic perpendicular sway (default).
-##   FOLLOW_NODE_MOTION → sway follows the node's actual motion
-##                        direction.
-##   AXIS_LOCK          → sway is locked to the world axis matching
-##                        the node's motion axis (vertical motion =
-##                        vertical sway; horizontal motion = horizontal
-##                        sway).
 @export var wiggle_direction_mode: WiggleDirectionMode = WiggleDirectionMode.PERPENDICULAR
 
 # ============================================================
@@ -196,9 +189,12 @@ func duplicate_line_data() -> BayterekLineData:
 	copy.arrow_size = arrow_size
 	copy.start_offset = start_offset
 	copy.end_offset = end_offset
+	copy.start_arrow_backoff = start_arrow_backoff
+	copy.end_arrow_backoff = end_arrow_backoff
 	copy.color = color
 	copy.thickness = thickness
 	copy.smooth_antialiasing = smooth_antialiasing
+	copy.flat_mode = flat_mode
 	copy.texture_mode = texture_mode
 	copy.line_texture = line_texture
 	copy.texture_scale = texture_scale
@@ -234,3 +230,34 @@ func has_start_arrow_texture() -> bool:
 
 func has_end_arrow_texture() -> bool:
 	return arrow_texture_end != null
+
+
+## Returns the effective start backoff.
+##
+## RULES:
+##   - If the user has explicitly set `start_arrow_backoff > 0`,
+##     that value is always used.
+##   - T_BAR never pushes the line back — it sits flush on the line tip.
+##   - Every other arrow type (or a custom arrow texture) uses
+##     arrow_size * 0.5 as the default backoff, so the line stops
+##     before the arrow tip.
+func get_effective_start_backoff() -> float:
+	if start_arrow_backoff > 0.0:
+		return start_arrow_backoff
+	if start_arrow == ArrowStyle.T_BAR:
+		return 0.0
+	if start_arrow != ArrowStyle.NONE or arrow_texture_start != null:
+		return arrow_size * 0.5
+	return 0.0
+
+
+## Returns the effective end backoff. Same rules as
+## `get_effective_start_backoff()`, but for the END arrow.
+func get_effective_end_backoff() -> float:
+	if end_arrow_backoff > 0.0:
+		return end_arrow_backoff
+	if end_arrow == ArrowStyle.T_BAR:
+		return 0.0
+	if end_arrow != ArrowStyle.NONE or arrow_texture_end != null:
+		return arrow_size * 0.5
+	return 0.0

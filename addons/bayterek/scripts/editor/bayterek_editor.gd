@@ -194,7 +194,7 @@ func _show_chain_mode_notification() -> void:
 		BayterekToast.error(tree_view, message)
 
 # ============================================================
-# HOVER ANIMATIONS TOGGLE (persistent)
+# HOVER ANIMATIONS TOGGLE
 # ============================================================
 
 func _toggle_hover_animations() -> void:
@@ -241,7 +241,7 @@ func _stop_all_node_animations() -> void:
 			node.reset_visual_transform()
 
 # ============================================================
-# GROUP FRAMES TOGGLE (centralized)
+# GROUP FRAMES TOGGLE
 # ============================================================
 
 func _toggle_group_frames() -> void:
@@ -305,13 +305,15 @@ func _redraw_canvas() -> void:
 	var lines_refreshed: int = 0
 	var frames_refreshed: int = 0
 
-	# --- 1. Apply tree defaults to all lines (respecting overrides). ---
+	# 1) Apply tree defaults to all lines (respecting per-field overrides).
 	if tree:
 		tree.apply_defaults_to_all_lines(false)
 
-	# --- 2 + 3. Refresh every connection's visuals + geometry. ---
+	# 2) Refresh every connection's visuals + geometry.
 	if tree_view.connections_service:
 		var svc = tree_view.connections_service
+
+		# First pass: apply LineData visuals.
 		for line in svc._lines.values():
 			if not is_instance_valid(line):
 				continue
@@ -319,13 +321,20 @@ func _redraw_canvas() -> void:
 			if not data:
 				continue
 			svc._apply_line_data_visuals(line, data)
-			# Belt-and-braces: force wiggle_enabled sync.
 			line.set_wiggle_enabled(data.wiggle_enabled)
 			lines_refreshed += 1
 
+		# Second pass: rebuild geometry (which will call _apply_line_data_visuals
+		# again, but color is skipped when state_color_enabled).
 		svc.update_all_lines()
 
-	# --- 4. Refresh every node ---
+		# Third pass: if state colors own the color, apply them now.
+		if tree and tree.state_color_enabled:
+			for node in tree_view.nodes_service.get_all_nodes():
+				if is_instance_valid(node):
+					svc.on_node_allocation_changed(node)
+
+	# 3) Refresh every node.
 	if tree_view.nodes_service:
 		for node in tree_view.nodes_service.get_all_nodes():
 			if not is_instance_valid(node):
@@ -334,21 +343,21 @@ func _redraw_canvas() -> void:
 				node.refresh_visuals()
 				nodes_refreshed += 1
 
-	# --- 5. Refresh every group frame ---
+	# 4) Refresh every group frame.
 	if tree_view.group_frames_service:
 		tree_view.group_frames_service.refresh_all()
 		frames_refreshed = tree_view.group_frames_service._frames.size()
 
-	# --- 6. Refresh the tooltip ---
+	# 5) Refresh the tooltip.
 	if tree_view.has_method("refresh_tooltip_content"):
 		tree_view.refresh_tooltip_content()
 	if tree_view.has_method("refresh_tooltip_position"):
 		tree_view.refresh_tooltip_position()
 
-	# --- 7. Update camera bounds ---
+	# 6) Update camera bounds.
 	_apply_size_to_view()
 
-	# --- 8. Force a repaint ---
+	# 7) Force a repaint.
 	if tree_view:
 		tree_view.queue_redraw()
 
@@ -1084,7 +1093,7 @@ func _do_undo_group_delete(group_snapshot: BayterekNodeGroup, member_nodes: Arra
 	set_dirty(true)
 
 # ============================================================
-# GROUP ASSIGN / UNASSIGN (UNDOABLE)
+# GROUP ASSIGN / UNASSIGN
 # ============================================================
 
 func _assign_node_to_group(node: BayterekNodeButton, group_id: String) -> void:
@@ -1188,7 +1197,7 @@ func ungroup_selected() -> void:
 	])
 
 # ============================================================
-# NODE LOCK / ROOT TOGGLE (UNDOABLE)
+# NODE LOCK / ROOT TOGGLE
 # ============================================================
 
 func toggle_lock_selected() -> void:
@@ -2421,7 +2430,7 @@ func _on_settings_show_group_frames_changed(pressed: bool) -> void:
 	_set_show_group_frames(pressed, false)
 
 # ============================================================
-# CONNECTION SETTINGS HANDLERS (Aşama 6 + 7)
+# CONNECTION SETTINGS HANDLERS
 # ============================================================
 
 func _on_settings_connection_style_changed() -> void:
@@ -2430,18 +2439,14 @@ func _on_settings_connection_style_changed() -> void:
 		return
 
 	tree.apply_defaults_to_all_lines(false)
+	tree_view.connections_service.update_all_lines()
 
-	var svc = tree_view.connections_service
-	for line in svc._lines.values():
-		if not is_instance_valid(line):
-			continue
-		var data: BayterekLineData = line.line_data
-		if not data:
-			continue
-		svc._apply_line_data_visuals(line, data)
-		line.set_wiggle_enabled(data.wiggle_enabled)
+	if tree.state_color_enabled:
+		var svc = tree_view.connections_service
+		for node in tree_view.nodes_service.get_all_nodes():
+			if is_instance_valid(node):
+				svc.on_node_allocation_changed(node)
 
-	svc.update_all_lines()
 	set_dirty(true)
 
 
@@ -2451,9 +2456,18 @@ func _on_settings_connection_state_color_changed() -> void:
 		return
 
 	var svc = tree_view.connections_service
-	for node in tree_view.nodes_service.get_all_nodes():
-		if is_instance_valid(node):
-			svc.on_node_allocation_changed(node)
+
+	for line in svc._lines.values():
+		if not is_instance_valid(line):
+			continue
+		var data: BayterekLineData = line.line_data
+		if data:
+			svc._apply_line_data_visuals(line, data)
+
+	if tree and tree.state_color_enabled:
+		for node in tree_view.nodes_service.get_all_nodes():
+			if is_instance_valid(node):
+				svc.on_node_allocation_changed(node)
 
 	svc.update_all_lines()
 	set_dirty(true)
@@ -2466,18 +2480,16 @@ func _on_settings_connection_offsets_changed() -> void:
 
 	tree.apply_defaults_to_all_lines(false)
 	tree_view.connections_service.update_all_lines()
+
+	if tree.state_color_enabled:
+		var svc = tree_view.connections_service
+		for node in tree_view.nodes_service.get_all_nodes():
+			if is_instance_valid(node):
+				svc.on_node_allocation_changed(node)
+
 	set_dirty(true)
 
 
-## Called when wiggle settings change.
-##
-## Applies the new defaults to all lines (that aren't overridden),
-## updates the tree view's master switch, forces each line's per-line
-## `wiggle_enabled` flag to match its LineData, and refreshes everything.
-##
-## The `line.set_wiggle_enabled(data.wiggle_enabled)` call is CRITICAL:
-## it toggles the Line2D's internal `_process()` loop so the wiggle
-## animation actually starts running.
 func _on_settings_connection_wiggle_changed() -> void:
 	if not tree or not tree_view or not tree_view.connections_service:
 		set_dirty(true)
@@ -2495,13 +2507,18 @@ func _on_settings_connection_wiggle_changed() -> void:
 		if not data:
 			continue
 		svc._apply_line_data_visuals(line, data)
-		# Force the per-line process loop to match the current data.
 		line.set_wiggle_enabled(data.wiggle_enabled)
 
 	svc.update_all_lines()
+
 	for node in tree_view.nodes_service.get_all_nodes():
 		if is_instance_valid(node):
 			svc.on_node_visual_offset_changed(node)
+
+	if tree.state_color_enabled:
+		for node in tree_view.nodes_service.get_all_nodes():
+			if is_instance_valid(node):
+				svc.on_node_allocation_changed(node)
 
 	set_dirty(true)
 

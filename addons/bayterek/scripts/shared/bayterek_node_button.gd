@@ -5,19 +5,13 @@ extends BaseButton
 ##
 ## Two-layer structure:
 ##   BayterekNodeButton (Control)     ← hitbox. position is STABLE.
-##     └── VisualRoot (Control)       ← animations move this, NOT the outer node.
-##
-## Speed & velocity tracking:
-##   Every frame we compute how fast `_visual_root.position` moved since
-##   the previous frame, both as a scalar (`current_visual_speed`) and
-##   as a signed vector (`current_visual_velocity`). The scalar drives
-##   the wiggle *intensity*, the vector drives the wiggle *direction*
-##   when the line is in FOLLOW_NODE_MOTION mode.
-##
-##   When the node stops moving (even with the mouse still over it),
-##   `current_visual_speed` snaps to EXACTLY 0 (not lerped), so the
-##   wiggle system knows to stop cleanly. This avoids the asymptotic
-##   decay that otherwise leaves a tiny residual wiggle forever.
+##     ├── VisualRoot (Control)       ← animations move this, NOT the outer node.
+##     │     ├── TextureLayerRoot     ← normal texture layers live here
+##     │     ├── SelectBorder
+##     │     └── Crown
+##     └── AbsoluteLayerRoot (Node2D) ← ABSOLUTE layers live here, outside
+##                                       VisualRoot, so they are NOT affected
+##                                       by hover/animations.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -30,10 +24,6 @@ const VISUAL_OFFSET_EMIT_THRESHOLD := 0.05
 
 ## Below this smoothed speed (pixels/frame), the node is considered
 ## "stopped" and current_visual_speed is FORCED to exactly 0.
-##
-## This is the key value that makes wiggle stop cleanly: without it,
-## the lerp-based smoothing approaches 0 asymptotically, leaving a
-## tiny residual speed that keeps wiggle alive indefinitely.
 const SPEED_IDLE_THRESHOLD := 0.02
 
 signal node_hovered(node: BayterekNodeButton, is_hovered: bool)
@@ -59,28 +49,11 @@ var state: Bayterek.AllocationState = Bayterek.AllocationState.NORMAL
 
 var is_allocatable: bool = false
 
-## Current visual offset distance (length of `_visual_root.position`).
 var current_visual_distance: float = 0.0
-
-## Current visual movement SPEED (pixels per frame).
-##
-## Snaps to EXACTLY 0 when the node stops moving. This is what makes
-## the wiggle stop cleanly without leaving residual motion.
 var current_visual_speed: float = 0.0
-
-## Current visual movement VELOCITY (pixels per frame, signed).
-##
-## Unlike `current_visual_speed`, this retains the DIRECTION of motion.
-## The wiggle system uses it when `wiggle_direction_mode` is set to
-## FOLLOW_NODE_MOTION, so lines can wiggle in the same direction the
-## node is currently moving.
 var current_visual_velocity: Vector2 = Vector2.ZERO
 
-## Internal: previous frame's visual offset (for speed calc).
 var _previous_visual_offset: Vector2 = Vector2.ZERO
-
-## Internal: flag tracking whether we were moving last frame, so we
-## can emit one final "stopped" signal on the transition.
 var _was_moving: bool = false
 
 var node_rotation: float:
@@ -96,12 +69,20 @@ var node_skew: Vector2:
 			node_data.node_skew = v
 
 # --- Two-layer UI ---
-var _visual_root: Control
+var _visual_root: Control             # animations target this
 var _select_border: Panel
 var _crown_label: Label
 var _texture_layer_root: Node2D
 
+## Absolute layer root — outside VisualRoot. Layers flagged `absolute` live
+## here so they stay in place during hover/rotate animations.
+var _absolute_layer_root: Node2D
+
+## Normal layers (under VisualRoot).
 var _layer_nodes: Dictionary = {}
+
+## Absolute layers (under AbsoluteLayerRoot, outside VisualRoot).
+var _absolute_layer_nodes: Dictionary = {}
 
 var _animator: BayterekNodeAnimator = null
 
@@ -175,49 +156,50 @@ func _process(_delta: float) -> void:
 
 	var instant_speed: float = frame_delta.length()
 
-	# Hard-stop: if the node is essentially not moving this frame,
-	# force both the smoothed speed AND the velocity to exactly zero.
 	if instant_speed < SPEED_IDLE_THRESHOLD:
 		current_visual_speed = 0.0
 		current_visual_velocity = Vector2.ZERO
 	else:
-		# Smooth the speed scalar.
 		current_visual_speed = lerpf(current_visual_speed, instant_speed, 0.5)
-		# Smooth the velocity vector the same way (preserves direction).
 		current_visual_velocity = current_visual_velocity.lerp(frame_delta, 0.5)
 
-		# Snap to zero if the smoothed speed dipped below idle threshold.
 		if current_visual_speed < SPEED_IDLE_THRESHOLD:
 			current_visual_speed = 0.0
 			current_visual_velocity = Vector2.ZERO
 
 	current_visual_distance = current_offset.length()
 
-	# ------------------------------------------------------------------
-	# SIGNAL EMISSION
-	# ------------------------------------------------------------------
 	var is_moving_now: bool = current_visual_speed > 0.0
 
 	if is_moving_now:
 		visual_offset_changed.emit(self, current_offset, current_visual_distance)
 		_was_moving = true
 	elif _was_moving:
-		# Just stopped: one final notification.
 		visual_offset_changed.emit(self, current_offset, current_visual_distance)
 		_was_moving = false
 
 
 func _build_children() -> void:
+	# --- VisualRoot (animation target) ---
 	_visual_root = Control.new()
 	_visual_root.name = "VisualRoot"
 	_visual_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_visual_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_visual_root)
 
+	# --- Normal texture layers (under VisualRoot) ---
 	_texture_layer_root = Node2D.new()
 	_texture_layer_root.name = "TextureLayerRoot"
 	_visual_root.add_child(_texture_layer_root)
 
+	# --- Absolute layer root (OUTSIDE VisualRoot) ---
+	# Absolute layers go here so they don't get moved by hover/rotate
+	# animations applied to VisualRoot.
+	_absolute_layer_root = Node2D.new()
+	_absolute_layer_root.name = "AbsoluteLayerRoot"
+	add_child(_absolute_layer_root)
+
+	# --- Selection border ---
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -236,6 +218,7 @@ func _build_children() -> void:
 	_select_border.visible = false
 	_visual_root.add_child(_select_border)
 
+	# --- Crown label ---
 	_crown_label = Label.new()
 	_crown_label.name = "Crown"
 	_crown_label.text = "👑"
@@ -291,10 +274,8 @@ func set_visual_offset(offset: Vector2) -> void:
 		return
 	_visual_root.position = offset
 
-
 func get_visual_offset() -> Vector2:
 	return _visual_root.position if _visual_root else Vector2.ZERO
-
 
 func set_visual_rotation(deg: float) -> void:
 	if not _visual_root:
@@ -302,10 +283,8 @@ func set_visual_rotation(deg: float) -> void:
 	_visual_root.pivot_offset = _visual_root.size * 0.5
 	_visual_root.rotation = deg_to_rad(deg)
 
-
 func get_visual_rotation() -> float:
 	return rad_to_deg(_visual_root.rotation) if _visual_root else 0.0
-
 
 func set_visual_scale(v: Vector2) -> void:
 	if v.x <= 0.0:
@@ -320,10 +299,8 @@ func set_visual_scale(v: Vector2) -> void:
 		_visual_root.pivot_offset = _visual_root.size * 0.5
 		_visual_root.scale = v
 
-
 func get_visual_scale() -> Vector2:
 	return _visual_root.scale if _visual_root else Vector2.ONE
-
 
 func reset_visual_transform() -> void:
 	if not _visual_root:
@@ -481,43 +458,74 @@ func set_selected(value: bool) -> void:
 # ============================================================
 
 func _rebuild_layer_nodes() -> void:
-	if not _texture_layer_root:
-		return
 	if not node_data:
-		for ln in _layer_nodes.values():
-			if is_instance_valid(ln):
-				ln.queue_free()
-		_layer_nodes.clear()
+		_clear_all_layer_nodes()
 		return
 
-	var valid_ids: Dictionary = {}
-	for layer in node_data.layers:
-		if layer is BayterekTextureLayer and layer.visible:
-			valid_ids[layer.layer_id] = true
-
-	for layer_id in _layer_nodes.keys():
-		if not valid_ids.has(layer_id):
-			var ln: BayterekLayerNode = _layer_nodes[layer_id]
-			if is_instance_valid(ln):
-				ln.queue_free()
-			_layer_nodes.erase(layer_id)
+	# --- Step 1: figure out which layers should exist in each bucket. ---
+	var desired_normal_ids: Dictionary = {}
+	var desired_absolute_ids: Dictionary = {}
 
 	for layer in node_data.layers:
 		if not layer or not layer.visible:
 			continue
 		if not (layer is BayterekTextureLayer):
 			continue
+		if layer.absolute:
+			desired_absolute_ids[layer.layer_id] = true
+		else:
+			desired_normal_ids[layer.layer_id] = true
 
-		var ln: BayterekLayerNode = _layer_nodes.get(layer.layer_id, null)
+	# --- Step 2: remove stale layer nodes. ---
+	_remove_stale_layer_nodes(_layer_nodes, desired_normal_ids)
+	_remove_stale_layer_nodes(_absolute_layer_nodes, desired_absolute_ids)
+
+	# --- Step 3: (re)create layer nodes as needed. ---
+	for layer in node_data.layers:
+		if not layer or not layer.visible:
+			continue
+		if not (layer is BayterekTextureLayer):
+			continue
+
+		var bucket: Dictionary = _absolute_layer_nodes if layer.absolute else _layer_nodes
+		var parent: Node2D = _absolute_layer_root if layer.absolute else _texture_layer_root
+
+		var ln: BayterekLayerNode = bucket.get(layer.layer_id, null)
 		if not ln or not is_instance_valid(ln):
 			ln = BayterekLayerNode.new()
 			ln.name = "LayerNode_%s" % layer.layer_id
-			_texture_layer_root.add_child(ln)
-			_layer_nodes[layer.layer_id] = ln
+			parent.add_child(ln)
+			bucket[layer.layer_id] = ln
 
 		ln.set_layer(layer)
 
 	_update_layer_nodes()
+
+
+func _remove_stale_layer_nodes(bucket: Dictionary, desired: Dictionary) -> void:
+	var to_remove: Array = []
+	for layer_id in bucket.keys():
+		if desired.has(layer_id):
+			continue
+		var ln: BayterekLayerNode = bucket[layer_id]
+		if is_instance_valid(ln):
+			ln.queue_free()
+		to_remove.append(layer_id)
+	for layer_id in to_remove:
+		bucket.erase(layer_id)
+
+
+func _clear_all_layer_nodes() -> void:
+	for ln in _layer_nodes.values():
+		if is_instance_valid(ln):
+			ln.queue_free()
+	_layer_nodes.clear()
+
+	for ln in _absolute_layer_nodes.values():
+		if is_instance_valid(ln):
+			ln.queue_free()
+	_absolute_layer_nodes.clear()
+
 
 func _update_layer_nodes() -> void:
 	if not node_data:
@@ -531,18 +539,30 @@ func _update_layer_nodes() -> void:
 	var root_size: Vector2 = _visual_root.size if _visual_root else size
 	var root_center: Vector2 = root_size * 0.5
 
+	# --- Base transform for NORMAL layers ---
+	# Normal layers live under VisualRoot, so the parent's animation offset
+	# is already applied on top of this transform.
 	var base_xform := Transform2D(
 		Vector2(1.0, 0.0),
 		Vector2(0.0, 1.0),
 		root_center - bounds_center
 	)
 
-	var base_xform_no_node := base_xform
-
 	var node_transform: Transform2D = _build_node_transform()
 	var transform_with_center := _transform_around(node_transform, root_center)
 	var base_xform_with_node = transform_with_center * base_xform
 
+	# --- Base transform for ABSOLUTE layers ---
+	# Absolute layers live OUTSIDE VisualRoot, so they see NONE of the
+	# animation (no offset, no rotation, no scale). We intentionally
+	# skip the node transform too so they truly stay put.
+	var absolute_xform := Transform2D(
+		Vector2(1.0, 0.0),
+		Vector2(0.0, 1.0),
+		root_center - bounds_center
+	)
+
+	# --- Normal layers ---
 	for layer_id in _layer_nodes.keys():
 		var ln: BayterekLayerNode = _layer_nodes[layer_id]
 		if not is_instance_valid(ln):
@@ -558,9 +578,30 @@ func _update_layer_nodes() -> void:
 		var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
 
 		ln.update(design_size, pixel_mode)
+		ln.transform = base_xform_with_node * layer.get_matrix(design_size, pixel_mode)
 
-		var layer_base: Transform2D = base_xform_no_node if layer.absolute else base_xform_with_node
-		ln.transform = layer_base * layer.get_matrix(design_size, pixel_mode)
+		var layer_index: int = node_data.layers.find(layer)
+		if layer_index < 0:
+			layer_index = 0
+		ln.z_index = layer_index
+
+	# --- Absolute layers ---
+	for layer_id in _absolute_layer_nodes.keys():
+		var ln: BayterekLayerNode = _absolute_layer_nodes[layer_id]
+		if not is_instance_valid(ln):
+			continue
+		var layer: BayterekTextureLayer = ln.layer
+		if not layer:
+			continue
+
+		var state_key: String = layer.get_visual_state(_active_states)
+		ln.set_state(state_key)
+
+		var effective_mode: int = layer.get_effective_render_mode()
+		var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
+		ln.update(design_size, pixel_mode)
+		ln.transform = absolute_xform * layer.get_matrix(design_size, pixel_mode)
 
 		var layer_index: int = node_data.layers.find(layer)
 		if layer_index < 0:

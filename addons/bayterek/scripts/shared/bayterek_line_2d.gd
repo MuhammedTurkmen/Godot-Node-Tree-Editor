@@ -44,7 +44,6 @@ enum WigglePattern {
 	BOUNCE,
 }
 
-## How the wiggle direction is chosen at each interior point.
 enum WiggleDirectionMode {
 	PERPENDICULAR,
 	FOLLOW_NODE_MOTION,
@@ -73,6 +72,14 @@ var width: float = 4.0 : set = set_width
 
 var default_color: Color = Color(0.7, 0.7, 0.7, 0.9) : set = set_default_color
 var smooth_antialiasing: bool = true : set = set_smooth_antialiasing
+
+## When true, lines are drawn with a hard single-color fill (no edge
+## gradient), and arrows are drawn as flat polygons.
+##
+## IMPORTANT: No setter on purpose. Godot 4.7 mono has issues with
+## setters that have the same name as their backing property, so we
+## assign this directly. Call `queue_redraw()` manually after changing it.
+var flat_mode: bool = false
 
 # ============================================================
 # TEXTURE
@@ -128,11 +135,7 @@ var wiggle_intensity: float = 0.0
 var wiggle_active_boost: float = 1.5
 var wiggle_target_is_active: bool = false
 
-## Direction mode for the wiggle displacement.
 var wiggle_direction_mode: WiggleDirectionMode = WiggleDirectionMode.PERPENDICULAR
-
-## Current direction of motion for the SOURCE node (pixels/frame).
-## Used by FOLLOW_NODE_MOTION and AXIS_LOCK modes.
 var wiggle_source_velocity: Vector2 = Vector2.ZERO
 
 var _effective_frequency: float = 0.0
@@ -162,7 +165,6 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var target_freq: float = wiggle_frequency * wiggle_intensity
 
-	# Hard stop — no asymptotic tail.
 	if target_freq < FREQ_STOP_THRESHOLD:
 		_effective_frequency = 0.0
 		set_process(false)
@@ -310,7 +312,6 @@ func set_wiggle_enabled(enabled: bool) -> void:
 func set_wiggle_intensity(intensity: float, target_is_active: bool) -> void:
 	var new_intensity: float = maxf(0.0, intensity)
 
-	# Hard stop.
 	if new_intensity < INTENSITY_HARD_STOP:
 		var was_wiggling: bool = wiggle_intensity > INTENSITY_HARD_STOP or _effective_frequency > 0.0
 
@@ -338,8 +339,6 @@ func set_wiggle_intensity(intensity: float, target_is_active: bool) -> void:
 		queue_redraw()
 
 
-## Called by the connections service to update the source node's
-## motion direction. Used by FOLLOW_NODE_MOTION and AXIS_LOCK modes.
 func set_wiggle_source_velocity(velocity: Vector2) -> void:
 	wiggle_source_velocity = velocity
 
@@ -392,7 +391,10 @@ func _draw_segment(a: Vector2, b: Vector2) -> void:
 		return
 
 	if texture_mode == TextureMode.NONE or texture == null:
-		draw_line(a, b, default_color, width, smooth_antialiasing)
+		if flat_mode:
+			_draw_flat_line(a, b, seg_len)
+		else:
+			draw_line(a, b, default_color, width, smooth_antialiasing)
 		return
 
 	match texture_mode:
@@ -402,6 +404,18 @@ func _draw_segment(a: Vector2, b: Vector2) -> void:
 			_draw_textured_tile(a, b, seg_len, false)
 		TextureMode.TILE_FIT_HEIGHT:
 			_draw_textured_tile(a, b, seg_len, true)
+
+
+func _draw_flat_line(a: Vector2, b: Vector2, seg_len: float) -> void:
+	if seg_len < 0.001:
+		return
+	var dir: Vector2 = (b - a) / seg_len
+	var perp: Vector2 = Vector2(-dir.y, dir.x) * (width * 0.5)
+
+	draw_colored_polygon(
+		PackedVector2Array([a - perp, b - perp, b + perp, a + perp]),
+		default_color
+	)
 
 
 func _draw_textured_stretch(a: Vector2, b: Vector2, seg_len: float) -> void:
@@ -589,35 +603,67 @@ func _draw_arrow_texture(tip: Vector2, outward: Vector2, tex: Texture2D) -> void
 func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> void:
 	var size: float = arrow_size
 	var perp: Vector2 = Vector2(-outward.y, outward.x)
-	var apex: Vector2 = tip + outward * size
 
 	match style:
 		ArrowStyle.ARROW:
+			# Triangle: base at tip, apex outward.
+			var apex: Vector2 = tip + outward * size
 			var left: Vector2 = tip + perp * (size * 0.5)
 			var right: Vector2 = tip - perp * (size * 0.5)
 			draw_colored_polygon(PackedVector2Array([apex, left, right]), default_color)
+
 		ArrowStyle.T_BAR:
-			var half: float = size * 0.5
-			var a: Vector2 = apex + perp * half
-			var b: Vector2 = apex - perp * half
-			draw_line(a, b, default_color, max(2.0, width), smooth_antialiasing)
+			# Perpendicular bar centered ON the tip.
+			#
+			# IMPORTANT: The bar's LENGTH runs along `perp` and its
+			# THICKNESS runs along `outward`. If we offset the four
+			# corners along `perp` for both length AND thickness, the
+			# quad collapses into a degenerate line and Godot throws
+			# "Invalid polygon data, triangulation failed".
+			var half_len: float = size * 0.6
+			var thickness: float = max(width * 1.5, size * 0.35)
+			var half_th: float = thickness * 0.5
+
+			var along_outward: Vector2 = outward * half_th
+
+			var left_end: Vector2 = tip + perp * half_len
+			var right_end: Vector2 = tip - perp * half_len
+
+			# 4 corners, walked in a consistent loop:
+			#   left_out → right_out → right_in → left_in
+			var p0: Vector2 = left_end + along_outward
+			var p1: Vector2 = right_end + along_outward
+			var p2: Vector2 = right_end - along_outward
+			var p3: Vector2 = left_end - along_outward
+
+			draw_colored_polygon(PackedVector2Array([p0, p1, p2, p3]), default_color)
+
 		ArrowStyle.SQUARE:
-			var half_w: float = max(width, size * 0.4) * 0.5
-			var top_left: Vector2 = apex + perp * half_w
-			var top_right: Vector2 = apex - perp * half_w
-			var bottom_left: Vector2 = tip + perp * half_w
-			var bottom_right: Vector2 = tip - perp * half_w
+			# True square: size × size, centered on the tip.
+			var half_s: float = size * 0.5
+			var back: Vector2 = tip - outward * half_s
+			var front: Vector2 = tip + outward * half_s
+			var top_back: Vector2 = back + perp * half_s
+			var bot_back: Vector2 = back - perp * half_s
+			var top_front: Vector2 = front + perp * half_s
+			var bot_front: Vector2 = front - perp * half_s
 			draw_colored_polygon(
-				PackedVector2Array([top_left, top_right, bottom_right, bottom_left]),
+				PackedVector2Array([top_back, top_front, bot_front, bot_back]),
 				default_color
 			)
+
 		ArrowStyle.CIRCLE:
-			draw_circle(tip + outward * (size * 0.5), size * 0.5, default_color)
+			# Circle: diameter = size, centered on the tip.
+			draw_circle(tip, size * 0.5, default_color)
+
 		ArrowStyle.DIAMOND:
-			var center: Vector2 = tip + outward * (size * 0.5)
-			var left: Vector2 = center + perp * (size * 0.5)
-			var right: Vector2 = center - perp * (size * 0.5)
-			var back_pt: Vector2 = tip
+			# Diamond centered on the tip. Size multiplier 1.3× so it's
+			# visually comparable to the triangle arrow.
+			var d_size: float = size * 0.65
+			var apex: Vector2 = tip + outward * d_size
+			var back_pt: Vector2 = tip - outward * d_size
+			var left: Vector2 = tip + perp * d_size
+			var right: Vector2 = tip - perp * d_size
 			draw_colored_polygon(
 				PackedVector2Array([apex, left, back_pt, right]),
 				default_color
@@ -631,9 +677,18 @@ func _get_draw_segments() -> Array:
 	if not _cache_dirty:
 		return _cached_segments
 
+	if not wiggle_enabled:
+		var raw_segments: Array = []
+		for i in range(points.size() - 1):
+			raw_segments.append([points[i], points[i + 1]])
+		var raw_result: Array = _apply_dash_style(raw_segments)
+		_cached_segments = raw_result
+		_cache_dirty = false
+		return raw_result
+
 	var working_points: PackedVector2Array = points
 
-	var wiggle_wants_geometry: bool = wiggle_enabled and _effective_frequency > FREQ_STOP_THRESHOLD
+	var wiggle_wants_geometry: bool = _effective_frequency > FREQ_STOP_THRESHOLD
 
 	if wiggle_wants_geometry and working_points.size() == 2 and STRAIGHT_SUBDIVISIONS > 1:
 		working_points = _subdivide_polyline(working_points, STRAIGHT_SUBDIVISIONS)
@@ -645,27 +700,31 @@ func _get_draw_segments() -> Array:
 	for i in range(working_points.size() - 1):
 		base_segments.append([working_points[i], working_points[i + 1]])
 
-	var result: Array = []
-	match dash_style:
-		DashStyle.SOLID:
-			result = base_segments
-		DashStyle.DASHED:
-			result = _apply_dash_pattern(base_segments, dash_length, dash_gap)
-		DashStyle.DOTTED:
-			var dot: float = max(1.0, dash_length * 0.25)
-			result = _apply_dash_pattern(base_segments, dot, dash_gap)
-		DashStyle.DASH_DOT:
-			var long_len: float = dash_length
-			var short_len: float = max(1.0, dash_length * 0.25)
-			result = _apply_dash_dot_pattern(base_segments, long_len, short_len, dash_gap)
-		_:
-			result = base_segments
+	var result: Array = _apply_dash_style(base_segments)
 
 	if not wiggle_wants_geometry:
 		_cached_segments = result
 		_cache_dirty = false
 
 	return result
+
+
+func _apply_dash_style(base_segments: Array) -> Array:
+	match dash_style:
+		DashStyle.SOLID:
+			return base_segments
+		DashStyle.DASHED:
+			return _apply_dash_pattern(base_segments, dash_length, dash_gap)
+		DashStyle.DOTTED:
+			var dot: float = max(1.0, dash_length * 0.25)
+			return _apply_dash_pattern(base_segments, dot, dash_gap)
+		DashStyle.DASH_DOT:
+			var long_len: float = dash_length
+			var short_len: float = max(1.0, dash_length * 0.25)
+			return _apply_dash_dot_pattern(base_segments, long_len, short_len, dash_gap)
+		_:
+			return base_segments
+
 
 func _invalidate_cache() -> void:
 	_cache_dirty = true
@@ -699,25 +758,6 @@ func _subdivide_polyline(src: PackedVector2Array, subdivisions: int) -> PackedVe
 # WIGGLE GEOMETRY
 # ------------------------------------------------------------
 
-## Displaces every interior point. The displacement direction depends on
-## `wiggle_direction_mode`:
-##
-##   PERPENDICULAR      → displacement is perpendicular to the local
-##                        line direction (classic sway).
-##
-##   FOLLOW_NODE_MOTION → displacement follows `wiggle_source_velocity`
-##                        (the source node's current motion direction).
-##
-##   AXIS_LOCK          → displacement is locked to the world axis (X or
-##                        Y) that matches the source node's motion axis.
-##                        A node moving vertically sways its lines
-##                        vertically; a node moving horizontally sways
-##                        its lines horizontally. This makes "aligned"
-##                        lines feel stable — a vertical connection
-##                        under a vertical node motion never sways
-##                        sideways.
-##
-## In all modes the endpoints stay fixed and the middle sways the most.
 func _apply_wiggle(src: PackedVector2Array) -> PackedVector2Array:
 	var n: int = src.size()
 	if n < 3:
@@ -737,19 +777,13 @@ func _apply_wiggle(src: PackedVector2Array) -> PackedVector2Array:
 
 	var clock: float = _wiggle_clock
 
-	# --- Pre-compute a global displacement direction for motion-based modes.
 	var motion_dir: Vector2 = wiggle_source_velocity
 	var motion_len: float = motion_dir.length()
 
-	# Follow-motion direction (normalized). Zero if not moving.
 	var follow_dir: Vector2 = Vector2.ZERO
 	if motion_len > 0.0001:
 		follow_dir = motion_dir / motion_len
 
-	# Axis-lock direction: pick the dominant world axis of motion.
-	# A node moving mostly vertically → vertical sway. Mostly horizontally
-	# → horizontal sway. If the node isn't moving, we fall back to
-	# perpendicular on a per-point basis.
 	var axis_lock_dir: Vector2 = Vector2.ZERO
 	var axis_lock_valid: bool = false
 	if motion_len > 0.0001:
@@ -769,10 +803,8 @@ func _apply_wiggle(src: PackedVector2Array) -> PackedVector2Array:
 			result[i] = src[i]
 			continue
 
-		# Fallback perpendicular (line normal).
 		var perp_local: Vector2 = Vector2(-dir.y, dir.x) / dir_len
 
-		# Pick the displacement direction based on the mode.
 		var perp: Vector2
 		match wiggle_direction_mode:
 			WiggleDirectionMode.FOLLOW_NODE_MOTION:
@@ -780,15 +812,12 @@ func _apply_wiggle(src: PackedVector2Array) -> PackedVector2Array:
 					perp = follow_dir
 				else:
 					perp = perp_local
-
 			WiggleDirectionMode.AXIS_LOCK:
 				if axis_lock_valid:
 					perp = axis_lock_dir
 				else:
 					perp = perp_local
-
 			_:
-				# PERPENDICULAR (default).
 				perp = perp_local
 
 		var t: float = float(i) / float(n - 1)

@@ -4,8 +4,13 @@
 
 [node name="Control" type="Control" unique_id=700784679]
 layout_mode = 3
-anchors_preset = 0
-offset_right = 40.0
-offset_bottom = 40.0
+anchor_left = 0.017
+anchor_top = 0.031000001
+anchor_right = 0.017
+anchor_bottom = 0.031000001
+offset_left = -19.584002
+offset_top = -20.088001
+offset_right = 20.415998
+offset_bottom = 19.911999
 script = ExtResource("1_f2iej")
 metadata/_edit_horizontal_guides_ = [1080.0]

@@ -212,6 +212,13 @@ func on_node_visual_offset_changed(node: BayterekNodeButton) -> void:
 			_update_line_points(line)
 
 
+## Refreshes the state-driven visuals of a single connection.
+##
+## IMPORTANT: When `state_color_enabled` is FALSE we do NOT touch
+## `line.default_color`. The color always comes from the LineData via
+## `_apply_line_data_visuals()`. When it's TRUE we write the state color
+## AND `_apply_line_data_visuals()` skips the color assignment so it
+## can't overwrite us on the next wiggle / motion tick.
 func _refresh_line_state(from_id: int, to_id: int) -> void:
 	var line: BayterekConnection = get_line(from_id, to_id)
 	if not line:
@@ -241,6 +248,13 @@ func _refresh_line_state(from_id: int, to_id: int) -> void:
 
 	line.texture = texture
 
+	# ------------------------------------------------------------------
+	# STATE COLOR
+	# ------------------------------------------------------------------
+	# Only touch the color when the master toggle is explicitly ON.
+	# When it's off, we NEVER write `line.default_color` here — the
+	# color is always whatever `_apply_line_data_visuals()` set from
+	# the LineData.
 	if _tree_data.state_color_enabled:
 		var is_alloc: bool = to_node.is_allocatable
 		if to_active:
@@ -249,12 +263,6 @@ func _refresh_line_state(from_id: int, to_id: int) -> void:
 			line.default_color = _tree_data.line_alloc_color
 		else:
 			line.default_color = _tree_data.line_non_alloc_color
-	else:
-		var data: BayterekLineData = line.line_data
-		if data:
-			line.default_color = data.color
-		else:
-			line.default_color = _tree_data.default_line_color
 
 	if not _tree_data.revealed and not from_active and not to_active:
 		line.visible = false
@@ -313,7 +321,6 @@ func _update_wiggle_intensity(line: BayterekConnection) -> void:
 	var motion_velocity: Vector2 = Vector2.ZERO
 	if from_node and is_instance_valid(from_node):
 		motion_velocity = from_node.current_visual_velocity
-	# If the source isn't moving but the target is, use target's velocity.
 	if motion_velocity.length_squared() < 0.0001 and to_node and is_instance_valid(to_node):
 		motion_velocity = to_node.current_visual_velocity
 
@@ -363,17 +370,27 @@ func _update_line_points(line: BayterekConnection) -> void:
 	var has_end_arrow: bool = (data.end_arrow != BayterekLineData.ArrowStyle.NONE
 		or data.arrow_texture_end != null)
 
+	# Total offsets include the arrow backoff so the line stops BEFORE
+	# the arrow tip.
+	var start_total_offset: float = data.start_offset
+	if has_start_arrow:
+		start_total_offset += data.get_effective_start_backoff()
+
+	var end_total_offset: float = data.end_offset
+	if has_end_arrow:
+		end_total_offset += data.get_effective_end_backoff()
+
 	var p0: Vector2
 	if has_start_arrow:
-		p0 = _edge_point(from_center, to_center, from_half, data.start_offset)
+		p0 = _edge_point(from_center, to_center, from_half, start_total_offset)
 	else:
-		p0 = from_center + dir_norm * data.start_offset
+		p0 = from_center + dir_norm * start_total_offset
 
 	var p2: Vector2
 	if has_end_arrow:
-		p2 = _edge_point(to_center, from_center, to_half, data.end_offset)
+		p2 = _edge_point(to_center, from_center, to_half, end_total_offset)
 	else:
-		p2 = to_center - dir_norm * data.end_offset
+		p2 = to_center - dir_norm * end_total_offset
 
 	match data.line_type:
 		BayterekLineData.LineType.STRAIGHT:
@@ -390,13 +407,30 @@ func _update_line_points(line: BayterekConnection) -> void:
 	_apply_line_data_visuals(line, data)
 
 
+## Applies the LineData visuals to the line.
+##
+## CRITICAL: When `tree.state_color_enabled` is true, this function does
+## NOT touch `line.default_color`. The state color is owned entirely by
+## `_refresh_line_state()`, and if we overwrote it here, every wiggle /
+## motion tick would wipe the state color and the lines would revert to
+## the neutral LineData color.
 func _apply_line_data_visuals(line: BayterekConnection, data: BayterekLineData) -> void:
 	if not is_instance_valid(line) or not data:
 		return
 
 	line.width = data.thickness
-	line.default_color = data.color
+
+	# ------------------------------------------------------------------
+	# COLOR — skip when state colors own the color.
+	# ------------------------------------------------------------------
+	if _tree_data and _tree_data.state_color_enabled:
+		# State color is authoritative. Don't touch default_color here.
+		pass
+	else:
+		line.default_color = data.color
+
 	line.smooth_antialiasing = data.smooth_antialiasing
+	line.flat_mode = data.flat_mode
 
 	line.dash_style = data.line_style as BayterekLine2D.DashStyle
 	line.dash_length = data.dash_length
