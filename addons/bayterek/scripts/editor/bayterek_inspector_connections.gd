@@ -128,16 +128,23 @@ func _build_connection_entry(to_id: int) -> void:
 	var adv_body := _make_foldout(content_box, to_id, "advanced", "Advanced")
 	_build_advanced_section(adv_body, to_id, line_data)
 
-	var del_row := HBoxContainer.new()
-	content_box.add_child(del_row)
-	var del_spacer := Control.new()
-	del_spacer.size_flags_horizontal = SIZE_EXPAND_FILL
-	del_row.add_child(del_spacer)
+	# --- Bottom button row: Reset + Delete ---
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 6)
+	content_box.add_child(btn_row)
+
+	var reset_btn := Button.new()
+	reset_btn.text = "↺ Reset to Tree Defaults"
+	reset_btn.tooltip_text = "Clear all per-connection overrides and restore the tree's connection defaults."
+	reset_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+	reset_btn.pressed.connect(_on_reset_to_defaults.bind(to_id))
+	btn_row.add_child(reset_btn)
 
 	var del_btn := Button.new()
-	del_btn.text = "Delete Connection"
+	del_btn.text = "Delete"
+	del_btn.tooltip_text = "Remove this connection."
 	del_btn.pressed.connect(_on_delete_connection.bind(to_id))
-	del_row.add_child(del_btn)
+	btn_row.add_child(del_btn)
 
 	_entries[to_id]["header"] = header_btn
 
@@ -245,7 +252,6 @@ func _build_texture_section(body: VBoxContainer, to_id: int, line_data: Bayterek
 	filter_dd.select(filter_idx)
 	filter_dd.item_selected.connect(_on_texture_filter_changed.bind(to_id))
 
-	# min_value = 0.05 so the step grid lands exactly on 1.0, 1.05, etc.
 	var scale_row := _make_labeled_row(body, "Scale")
 	var scale_x := _make_spinbox(scale_row, 0.05, 20.0, 0.05, line_data.texture_scale.x)
 	scale_x.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -355,6 +361,18 @@ func _build_advanced_section(body: VBoxContainer, to_id: int, line_data: Baytere
 	aa_check.tooltip_text = "Smooth the line edges. Ignored in flat mode."
 	aa_check.toggled.connect(_on_antialiasing_changed.bind(to_id))
 
+	# Track widgets so they can be disabled when a line texture is active.
+	if not _entries.has(to_id):
+		_entries[to_id] = {}
+	_entries[to_id]["advanced_refs"] = {
+		"color_picker": color_picker,
+		"thick_input": thick_input,
+		"flat_check": flat_check,
+		"aa_check": aa_check,
+	}
+
+	_update_advanced_enabled(to_id)
+
 # ============================================================
 # UI HELPERS
 # ============================================================
@@ -439,6 +457,46 @@ func _update_entry_visibility(to_id: int) -> void:
 			line_type == BayterekLineData.LineType.BEZIER
 			or line_type == BayterekLineData.LineType.ARC
 		)
+
+# ============================================================
+# ADVANCED ENABLED / DISABLED
+# ============================================================
+
+## Enables or disables the Advanced section's controls based on whether
+## a line texture is currently active.
+##
+## Rationale: `Thickness`, `Line Color`, `Flat Mode` and `Antialiasing`
+## are only meaningful for a solid, single-color line. When a texture is
+## applied, the texture fully determines the visual — those controls
+## would silently do nothing useful (or fight the texture).
+func _update_advanced_enabled(to_id: int) -> void:
+	if not _entries.has(to_id):
+		return
+	var e: Dictionary = _entries[to_id]
+	if not e.has("advanced_refs"):
+		return
+
+	var line_data = _get_line_data(to_id)
+	if not line_data:
+		return
+
+	var refs: Dictionary = e["advanced_refs"]
+
+	var is_textured: bool = (
+		line_data.texture_mode != BayterekLineData.TextureMode.NONE
+		and line_data.line_texture != null
+	)
+
+	var enabled: bool = not is_textured
+
+	if refs.has("color_picker"):
+		refs["color_picker"].disabled = not enabled
+	if refs.has("thick_input"):
+		refs["thick_input"].editable = enabled
+	if refs.has("flat_check"):
+		refs["flat_check"].disabled = not enabled
+	if refs.has("aa_check"):
+		refs["aa_check"].disabled = not enabled
 
 # ============================================================
 # HANDLERS
@@ -537,6 +595,7 @@ func _on_line_texture_changed(path: String, to_id: int) -> void:
 	if line_data.texture_mode == BayterekLineData.TextureMode.NONE:
 		line_data.texture_mode = BayterekLineData.TextureMode.TILE
 	_refresh_line(to_id)
+	_update_advanced_enabled(to_id)
 	_notify_changed()
 
 func _on_line_texture_cleared(to_id: int) -> void:
@@ -546,6 +605,7 @@ func _on_line_texture_cleared(to_id: int) -> void:
 	line_data.line_texture = null
 	line_data.texture_mode = BayterekLineData.TextureMode.NONE
 	_refresh_line(to_id)
+	_update_advanced_enabled(to_id)
 	_notify_changed()
 
 func _on_texture_mode_changed(index: int, to_id: int) -> void:
@@ -554,6 +614,7 @@ func _on_texture_mode_changed(index: int, to_id: int) -> void:
 	if not line_data: return
 	line_data.texture_mode = index as BayterekLineData.TextureMode
 	_refresh_line(to_id)
+	_update_advanced_enabled(to_id)
 	_notify_changed()
 
 func _on_texture_filter_changed(index: int, to_id: int) -> void:
@@ -724,6 +785,28 @@ func _on_antialiasing_changed(pressed: bool, to_id: int) -> void:
 	line_data.smooth_antialiasing = pressed
 	_refresh_line(to_id)
 	_notify_changed()
+
+# --- Reset to Tree Defaults ---
+
+func _on_reset_to_defaults(to_id: int) -> void:
+	if not inspector._current_node: return
+	if not inspector.editor: return
+	if not inspector.editor.tree: return
+
+	var line_data = _get_line_data(to_id)
+	if not line_data:
+		return
+
+	var tree: BayterekTree = inspector.editor.tree
+
+	line_data.clear_all_overrides()
+	tree.apply_connection_defaults(line_data, true)
+
+	_refresh_line(to_id)
+	refresh()
+	_notify_changed()
+
+# --- Delete ---
 
 func _on_delete_connection(to_id: int) -> void:
 	if not inspector._current_node: return

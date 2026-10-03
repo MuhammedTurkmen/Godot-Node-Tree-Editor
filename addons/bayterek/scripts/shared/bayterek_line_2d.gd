@@ -73,18 +73,8 @@ var width: float = 4.0 : set = set_width
 var default_color: Color = Color(0.7, 0.7, 0.7, 0.9) : set = set_default_color
 var smooth_antialiasing: bool = true : set = set_smooth_antialiasing
 
-## When true, lines are drawn with a hard single-color fill (no edge
-## gradient), and arrows are drawn as flat polygons.
-##
-## IMPORTANT: No setter on purpose. Godot 4.7 mono has issues with
-## setters that have the same name as their backing property, so we
-## assign this directly. Call `queue_redraw()` manually after changing it.
 var flat_mode: bool = false
 
-## Per-line texture filter override.
-##   0 = Inherit (use CanvasItem default = linear)
-##   1 = Linear
-##   2 = Nearest
 var texture_filter_override: int = 0 :
 	set(v):
 		texture_filter_override = v
@@ -636,10 +626,13 @@ func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> voi
 			draw_colored_polygon(PackedVector2Array([apex, left, right]), default_color)
 
 		ArrowStyle.T_BAR:
-			# Perpendicular bar centered ON the tip.
 			# Length runs along `perp`, thickness runs along `outward`.
+			#
+			# Thickness is FIXED at size * 0.35 — it must NOT scale with
+			# the line width, otherwise a thick line produces a giant
+			# T_BAR that dwarfs the whole arrow.
 			var half_len: float = size * 0.6
-			var thickness: float = max(width * 1.5, size * 0.35)
+			var thickness: float = max(2.0, size * 0.35)
 			var half_th: float = thickness * 0.5
 
 			var along_outward: Vector2 = outward * half_th
