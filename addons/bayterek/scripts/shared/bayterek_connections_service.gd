@@ -418,6 +418,7 @@ func _apply_line_data_visuals(line: BayterekConnection, data: BayterekLineData) 
 		line.queue_redraw()
 
 	line.texture_filter_override = data.texture_filter_override
+	line.arrow_texture_filter_override = data.arrow_texture_filter_override
 
 	line.dash_style = data.line_style as BayterekLine2D.DashStyle
 	line.dash_length = data.dash_length

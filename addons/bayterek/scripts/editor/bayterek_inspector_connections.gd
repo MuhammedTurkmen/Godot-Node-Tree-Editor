@@ -321,6 +321,13 @@ func _build_arrows_section(body: VBoxContainer, to_id: int, line_data: BayterekL
 	ascale_x.value_changed.connect(_on_arrow_scale_pair_changed.bind(to_id, ascale_x, ascale_y))
 	ascale_y.value_changed.connect(_on_arrow_scale_pair_changed.bind(to_id, ascale_x, ascale_y))
 
+	# --- Arrow Texture Filter ---
+	var afilter_row := _make_labeled_row(body, "Arrow Filter")
+	var afilter_dd := _make_dropdown(afilter_row, ["Inherit", "Linear", "Nearest"])
+	var afilter_idx: int = clampi(line_data.arrow_texture_filter_override, 0, 2)
+	afilter_dd.select(afilter_idx)
+	afilter_dd.item_selected.connect(_on_arrow_texture_filter_changed.bind(to_id))
+
 	var atint_row := _make_labeled_row(body, "Arrow Tint")
 	var atint_picker := ColorPickerButton.new()
 	atint_picker.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -462,13 +469,6 @@ func _update_entry_visibility(to_id: int) -> void:
 # ADVANCED ENABLED / DISABLED
 # ============================================================
 
-## Enables or disables the Advanced section's controls based on whether
-## a line texture is currently active.
-##
-## Rationale: `Thickness`, `Line Color`, `Flat Mode` and `Antialiasing`
-## are only meaningful for a solid, single-color line. When a texture is
-## applied, the texture fully determines the visual — those controls
-## would silently do nothing useful (or fight the texture).
 func _update_advanced_enabled(to_id: int) -> void:
 	if not _entries.has(to_id):
 		return
@@ -734,6 +734,14 @@ func _on_arrow_scale_pair_changed(_value: float, to_id: int, sx: SpinBox, sy: Sp
 	var line_data = _get_line_data(to_id)
 	if not line_data: return
 	line_data.arrow_scale = Vector2(sx.value, sy.value)
+	_refresh_line(to_id)
+	_notify_changed()
+
+func _on_arrow_texture_filter_changed(index: int, to_id: int) -> void:
+	if _updating_ui: return
+	var line_data = _get_line_data(to_id)
+	if not line_data: return
+	line_data.arrow_texture_filter_override = index
 	_refresh_line(to_id)
 	_notify_changed()
 

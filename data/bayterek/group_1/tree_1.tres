@@ -9,13 +9,14 @@
 [ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="5_x1plc"]
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="6_royti"]
 [ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="7_e1v5k"]
+[ext_resource type="Texture2D" uid="uid://biwxopklkrtb4" path="res://assets/arrow_normal.png" id="8_royti"]
 [ext_resource type="Texture2D" uid="uid://dbg1h3cypfmyf" path="res://assets/line.png" id="8_x1plc"]
 
-[sub_resource type="Resource" id="Resource_x1plc"]
+[sub_resource type="Resource" id="Resource_qlprm"]
 script = ExtResource("6_royti")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_royti"]
+[sub_resource type="Resource" id="Resource_6p5mu"]
 script = ExtResource("5_x1plc")
 icon_configs = {
 "normal": {
@@ -62,17 +63,17 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "0970b548-8fdf-4a12-bb0c-8bbd5c2b91af"
+layer_id = "ecd98dcc-9015-48ab-9542-82546dc50211"
 layer_name = "Shadow"
-transform = SubResource("Resource_x1plc")
+transform = SubResource("Resource_qlprm")
 absolute = true
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_qlprm"]
+[sub_resource type="Resource" id="Resource_j5a67"]
 script = ExtResource("6_royti")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_6p5mu"]
+[sub_resource type="Resource" id="Resource_nrko7"]
 script = ExtResource("5_x1plc")
 icon_configs = {
 "normal": {
@@ -118,9 +119,9 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "f9ece8d2-6390-4c8a-85be-0afb2f22318d"
+layer_id = "cf00e70e-86e7-453c-89e0-7c138e198cdd"
 layer_name = "Icon"
-transform = SubResource("Resource_qlprm")
+transform = SubResource("Resource_j5a67")
 texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_5lgyx"]
@@ -140,13 +141,13 @@ line_data = {
 2: SubResource("Resource_5lgyx")
 }
 out_nodes = Array[int]([2])
-layers = Array[ExtResource("3_ke383")]([SubResource("Resource_royti"), SubResource("Resource_6p5mu")])
+layers = Array[ExtResource("3_ke383")]([SubResource("Resource_6p5mu"), SubResource("Resource_nrko7")])
 
-[sub_resource type="Resource" id="Resource_j5a67"]
+[sub_resource type="Resource" id="Resource_53451"]
 script = ExtResource("6_royti")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_nrko7"]
+[sub_resource type="Resource" id="Resource_l2tvo"]
 script = ExtResource("5_x1plc")
 icon_configs = {
 "normal": {
@@ -193,17 +194,17 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "ff6c43d6-90cc-4766-b5b8-7e3c5999a0c2"
+layer_id = "c74a81e3-fffa-4b70-8393-06f6d3920fc2"
 layer_name = "Shadow"
-transform = SubResource("Resource_j5a67")
+transform = SubResource("Resource_53451")
 absolute = true
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_53451"]
+[sub_resource type="Resource" id="Resource_tmiro"]
 script = ExtResource("6_royti")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_l2tvo"]
+[sub_resource type="Resource" id="Resource_3cysg"]
 script = ExtResource("5_x1plc")
 icon_configs = {
 "normal": {
@@ -249,9 +250,9 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "a54d5137-b77f-46eb-bc7c-cd5d7ae52691"
+layer_id = "2de4cf91-a2c6-48e7-8be0-bb86c80a0c0c"
 layer_name = "Icon"
-transform = SubResource("Resource_53451")
+transform = SubResource("Resource_tmiro")
 texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_k0kgc"]
@@ -266,70 +267,13 @@ script = ExtResource("1_immpc")
 id = 2
 name = "Yeni"
 design_id = "new_design"
-position = Vector2(64, 64)
+position = Vector2(48, 96)
 line_data = {
 3: SubResource("Resource_k0kgc")
 }
 out_nodes = Array[int]([3])
 in_nodes = Array[int]([1])
-layers = Array[ExtResource("3_ke383")]([SubResource("Resource_nrko7"), SubResource("Resource_l2tvo")])
-
-[sub_resource type="Resource" id="Resource_tmiro"]
-script = ExtResource("6_royti")
-size = Vector2(100, 100)
-
-[sub_resource type="Resource" id="Resource_3cysg"]
-script = ExtResource("5_x1plc")
-icon_configs = {
-"normal": {
-"enabled": true,
-"texture": ExtResource("4_e1v5k")
-}
-}
-tint_enabled = true
-tint_configs = {
-"allocateable": {
-"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
-"enabled": false
-},
-"clicked": {
-"color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
-},
-"hover": {
-"color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
-},
-"locked": {
-"color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
-},
-"max_level": {
-"color": Color(1, 0.8784314, 0.4, 1),
-"enabled": false
-},
-"normal": {
-"color": Color(0, 0, 0, 1),
-"enabled": true
-},
-"not_allocateable": {
-"color": Color(1, 0.4, 0.4, 1),
-"enabled": false
-},
-"preallocated": {
-"color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
-},
-"prerefund": {
-"color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
-}
-}
-layer_id = "8ce70728-2e36-40c5-8c9e-b5b555f32a0c"
-layer_name = "Shadow"
-transform = SubResource("Resource_tmiro")
-absolute = true
-texture_filter_override = 2
+layers = Array[ExtResource("3_ke383")]([SubResource("Resource_l2tvo"), SubResource("Resource_3cysg")])
 
 [sub_resource type="Resource" id="Resource_mklcx"]
 script = ExtResource("6_royti")
@@ -343,6 +287,63 @@ icon_configs = {
 "texture": ExtResource("4_e1v5k")
 }
 }
+tint_enabled = true
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0, 0, 0, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "b366183c-9a6a-4d37-86d6-7dc74eb6fa22"
+layer_name = "Shadow"
+transform = SubResource("Resource_mklcx")
+absolute = true
+texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_67hed"]
+script = ExtResource("6_royti")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_vn7yg"]
+script = ExtResource("5_x1plc")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("4_e1v5k")
+}
+}
 tint_configs = {
 "allocateable": {
 "color": Color(0.5568628, 0.9607843, 0.5568628, 1),
@@ -381,22 +382,26 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "c049e4ab-242f-4ee7-8bf4-7b0227a36fc5"
+layer_id = "03acfab4-fdfe-4dd4-be16-63a9ff23ec73"
 layer_name = "Icon"
-transform = SubResource("Resource_mklcx")
+transform = SubResource("Resource_67hed")
 texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_ss5fq"]
 script = ExtResource("7_e1v5k")
 start_arrow = 1
-end_arrow = 2
+end_arrow = 1
 start_offset = 8.0
 end_offset = 12.0
+start_arrow_backoff = 29.0
 color = Color(1, 0.28125, 0.28125, 0.9019608)
 texture_filter_override = 2
+arrow_texture_filter_override = 2
 texture_mode = 1
 line_texture = ExtResource("8_x1plc")
 texture_tint = Color(1, 0, 0, 1)
+arrow_texture_start = ExtResource("8_royti")
+arrow_scale = Vector2(0.8, 0.8)
 wiggle_phase_offset = 1.518545106207542
 overridden_fields = {
 "color": true
@@ -407,19 +412,19 @@ script = ExtResource("1_immpc")
 id = 3
 name = "Yeni"
 design_id = "new_design"
-position = Vector2(105.85181, -168.59253)
+position = Vector2(116.888916, -90.59277)
 line_data = {
 4: SubResource("Resource_ss5fq")
 }
 out_nodes = Array[int]([4])
 in_nodes = Array[int]([2])
-layers = Array[ExtResource("3_ke383")]([SubResource("Resource_3cysg"), SubResource("Resource_safsq")])
+layers = Array[ExtResource("3_ke383")]([SubResource("Resource_safsq"), SubResource("Resource_vn7yg")])
 
-[sub_resource type="Resource" id="Resource_67hed"]
+[sub_resource type="Resource" id="Resource_bjop0"]
 script = ExtResource("6_royti")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_vn7yg"]
+[sub_resource type="Resource" id="Resource_pvlmy"]
 script = ExtResource("5_x1plc")
 icon_configs = {
 "normal": {
@@ -466,17 +471,17 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "5faf07e2-744b-484b-922b-a4fa5be8667e"
+layer_id = "c61446a7-b17b-47db-a5be-69316ad3cf1e"
 layer_name = "Shadow"
-transform = SubResource("Resource_67hed")
+transform = SubResource("Resource_bjop0")
 absolute = true
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_bjop0"]
+[sub_resource type="Resource" id="Resource_451aj"]
 script = ExtResource("6_royti")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_pvlmy"]
+[sub_resource type="Resource" id="Resource_uf3jb"]
 script = ExtResource("5_x1plc")
 icon_configs = {
 "normal": {
@@ -522,9 +527,9 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "e546a80a-7dd2-4b9d-ba00-727b35ca16b0"
+layer_id = "ef1e62c7-152d-4580-8384-ca71c9010f7d"
 layer_name = "Icon"
-transform = SubResource("Resource_bjop0")
+transform = SubResource("Resource_451aj")
 texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_bxwvi"]
@@ -544,13 +549,13 @@ line_data = {
 }
 out_nodes = Array[int]([5])
 in_nodes = Array[int]([3])
-layers = Array[ExtResource("3_ke383")]([SubResource("Resource_vn7yg"), SubResource("Resource_pvlmy")])
+layers = Array[ExtResource("3_ke383")]([SubResource("Resource_pvlmy"), SubResource("Resource_uf3jb")])
 
-[sub_resource type="Resource" id="Resource_451aj"]
+[sub_resource type="Resource" id="Resource_0rgdv"]
 script = ExtResource("6_royti")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_uf3jb"]
+[sub_resource type="Resource" id="Resource_44f6a"]
 script = ExtResource("5_x1plc")
 icon_configs = {
 "normal": {
@@ -597,17 +602,17 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "a6081174-500f-42f5-b23a-b6a4bb741782"
+layer_id = "12161323-5c91-4dd9-bba6-3ef77918c382"
 layer_name = "Shadow"
-transform = SubResource("Resource_451aj")
+transform = SubResource("Resource_0rgdv")
 absolute = true
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_0rgdv"]
+[sub_resource type="Resource" id="Resource_wbej3"]
 script = ExtResource("6_royti")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_44f6a"]
+[sub_resource type="Resource" id="Resource_y8nen"]
 script = ExtResource("5_x1plc")
 icon_configs = {
 "normal": {
@@ -653,9 +658,9 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "4858e59f-eadd-4c1d-8d56-c4daa147ebae"
+layer_id = "6bbba9ff-9bc3-44d6-b3bd-668a62807ded"
 layer_name = "Icon"
-transform = SubResource("Resource_0rgdv")
+transform = SubResource("Resource_wbej3")
 texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_x43e0"]
@@ -665,7 +670,7 @@ name = "Yeni"
 design_id = "new_design"
 position = Vector2(226, -682)
 in_nodes = Array[int]([4])
-layers = Array[ExtResource("3_ke383")]([SubResource("Resource_uf3jb"), SubResource("Resource_44f6a")])
+layers = Array[ExtResource("3_ke383")]([SubResource("Resource_44f6a"), SubResource("Resource_y8nen")])
 
 [resource]
 script = ExtResource("4_ak1rv")
@@ -673,6 +678,6 @@ id = "tree_1"
 name = "Tree 1"
 id_counter = 5
 nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_wfhhu"), SubResource("Resource_x2q8f"), SubResource("Resource_botrw"), SubResource("Resource_p8dnb"), SubResource("Resource_x43e0")])
-hierarchy_split_offset = -429
+hierarchy_split_offset = -498
 prefabs_bar_visible = false
 state_color_enabled = true

@@ -101,6 +101,11 @@ const TEXTURE_FILTER_NEAREST := 2
 ## Per-line texture filter. Uses the TEXTURE_FILTER_* constants above.
 @export var texture_filter_override: int = TEXTURE_FILTER_INHERIT
 
+## Per-line texture filter for ARROW textures.
+## Independent from `texture_filter_override` so you can use, e.g.,
+## linear for line texture but nearest for arrow icons.
+@export var arrow_texture_filter_override: int = TEXTURE_FILTER_INHERIT
+
 # ============================================================
 # LINE TEXTURE
 # ============================================================
@@ -191,6 +196,7 @@ func duplicate_line_data() -> BayterekLineData:
 	copy.smooth_antialiasing = smooth_antialiasing
 	copy.flat_mode = flat_mode
 	copy.texture_filter_override = texture_filter_override
+	copy.arrow_texture_filter_override = arrow_texture_filter_override
 	copy.texture_mode = texture_mode
 	copy.line_texture = line_texture
 	copy.texture_scale = texture_scale

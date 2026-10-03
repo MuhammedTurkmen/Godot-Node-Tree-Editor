@@ -59,6 +59,9 @@ const FREQ_STOP_THRESHOLD := 0.05
 const FREQ_RESPONSIVENESS := 3.0
 const INTENSITY_HARD_STOP := 0.001
 
+## Minimum arrow_size for any shape to be drawn.
+const MIN_ARROW_SIZE := 2.0
+
 # ============================================================
 # GEOMETRY
 # ============================================================
@@ -75,10 +78,23 @@ var smooth_antialiasing: bool = true : set = set_smooth_antialiasing
 
 var flat_mode: bool = false
 
+## Per-line texture filter override.
+##   0 = Inherit (use CanvasItem default = linear)
+##   1 = Linear
+##   2 = Nearest
 var texture_filter_override: int = 0 :
 	set(v):
 		texture_filter_override = v
 		_apply_texture_filter()
+		queue_redraw()
+
+## Per-line arrow texture filter override.
+##   0 = Inherit (uses the same filter as the line)
+##   1 = Linear
+##   2 = Nearest
+var arrow_texture_filter_override: int = 0 :
+	set(v):
+		arrow_texture_filter_override = v
 		queue_redraw()
 
 # ============================================================
@@ -116,7 +132,7 @@ var end_arrow: ArrowStyle = ArrowStyle.NONE : set = set_end_arrow
 var arrow_size: float = 12.0 : set = set_arrow_size
 var arrow_texture_start: Texture2D = null : set = set_arrow_texture_start
 var arrow_texture_end: Texture2D = null : set = set_arrow_texture_end
-var arrow_scale: Vector2 = Vector2.ONE : set = set_arrow_scale
+var arrow_scale: Vector2 = Vector2.ONE
 var arrow_tint: Color = Color.WHITE : set = set_arrow_tint
 var arrow_offset_x: float = 0.0 : set = set_arrow_offset_x
 
@@ -282,7 +298,9 @@ func set_arrow_texture_end(t: Texture2D) -> void:
 	queue_redraw()
 
 func set_arrow_scale(s: Vector2) -> void:
-	arrow_scale = s
+	# Clamp to a tiny positive minimum so the texture never collapses
+	# into a zero-sized rect that Godot silently skips.
+	arrow_scale = Vector2(maxf(0.05, s.x), maxf(0.05, s.y))
 	queue_redraw()
 
 func set_arrow_tint(c: Color) -> void:
@@ -305,6 +323,16 @@ func _apply_texture_filter() -> void:
 			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		_:
 			texture_filter = CanvasItem.TEXTURE_FILTER_PARENT_NODE
+
+
+func _apply_arrow_texture_filter() -> void:
+	match arrow_texture_filter_override:
+		1:
+			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		2:
+			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_:
+			_apply_texture_filter()
 
 # ============================================================
 # WIGGLE SETTERS
@@ -424,7 +452,12 @@ func _draw_flat_line(a: Vector2, b: Vector2, seg_len: float) -> void:
 	if seg_len < 0.001:
 		return
 	var dir: Vector2 = (b - a) / seg_len
-	var perp: Vector2 = Vector2(-dir.y, dir.x) * (width * 0.5)
+	var half_w: float = width * 0.5
+
+	if half_w < 0.1:
+		return
+
+	var perp: Vector2 = Vector2(-dir.y, dir.x) * half_w
 
 	draw_colored_polygon(
 		PackedVector2Array([a - perp, b - perp, b + perp, a + perp]),
@@ -507,6 +540,8 @@ func _draw_round_joints(segments: Array) -> void:
 	if segments.size() < 2:
 		return
 	var radius: float = width * 0.5
+	if radius < 0.5:
+		return
 	for i in range(segments.size() - 1):
 		var joint: Vector2 = segments[i][1]
 		draw_circle(joint, radius, default_color)
@@ -516,6 +551,8 @@ func _draw_caps(segments: Array) -> void:
 		return
 
 	var radius: float = width * 0.5
+	if radius < 0.5:
+		return
 
 	match cap_start:
 		CapStyle.ROUND:
@@ -580,6 +617,9 @@ func _draw_arrows(segments: Array) -> void:
 
 
 func _draw_arrow_endpoint(tip: Vector2, outward: Vector2, style: ArrowStyle, arrow_tex: Texture2D) -> void:
+	if arrow_tex == null and arrow_size < MIN_ARROW_SIZE:
+		return
+
 	var offset_tip: Vector2 = tip + outward * arrow_offset_x
 
 	if arrow_tex != null:
@@ -589,34 +629,70 @@ func _draw_arrow_endpoint(tip: Vector2, outward: Vector2, style: ArrowStyle, arr
 	_draw_arrow_shape(offset_tip, outward, style)
 
 
+## Draws an arrow texture.
+##
+## The key here is that we build the transform STEP BY STEP so that the
+## scaling never corrupts the origin:
+##
+##   1. Build the rotated basis (origin = zero).
+##   2. Scale the basis.
+##   3. Compute the final origin manually from the scaled basis and the
+##      desired top-left position.
+##
+## If we called `Transform2D(angle, center).scaled(v)` directly,
+## `scaled()` would scale the ORIGIN as well, which made the arrow
+## disappear whenever arrow_scale was less than 1.
 func _draw_arrow_texture(tip: Vector2, outward: Vector2, tex: Texture2D) -> void:
+	if tex == null:
+		return
 	var tex_size: Vector2 = tex.get_size()
 	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
 		return
 
+	var ax: float = maxf(0.05, absf(arrow_scale.x))
+	var ay: float = maxf(0.05, absf(arrow_scale.y))
+
+	var scaled_size: Vector2 = Vector2(tex_size.x * ax, tex_size.y * ay)
+
+	if scaled_size.x < 0.5 or scaled_size.y < 0.5:
+		return
+
+	# Apply the arrow texture filter locally, then restore afterwards.
+	var previous_filter: int = texture_filter
+	_apply_arrow_texture_filter()
+
 	var angle: float = atan2(outward.y, outward.x)
 
-	var scaled_size: Vector2 = Vector2(
-		tex_size.x * arrow_scale.x,
-		tex_size.y * arrow_scale.y
-	)
+	# 1. Rotate + scale the basis WITHOUT touching origin.
+	var basis := Transform2D(angle, Vector2.ZERO)
+	basis = basis.scaled(Vector2(ax, ay))
 
+	# 2. Compute where the texture's center should go:
+	#    half of the scaled width outward from the tip.
 	var center_local: Vector2 = Vector2(scaled_size.x * 0.5, 0.0)
-	var rotated_offset: Vector2 = center_local.rotated(angle)
-	var center: Vector2 = tip + rotated_offset
+	var center_offset: Vector2 = center_local.rotated(angle)
+	var center: Vector2 = tip + center_offset
 
-	var xform := Transform2D(angle, center)
-	xform = xform.scaled(Vector2(arrow_scale.x, arrow_scale.y))
+	# 3. Top-left corner in world space = center - basis * (tex_size / 2).
+	var local_half: Vector2 = tex_size * 0.5
+	var top_left: Vector2 = center - (basis * local_half)
+
+	var xform := Transform2D(basis.x, basis.y, top_left)
 
 	draw_set_transform_matrix(xform)
-	var rect := Rect2(-tex_size * 0.5, tex_size)
+	var rect := Rect2(Vector2.ZERO, tex_size)
 	draw_texture_rect(tex, rect, false, arrow_tint)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
+
+	texture_filter = previous_filter
 
 
 func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> void:
 	var size: float = arrow_size
 	var perp: Vector2 = Vector2(-outward.y, outward.x)
+
+	if size < MIN_ARROW_SIZE:
+		return
 
 	match style:
 		ArrowStyle.ARROW:
@@ -626,14 +702,12 @@ func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> voi
 			draw_colored_polygon(PackedVector2Array([apex, left, right]), default_color)
 
 		ArrowStyle.T_BAR:
-			# Length runs along `perp`, thickness runs along `outward`.
-			#
-			# Thickness is FIXED at size * 0.35 — it must NOT scale with
-			# the line width, otherwise a thick line produces a giant
-			# T_BAR that dwarfs the whole arrow.
 			var half_len: float = size * 0.6
 			var thickness: float = max(2.0, size * 0.35)
 			var half_th: float = thickness * 0.5
+
+			if half_len < 0.5 or half_th < 0.5:
+				return
 
 			var along_outward: Vector2 = outward * half_th
 
@@ -649,6 +723,10 @@ func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> voi
 
 		ArrowStyle.SQUARE:
 			var half_s: float = size * 0.5
+
+			if half_s < 0.5:
+				return
+
 			var back: Vector2 = tip - outward * half_s
 			var front: Vector2 = tip + outward * half_s
 			var top_back: Vector2 = back + perp * half_s
@@ -661,10 +739,15 @@ func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> voi
 			)
 
 		ArrowStyle.CIRCLE:
-			draw_circle(tip, size * 0.5, default_color)
+			var radius: float = size * 0.5
+			if radius < 0.5:
+				return
+			draw_circle(tip, radius, default_color)
 
 		ArrowStyle.DIAMOND:
 			var d_size: float = size * 0.65
+			if d_size < 0.5:
+				return
 			var apex: Vector2 = tip + outward * d_size
 			var back_pt: Vector2 = tip - outward * d_size
 			var left: Vector2 = tip + perp * d_size
