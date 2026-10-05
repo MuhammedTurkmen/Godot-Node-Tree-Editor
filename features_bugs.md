@@ -1,18 +1,11 @@
-
 # Features
 
 ## EASY
 [] validator'a yeni uyarı ve hata mesajları eklenecek 
-[] editor ayarlarını ayrı kaydedebiliriz belki?
 
 ## MEDIUM
-[] arrowlar çizgi uçlarını takip etmiyor
-	- arrow'un texture'ünün boyutlarıyla scale'i beraber kullanılıp pozisyonlandırılsın  
 
 ## HARD
-[] yetenek ağacındaki çerçeve (frame) tipleri
-	[] başlıklı dikdörtgen
-	[] başlık altı çizili
 
 # Bugs 
 
@@ -24,8 +17,11 @@
 [] araç bilgisi (tooltip)
 	[] açıklama formatlanabilir olacak içinde attribute kullanabilicez 
 	[] lokalizasyonla bağla
-[] line 2d hataları çözülecek
 
 # Release
-[] GdUnit4: otomatik arayüz test edici
-[] Export preset: en son dahil edilmeyecek dosyaları belirleme
+
+# FOR ANOTHER PROJECT
+
+[] yetenek ağacındaki çerçeve (frame) tipleri 
+	[] başlıklı dikdörtgen
+	[] başlık altı çizili

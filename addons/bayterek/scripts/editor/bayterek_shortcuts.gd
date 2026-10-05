@@ -3,13 +3,12 @@ class_name BayterekShortcuts
 extends RefCounted
 ## Central keyboard shortcut handler for the Bayterek editor.
 ##
-## IMPORTANT: when a text input widget (LineEdit, TextEdit, CodeEdit, or a
-## LineEdit nested inside a SpinBox) has focus, we DO NOT intercept
-## Ctrl+C / Ctrl+V / Ctrl+D / Ctrl+A / Delete / F2 / etc. Doing so would
-## break normal text editing (copy/paste, select-all, delete character).
+## IMPORTANT: when a text input widget has focus, we DO NOT intercept
+## Ctrl+C / Ctrl+V / Ctrl+D / Ctrl+A / Delete / F2 / etc. Doing so
+## would break normal text editing.
 ##
 ## The one exception is Ctrl+S: saving the tree should still work while
-## typing, and it doesn't conflict with any standard text editing shortcut.
+## typing.
 
 var editor: BayterekEditor
 var _grid_visible: bool = true
@@ -21,22 +20,6 @@ func _init(p_editor: BayterekEditor) -> void:
 # FOCUS DETECTION
 # ============================================================
 
-## Returns true if the current focus is inside a text-editing widget.
-##
-## We check:
-##   - LineEdit        (single-line text)
-##   - TextEdit        (multi-line text)
-##   - CodeEdit        (subclass of TextEdit)
-##   - SpinBox's internal LineEdit (SpinBox wraps a LineEdit)
-##
-## We walk UP the focus owner's parent chain a few levels, because a
-## SpinBox's internal LineEdit is not directly the focus owner in some
-## Godot versions.
-##
-## NOTE: We deliberately do NOT check for RichTextLabel here. Godot's
-## RichTextLabel does not have an `editable` property — it's a display
-## widget, not an input field. Trying to read `.editable` on it throws
-## "Invalid access to property 'editable'" and spams the console.
 func _is_text_input_focused() -> bool:
 	if not editor or not editor.is_inside_tree():
 		return false
@@ -49,7 +32,6 @@ func _is_text_input_focused() -> bool:
 	if not focused:
 		return false
 
-	# Direct hit — common cases.
 	if focused is LineEdit:
 		return true
 	if focused is TextEdit:
@@ -57,8 +39,6 @@ func _is_text_input_focused() -> bool:
 	if focused is CodeEdit:
 		return true
 
-	# SpinBox: the LineEdit it wraps may not be the focus owner in all
-	# Godot versions, so walk up the parents.
 	var node: Node = focused
 	var depth: int = 0
 	while node and depth < 4:
@@ -85,20 +65,11 @@ func handle_input(event: InputEvent) -> bool:
 	var ctrl: bool = event.ctrl_pressed or event.meta_pressed
 	var shift: bool = event.shift_pressed
 
-	# --- Text-input guard ---------------------------------------------
-	# While the user is typing in a LineEdit / TextEdit, only Ctrl+S is
-	# allowed through. Everything else (copy, paste, duplicate, select-all,
-	# delete, rename, etc.) must be handled by the text widget itself —
-	# otherwise we'd break normal text editing.
-	#
-	# Ctrl+S doesn't conflict with any standard text-edit shortcut, so it
-	# stays active: the user may want to save the tree mid-typing.
 	if _is_text_input_focused():
 		if ctrl and key == KEY_S:
 			editor.save_tree()
 			return true
 		return false
-	# ------------------------------------------------------------------
 
 	# --- Ctrl combinations ---
 	if ctrl:
@@ -156,6 +127,9 @@ func handle_input(event: InputEvent) -> bool:
 			return true
 		if key == KEY_C and not shift:
 			editor._toggle_chain_connection_mode()
+			return true
+		if key == KEY_X:
+			editor._toggle_line_delete_mode()
 			return true
 		if key == KEY_F2:
 			editor._open_rename_dialog()

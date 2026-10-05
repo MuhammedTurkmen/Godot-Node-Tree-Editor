@@ -17,16 +17,10 @@ signal node_allocated(node: BayterekNode)
 signal node_deallocated(node: BayterekNode)
 signal prefab_created(prefab: BayterekPrefab)
 signal line_created(line: BayterekConnection, from_id: int, to_id: int)
+signal line_clicked_for_delete(from_id: int, to_id: int)
 
-# ============================================================
-# HOVER ANIMATION CONFIG
-# ============================================================
-## Master switch — when false, hover enter/exit do NOT play any animation.
-## Tooltips still work.
-##
-## The value is loaded from `tree_data.hover_animations_enabled` in
-## load_tree(), and persisted back when the user toggles it from the
-## View menu (via BayterekEditor._toggle_hover_animations).
+const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
+
 @export var hover_animations_enabled: bool = true
 
 @export var hover_enter_preset: String = "hover_enter"
@@ -42,16 +36,6 @@ signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 	"easing": "smooth",
 }
 
-# ============================================================
-# WIGGLE CONFIG (Aşama 6)
-# ============================================================
-## Master switch for wiggle animations on connections.
-##
-## When false, NO connection wiggles regardless of its per-line setting.
-## When true, each line's individual `wiggle_enabled` flag decides.
-##
-## The Tree Settings tab exposes this as a checkbox and persists it on
-## the tree resource (`tree.wiggle_enabled`).
 @export var wiggle_enabled: bool = false
 
 var main_container: Control
@@ -96,9 +80,7 @@ func _ready() -> void:
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
 
-	# Pull persisted UI preferences from the tree resource.
 	hover_animations_enabled = tree_data.hover_animations_enabled
-	# Aşama 6: master wiggle switch (global toggle from Settings).
 	wiggle_enabled = tree_data.wiggle_enabled
 
 	if _tree_data.tree_state and _tree_data.tree_state.version != _tree_data.version:
@@ -113,6 +95,18 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_group_frame_dragging = null
 
 	call_deferred("center_camera_on_content")
+
+# ============================================================
+# LINE DELETE MODE
+# ============================================================
+
+## Enables/disables line-delete mode. While active, `_gui_input` does
+## manual raycasting against every connection's polyline. No
+## mouse_filter changes are made, so node dragging / selection keep
+## working normally.
+func set_line_delete_mode(enabled: bool) -> void:
+	if connections_service:
+		connections_service.set_line_delete_mode(enabled)
 
 # ============================================================
 # CAMERA CENTERING
@@ -261,7 +255,6 @@ func _on_node_hovered(node: BayterekNodeButton, is_hovered: bool) -> void:
 	if node and node.node_data and node.node_data.is_decoration:
 		return
 
-	# Master switch — if disabled, skip visual animations but keep tooltip.
 	if not hover_animations_enabled:
 		if is_hovered:
 			_hovered_node = node
@@ -307,6 +300,15 @@ func _gui_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
 
+	# In line-delete mode, intercept left clicks and try to hit a line
+	# BEFORE passing the event to the camera / selection box.
+	if connections_service and connections_service.is_line_delete_mode_active():
+		if event is InputEventMouseButton:
+			if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+				if _try_delete_line_at(event.position):
+					accept_event()
+					return
+
 	if _handle_group_frame_input(event):
 		return
 
@@ -317,13 +319,64 @@ func _gui_input(event: InputEvent) -> void:
 		selection_box.handle_input(event)
 
 
-## Global keyboard handler.
+## Converts `screen_pos` to `main_container`'s local coordinate space
+## (the SAME space as `line.points`) and finds the CLOSEST line within
+## its hit threshold. Deletes that line and returns true if any was hit.
 ##
-## Guard: when a text input widget (LineEdit / TextEdit / CodeEdit, or a
-## LineEdit nested inside a SpinBox) has focus, we DO NOT intercept
-## keyboard events. Without this guard, pressing Delete while renaming a
-## node — or while editing an attribute in the Inspector — would delete
-## the selected node(s) instead of a character.
+## Why `screen_to_mc_local` and not `screen_to_tree`?
+##   `line.points` lives in `main_container`'s LOCAL coordinate space
+##   (that's where all node positions and line points are laid out).
+##   `screen_to_tree` subtracts `tree_size / 2` because it targets the
+##   centered "tree coordinate" system; that would be wrong here.
+func _try_delete_line_at(screen_pos: Vector2) -> bool:
+	if not connections_service:
+		return false
+
+	var mc_pos: Vector2 = screen_to_mc_local(screen_pos)
+
+	var best_from: int = -1
+	var best_to: int = -1
+	var best_dist_sq: float = INF
+
+	for conn in connections_service._lines.values():
+		if not is_instance_valid(conn):
+			continue
+		var data: BayterekLineData = conn.line_data
+		if not data:
+			continue
+		var ln: BayterekLine2D = conn.line
+		if not ln or ln.points.size() < 2:
+			continue
+
+		var threshold: float = maxf(12.0, data.thickness * 2.0)
+		var threshold_sq: float = threshold * threshold
+
+		for i in range(ln.points.size() - 1):
+			var a: Vector2 = ln.points[i]
+			var b: Vector2 = ln.points[i + 1]
+			var dist_sq: float = _dist_sq_to_segment(mc_pos, a, b)
+			if dist_sq <= threshold_sq and dist_sq < best_dist_sq:
+				best_dist_sq = dist_sq
+				best_from = conn.from_id
+				best_to = conn.to_id
+
+	if best_from < 0:
+		return false
+
+	connections_service.line_clicked_for_delete.emit(best_from, best_to)
+	return true
+
+
+func _dist_sq_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab: Vector2 = b - a
+	var ab_len_sq: float = ab.length_squared()
+	if ab_len_sq < 0.0001:
+		return (p - a).length_squared()
+	var t: float = clampf((p - a).dot(ab) / ab_len_sq, 0.0, 1.0)
+	var closest: Vector2 = a + ab * t
+	return (p - closest).length_squared()
+
+
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
@@ -338,13 +391,6 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 
 
-## Returns true if the current GUI focus is inside a text-editing widget.
-## Walks up a few parent levels so SpinBox's internal LineEdit is caught.
-##
-## NOTE: RichTextLabel is intentionally NOT checked — Godot 4's
-## RichTextLabel has no `editable` property, and reading it throws an
-## error every frame the Output panel (or any other editor
-## RichTextLabel) has focus.
 func _is_text_input_focused() -> bool:
 	var vp: Viewport = get_viewport()
 	if not vp:
@@ -484,6 +530,11 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 	if node.node_data.locked:
 		return
 
+	# While line-delete mode is active, ignore node clicks so the user
+	# can click lines freely.
+	if connections_service and connections_service.is_line_delete_mode_active():
+		return
+
 	var ctrl_held: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
 	if _is_allocation_active() and not ctrl_held:
 		allocation_service.on_node_pressed(node)
@@ -549,6 +600,9 @@ func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) 
 		return
 	if _is_allocation_active():
 		return
+	# NOTE: We do NOT block dragging in line-delete mode. Node
+	# interaction stays fully functional; only the click interception
+	# in `_gui_input` prefers lines over nodes.
 
 	if not selected_nodes.has(node):
 		if not Input.is_key_pressed(KEY_CTRL):
@@ -671,6 +725,8 @@ func _apply_positions(positions: Dictionary) -> void:
 func _on_selection_box_selected(rect: Rect2) -> void:
 	if _is_allocation_active():
 		return
+	if connections_service and connections_service.is_line_delete_mode_active():
+		return
 
 	if rect.size.x < 1.0 and rect.size.y < 1.0:
 		clear_selection()
@@ -792,6 +848,7 @@ func _create_services() -> void:
 
 	connections_service = BayterekConnectionsService.new(self)
 	connections_service.load_tree(_tree_data)
+	connections_service.line_clicked_for_delete.connect(_on_line_clicked_for_delete)
 
 	prefabs_service = BayterekPrefabsService.new(self)
 	prefabs_service.load_tree(_tree_data)
@@ -971,3 +1028,6 @@ func _on_nodes_service_node_created(node: BayterekNodeButton) -> void:
 
 func _on_nodes_service_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
 	node_right_clicked.emit(node, screen_pos)
+
+func _on_line_clicked_for_delete(from_id: int, to_id: int) -> void:
+	line_clicked_for_delete.emit(from_id, to_id)

@@ -3,13 +3,20 @@ class_name BayterekConnectionsService
 extends BayterekBaseService
 ## Connection creation / deletion / updates.
 
-const DEBUG_DOUBLE_DRAW := true
-
 signal line_created(line: BayterekConnection, from_id: int, to_id: int)
 signal line_removed(from_id: int, to_id: int)
 signal line_changed(from_id: int, to_id: int)
 
+## Emitted when the user clicks a connection while line-delete mode
+## is active. The editor handles the actual deletion (undoable).
+signal line_clicked_for_delete(from_id: int, to_id: int)
+
 var _lines: Dictionary = {}
+
+## When true, the tree view intercepts left clicks and does manual
+## raycasting against every connection's polyline. This service just
+## tracks the flag; hit testing lives in `BayterekTreeView._gui_input`.
+var line_delete_mode: bool = false
 
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
@@ -23,6 +30,17 @@ func get_line(from_id: int, to_id: int) -> BayterekConnection:
 
 func has_line(from_id: int, to_id: int) -> bool:
 	return _lines.has(_key(from_id, to_id))
+
+# ============================================================
+# LINE DELETE MODE
+# ============================================================
+
+func set_line_delete_mode(enabled: bool) -> void:
+	line_delete_mode = enabled
+
+
+func is_line_delete_mode_active() -> bool:
+	return line_delete_mode
 
 # ============================================================
 # CREATION
@@ -46,9 +64,7 @@ func create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeButto
 
 	if _tree_data:
 		# Force-apply ALL defaults so this new connection starts from
-		# the tree's CURRENT Settings values. `force = true` also clears
-		# any override flags (there shouldn't be any on a fresh
-		# LineData, but this guarantees consistency).
+		# the tree's CURRENT Settings values.
 		_tree_data.apply_connection_defaults(line_data, true)
 
 	from_data.line_data[to_data.id] = line_data
@@ -65,8 +81,7 @@ func _create_line_from_data(from_id: int, to_id: int) -> BayterekConnection:
 	# NOTE: We deliberately do NOT set any hard-coded defaults on the
 	# line/arrow children here. All visual defaults are owned by the
 	# tree (`apply_connection_defaults`) and pushed through
-	# `_apply_line_data_visuals` below. Anything hard-coded here would
-	# fight the Settings tab.
+	# `_apply_line_data_visuals` below.
 
 	var from_node: BayterekNodeButton = _tree_view.nodes_service.get_node(from_id)
 	if from_node and from_node.node_data:
@@ -216,6 +231,11 @@ func on_node_visual_offset_changed(node: BayterekNodeButton) -> void:
 			_update_line_points(line)
 
 
+## Refreshes the state-driven visuals of a single connection.
+##
+## When `state_color_enabled` is FALSE we do NOT touch the line's color.
+## When it's TRUE we write the state color to the LINE child (the arrows
+## keep their own color / tint).
 func _refresh_line_state(from_id: int, to_id: int) -> void:
 	var line: BayterekConnection = get_line(from_id, to_id)
 	if not line:

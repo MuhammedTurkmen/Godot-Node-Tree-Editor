@@ -51,7 +51,6 @@ const FREQ_RESPONSIVENESS := 3.0
 const INTENSITY_HARD_STOP := 0.001
 
 const DEBUG_POLYGON := false
-const DEBUG_DRAW := true
 
 # ============================================================
 # GEOMETRY
@@ -130,7 +129,6 @@ const JITTER_REFRESH_INTERVAL := 0.05
 
 var _cached_segments: Array = []
 var _cache_dirty: bool = true
-var _draw_call_count: int = 0
 
 # ============================================================
 # LIFECYCLE
@@ -177,6 +175,41 @@ func _seed_from_instance_if_needed() -> void:
 	if wiggle_random_seed == 0:
 		wiggle_random_seed = int(get_instance_id()) & 0x7FFFFFFF
 	_jitter_value = _pseudo_rand(-1.0, 1.0, float(wiggle_random_seed))
+
+# ============================================================
+# PUBLIC HIT TEST
+# ============================================================
+
+## Returns true if `p` is within `threshold` pixels of this line's
+## polyline geometry.
+##
+## `p` must be in the SAME coordinate space as `points` — that is,
+## `main_container`'s local space. Use `BayterekTreeView.screen_to_mc_local()`
+## to convert a screen position first.
+func is_point_near(p: Vector2, threshold: float = 12.0) -> bool:
+	if points.size() < 2:
+		return false
+
+	var threshold_sq: float = threshold * threshold
+
+	for i in range(points.size() - 1):
+		var a: Vector2 = points[i]
+		var b: Vector2 = points[i + 1]
+		var dist_sq: float = _distance_sq_point_to_segment(p, a, b)
+		if dist_sq <= threshold_sq:
+			return true
+
+	return false
+
+
+func _distance_sq_point_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab: Vector2 = b - a
+	var ab_len_sq: float = ab.length_squared()
+	if ab_len_sq < 0.0001:
+		return (p - a).length_squared()
+	var t: float = clampf((p - a).dot(ab) / ab_len_sq, 0.0, 1.0)
+	var closest: Vector2 = a + ab * t
+	return (p - closest).length_squared()
 
 # ============================================================
 # SETTERS
@@ -330,16 +363,6 @@ func get_point_position(index: int) -> Vector2:
 # ============================================================
 
 func _draw() -> void:
-	_draw_call_count += 1
-	if DEBUG_DRAW:
-		print("[BayterekLine2D] _draw #", _draw_call_count,
-			" instance=", get_instance_id(),
-			" parent=", get_parent().name if get_parent() else "?",
-			" points=", points.size(),
-			" texture=", texture,
-			" texture_mode=", texture_mode,
-			" width=", width)
-
 	if points.size() < 2:
 		return
 	if width <= 0.0:

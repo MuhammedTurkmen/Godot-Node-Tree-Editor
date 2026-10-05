@@ -162,6 +162,66 @@ func _connect_split_signals() -> void:
 		h_split.dragged.connect(_on_h_split_dragged)
 
 # ============================================================
+# LINE DELETE MODE
+# ============================================================
+
+## Toggles line-delete mode. While active, clicking a connection line
+## deletes that connection (undoable via Ctrl+Z).
+##
+## IMPORTANT: We call `tree_view.set_line_delete_mode()` (not the
+## service directly) because the tree view is responsible for flipping
+## `lines_container.mouse_filter` — without that, the click never
+## reaches the connection.
+func _toggle_line_delete_mode() -> void:
+	if not tree_view or not tree_view.connections_service:
+		return
+
+	var svc = tree_view.connections_service
+	var new_state: bool = not svc.is_line_delete_mode_active()
+
+	# Use the tree_view's setter so it also flips `lines_container`'s
+	# mouse_filter — otherwise the click never reaches the connection.
+	tree_view.set_line_delete_mode(new_state)
+
+	if new_state:
+		BayterekToast.warning(tree_view, "Line Delete Mode: [b]ON[/b]  (click a line to delete, press X to exit)")
+	else:
+		BayterekToast.info(tree_view, "Line Delete Mode: [b]OFF[/b]")
+
+	tree_view.mouse_default_cursor_shape = Control.CURSOR_CROSS if new_state else Control.CURSOR_ARROW
+
+
+func _on_line_clicked_for_delete(from_id: int, to_id: int) -> void:
+	if not tree_view or not tree_view.connections_service:
+		return
+
+	var svc = tree_view.connections_service
+	var line: BayterekConnection = svc.get_line(from_id, to_id)
+	if not line:
+		return
+
+	# Snapshot the LineData so undo restores the exact visual state.
+	var line_data_snapshot: BayterekLineData = line.line_data
+
+	var do_callable := func():
+		svc.remove_connection(from_id, to_id)
+		set_dirty(true)
+	var undo_callable := func():
+		var from_node: BayterekNodeButton = tree_view.nodes_service.get_node(from_id)
+		var to_node: BayterekNodeButton = tree_view.nodes_service.get_node(to_id)
+		if not from_node or not to_node:
+			return
+		from_node.node_data.out_nodes.append(to_id)
+		to_node.node_data.in_nodes.append(from_id)
+		if line_data_snapshot:
+			from_node.node_data.line_data[to_id] = line_data_snapshot
+		svc._create_line_from_data(from_id, to_id)
+		set_dirty(true)
+
+	_commit_action("Delete Connection", do_callable, undo_callable)
+	BayterekToast.success(tree_view, "Connection deleted (Ctrl+Z to undo)")
+
+# ============================================================
 # CHAIN-CONNECTION MODE
 # ============================================================
 
@@ -568,6 +628,7 @@ func _create_tree_view() -> void:
 	tree_view.prefab_dropped.connect(_on_prefab_dropped_from_canvas)
 	tree_view.design_dropped.connect(_on_design_dropped_from_canvas)
 	tree_view.node_right_clicked.connect(_on_node_right_clicked)
+	tree_view.line_clicked_for_delete.connect(_on_line_clicked_for_delete)
 
 	tree_view.set_tooltip_near_node_right()
 
@@ -2424,14 +2485,6 @@ func _on_settings_show_group_frames_changed(pressed: bool) -> void:
 # DEFAULT LINE TEXTURE HANDLER
 # ============================================================
 
-## Called when the tree's DEFAULT line texture (or its mode/filter)
-## changes.
-##
-## IMPORTANT: This ONLY affects connections created AFTER this point.
-## Existing connections keep their current texture, even if the tree
-## default is cleared or changed. To reset an existing connection back
-## to the current default, use "Reset to Tree Defaults" in the
-## Inspector's Connections tab.
 func _on_settings_default_line_texture_changed() -> void:
 	set_dirty(true)
 
@@ -2439,20 +2492,10 @@ func _on_settings_default_line_texture_changed() -> void:
 # CONNECTION SETTINGS HANDLERS
 # ============================================================
 
-## Called when a connection default style setting (color, thickness,
-## antialiasing) changes.
-##
-## IMPORTANT: Defaults only apply to NEWLY-CREATED connections. Existing
-## connections keep their current values. Use "Reset to Tree Defaults"
-## in the Inspector to bring a specific connection up to date.
 func _on_settings_connection_style_changed() -> void:
 	set_dirty(true)
 
 
-## State color settings are a RUNTIME visual toggle (not a "default for
-## new lines"), so this DOES affect every existing connection. When the
-## toggle is turned off, we re-apply each line's LineData color so the
-## state color doesn't stick around.
 func _on_settings_connection_state_color_changed() -> void:
 	if not tree_view or not tree_view.connections_service:
 		set_dirty(true)
@@ -2476,20 +2519,10 @@ func _on_settings_connection_state_color_changed() -> void:
 	set_dirty(true)
 
 
-## Called when default start/end offsets change.
-##
-## IMPORTANT: Defaults only apply to NEWLY-CREATED connections. Existing
-## connections keep their current offsets.
 func _on_settings_connection_offsets_changed() -> void:
 	set_dirty(true)
 
 
-## Called when the master wiggle switch or any wiggle parameter changes.
-##
-## The master switch is a GLOBAL toggle, so it must propagate to every
-## line that has wiggle enabled. We deliberately do NOT call
-## `apply_defaults_to_all_lines()` here because that would overwrite
-## per-connection wiggle overrides.
 func _on_settings_connection_wiggle_changed() -> void:
 	if not tree or not tree_view or not tree_view.connections_service:
 		set_dirty(true)
@@ -2522,8 +2555,6 @@ func _on_settings_connection_wiggle_changed() -> void:
 	set_dirty(true)
 
 
-## Animation tracking is a RUNTIME behavior toggle, so existing
-## connections must be updated.
 func _on_settings_connection_animation_tracking_changed() -> void:
 	if not tree_view or not tree_view.connections_service:
 		set_dirty(true)
