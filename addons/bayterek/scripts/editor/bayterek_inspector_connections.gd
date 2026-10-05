@@ -287,6 +287,7 @@ func _build_arrows_section(body: VBoxContainer, to_id: int, line_data: BayterekL
 
 	var size_row := _make_labeled_row(body, "Arrow Size")
 	var size_input := _make_spinbox(size_row, 2, 100, 1, line_data.arrow_size)
+	size_input.tooltip_text = "Size of VECTOR arrow shapes (ignored when an arrow texture is set)."
 	size_input.value_changed.connect(_on_arrow_size_changed.bind(to_id))
 
 	var sback_row := _make_labeled_row(body, "Start Backoff")
@@ -320,6 +321,17 @@ func _build_arrows_section(body: VBoxContainer, to_id: int, line_data: BayterekL
 	ascale_y.size_flags_horizontal = SIZE_EXPAND_FILL
 	ascale_x.value_changed.connect(_on_arrow_scale_pair_changed.bind(to_id, ascale_x, ascale_y))
 	ascale_y.value_changed.connect(_on_arrow_scale_pair_changed.bind(to_id, ascale_x, ascale_y))
+
+	# --- Arrow Texture Pivot ---
+	var pivot_row := _make_labeled_row(body, "Pivot UV")
+	var pivot_x := _make_spinbox(pivot_row, 0.0, 1.0, 0.05, line_data.arrow_texture_pivot.x)
+	pivot_x.size_flags_horizontal = SIZE_EXPAND_FILL
+	pivot_x.tooltip_text = "Pivot in the arrow texture's UV space. X: 0=left, 1=right."
+	var pivot_y := _make_spinbox(pivot_row, 0.0, 1.0, 0.05, line_data.arrow_texture_pivot.y)
+	pivot_y.size_flags_horizontal = SIZE_EXPAND_FILL
+	pivot_y.tooltip_text = "Pivot in the arrow texture's UV space. Y: 0=top, 1=bottom."
+	pivot_x.value_changed.connect(_on_arrow_texture_pivot_pair_changed.bind(to_id, pivot_x, pivot_y))
+	pivot_y.value_changed.connect(_on_arrow_texture_pivot_pair_changed.bind(to_id, pivot_x, pivot_y))
 
 	# --- Arrow Texture Filter ---
 	var afilter_row := _make_labeled_row(body, "Arrow Filter")
@@ -368,7 +380,6 @@ func _build_advanced_section(body: VBoxContainer, to_id: int, line_data: Baytere
 	aa_check.tooltip_text = "Smooth the line edges. Ignored in flat mode."
 	aa_check.toggled.connect(_on_antialiasing_changed.bind(to_id))
 
-	# Track widgets so they can be disabled when a line texture is active.
 	if not _entries.has(to_id):
 		_entries[to_id] = {}
 	_entries[to_id]["advanced_refs"] = {
@@ -734,6 +745,19 @@ func _on_arrow_scale_pair_changed(_value: float, to_id: int, sx: SpinBox, sy: Sp
 	var line_data = _get_line_data(to_id)
 	if not line_data: return
 	line_data.arrow_scale = Vector2(sx.value, sy.value)
+	_refresh_line(to_id)
+	_notify_changed()
+
+func _on_arrow_texture_pivot_pair_changed(_value: float, to_id: int, sx: SpinBox, sy: SpinBox) -> void:
+	if _updating_ui: return
+	if not is_instance_valid(sx) or not is_instance_valid(sy):
+		return
+	var line_data = _get_line_data(to_id)
+	if not line_data: return
+	line_data.arrow_texture_pivot = Vector2(
+		clampf(sx.value, 0.0, 1.0),
+		clampf(sy.value, 0.0, 1.0)
+	)
 	_refresh_line(to_id)
 	_notify_changed()
 

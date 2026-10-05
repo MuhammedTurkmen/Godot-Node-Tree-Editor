@@ -293,7 +293,7 @@ func _pass_state_to_settings_editor(value: bool) -> void:
 	settings_editor._updating_ui = false
 
 # ============================================================
-# REDRAW CANVAS (View → Redraw)
+# REDRAW CANVAS
 # ============================================================
 
 func _redraw_canvas() -> void:
@@ -305,15 +305,12 @@ func _redraw_canvas() -> void:
 	var lines_refreshed: int = 0
 	var frames_refreshed: int = 0
 
-	# 1) Apply tree defaults to all lines (respecting per-field overrides).
 	if tree:
 		tree.apply_defaults_to_all_lines(false)
 
-	# 2) Refresh every connection's visuals + geometry.
 	if tree_view.connections_service:
 		var svc = tree_view.connections_service
 
-		# First pass: apply LineData visuals.
 		for line in svc._lines.values():
 			if not is_instance_valid(line):
 				continue
@@ -321,20 +318,17 @@ func _redraw_canvas() -> void:
 			if not data:
 				continue
 			svc._apply_line_data_visuals(line, data)
-			line.set_wiggle_enabled(data.wiggle_enabled)
+			if line.line:
+				line.line.set_wiggle_enabled(data.wiggle_enabled)
 			lines_refreshed += 1
 
-		# Second pass: rebuild geometry (which will call _apply_line_data_visuals
-		# again, but color is skipped when state_color_enabled).
 		svc.update_all_lines()
 
-		# Third pass: if state colors own the color, apply them now.
 		if tree and tree.state_color_enabled:
 			for node in tree_view.nodes_service.get_all_nodes():
 				if is_instance_valid(node):
 					svc.on_node_allocation_changed(node)
 
-	# 3) Refresh every node.
 	if tree_view.nodes_service:
 		for node in tree_view.nodes_service.get_all_nodes():
 			if not is_instance_valid(node):
@@ -343,21 +337,17 @@ func _redraw_canvas() -> void:
 				node.refresh_visuals()
 				nodes_refreshed += 1
 
-	# 4) Refresh every group frame.
 	if tree_view.group_frames_service:
 		tree_view.group_frames_service.refresh_all()
 		frames_refreshed = tree_view.group_frames_service._frames.size()
 
-	# 5) Refresh the tooltip.
 	if tree_view.has_method("refresh_tooltip_content"):
 		tree_view.refresh_tooltip_content()
 	if tree_view.has_method("refresh_tooltip_position"):
 		tree_view.refresh_tooltip_position()
 
-	# 6) Update camera bounds.
 	_apply_size_to_view()
 
-	# 7) Force a repaint.
 	if tree_view:
 		tree_view.queue_redraw()
 
@@ -599,6 +589,7 @@ func _create_tree_view() -> void:
 		settings_editor.texture_filter_changed.connect(_on_settings_texture_filter_changed)
 		settings_editor.chain_connection_mode_changed.connect(_on_settings_chain_connection_changed)
 		settings_editor.show_group_frames_changed.connect(_on_settings_show_group_frames_changed)
+		settings_editor.default_line_texture_changed.connect(_on_settings_default_line_texture_changed)
 		settings_editor.connection_style_changed.connect(_on_settings_connection_style_changed)
 		settings_editor.connection_state_color_changed.connect(_on_settings_connection_state_color_changed)
 		settings_editor.connection_offsets_changed.connect(_on_settings_connection_offsets_changed)
@@ -2430,26 +2421,38 @@ func _on_settings_show_group_frames_changed(pressed: bool) -> void:
 	_set_show_group_frames(pressed, false)
 
 # ============================================================
+# DEFAULT LINE TEXTURE HANDLER
+# ============================================================
+
+## Called when the tree's DEFAULT line texture (or its mode/filter)
+## changes.
+##
+## IMPORTANT: This ONLY affects connections created AFTER this point.
+## Existing connections keep their current texture, even if the tree
+## default is cleared or changed. To reset an existing connection back
+## to the current default, use "Reset to Tree Defaults" in the
+## Inspector's Connections tab.
+func _on_settings_default_line_texture_changed() -> void:
+	set_dirty(true)
+
+# ============================================================
 # CONNECTION SETTINGS HANDLERS
 # ============================================================
 
+## Called when a connection default style setting (color, thickness,
+## antialiasing) changes.
+##
+## IMPORTANT: Defaults only apply to NEWLY-CREATED connections. Existing
+## connections keep their current values. Use "Reset to Tree Defaults"
+## in the Inspector to bring a specific connection up to date.
 func _on_settings_connection_style_changed() -> void:
-	if not tree or not tree_view or not tree_view.connections_service:
-		set_dirty(true)
-		return
-
-	tree.apply_defaults_to_all_lines(false)
-	tree_view.connections_service.update_all_lines()
-
-	if tree.state_color_enabled:
-		var svc = tree_view.connections_service
-		for node in tree_view.nodes_service.get_all_nodes():
-			if is_instance_valid(node):
-				svc.on_node_allocation_changed(node)
-
 	set_dirty(true)
 
 
+## State color settings are a RUNTIME visual toggle (not a "default for
+## new lines"), so this DOES affect every existing connection. When the
+## toggle is turned off, we re-apply each line's LineData color so the
+## state color doesn't stick around.
 func _on_settings_connection_state_color_changed() -> void:
 	if not tree_view or not tree_view.connections_service:
 		set_dirty(true)
@@ -2473,31 +2476,26 @@ func _on_settings_connection_state_color_changed() -> void:
 	set_dirty(true)
 
 
+## Called when default start/end offsets change.
+##
+## IMPORTANT: Defaults only apply to NEWLY-CREATED connections. Existing
+## connections keep their current offsets.
 func _on_settings_connection_offsets_changed() -> void:
-	if not tree or not tree_view or not tree_view.connections_service:
-		set_dirty(true)
-		return
-
-	tree.apply_defaults_to_all_lines(false)
-	tree_view.connections_service.update_all_lines()
-
-	if tree.state_color_enabled:
-		var svc = tree_view.connections_service
-		for node in tree_view.nodes_service.get_all_nodes():
-			if is_instance_valid(node):
-				svc.on_node_allocation_changed(node)
-
 	set_dirty(true)
 
 
+## Called when the master wiggle switch or any wiggle parameter changes.
+##
+## The master switch is a GLOBAL toggle, so it must propagate to every
+## line that has wiggle enabled. We deliberately do NOT call
+## `apply_defaults_to_all_lines()` here because that would overwrite
+## per-connection wiggle overrides.
 func _on_settings_connection_wiggle_changed() -> void:
 	if not tree or not tree_view or not tree_view.connections_service:
 		set_dirty(true)
 		return
 
 	tree_view.wiggle_enabled = tree.wiggle_enabled
-
-	tree.apply_defaults_to_all_lines(false)
 
 	var svc = tree_view.connections_service
 	for line in svc._lines.values():
@@ -2507,7 +2505,8 @@ func _on_settings_connection_wiggle_changed() -> void:
 		if not data:
 			continue
 		svc._apply_line_data_visuals(line, data)
-		line.set_wiggle_enabled(data.wiggle_enabled)
+		if line.line:
+			line.line.set_wiggle_enabled(data.wiggle_enabled)
 
 	svc.update_all_lines()
 
@@ -2523,6 +2522,8 @@ func _on_settings_connection_wiggle_changed() -> void:
 	set_dirty(true)
 
 
+## Animation tracking is a RUNTIME behavior toggle, so existing
+## connections must be updated.
 func _on_settings_connection_animation_tracking_changed() -> void:
 	if not tree_view or not tree_view.connections_service:
 		set_dirty(true)

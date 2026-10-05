@@ -15,12 +15,9 @@ extends Resource
 @export_storage var allocation_confirm: bool = false
 @export_storage var refund_confirm: bool = false
 
-## Whether group frames (colored bounding boxes around node groups)
-## are drawn.
 @export_storage var show_group_frames: bool = true
 @export_storage var group_frame_title_align: int = 0
 
-## Whether hover enter/exit animations play on nodes in the tree canvas.
 @export_storage var hover_animations_enabled: bool = true
 
 @export_storage var tooltip_header_align: int = 0
@@ -30,9 +27,6 @@ extends Resource
 @export_storage var size: Vector2 = Vector2(5000, 5000)
 @export_storage var bg_color: Color = Color(0.1, 0.1, 0.1)
 @export_storage var bg_texture: Texture2D
-@export_storage var line_texture_normal: Texture2D
-@export_storage var line_texture_intermediate: Texture2D
-@export_storage var line_texture_active: Texture2D
 
 @export_storage var texture_filter: int = 0
 
@@ -45,15 +39,12 @@ extends Resource
 @export_storage var attributes: Dictionary = {}
 @export_storage var node_groups: Array[BayterekNodeGroup] = []
 
-# Editor layout
 @export_storage var hierarchy_split_offset: int = 200
 @export_storage var prefabs_split_offset: int = -180
 @export_storage var inspector_split_offset: int = -320
 
-## Prefab bar görünürlüğü (kalıcı).
 @export_storage var prefabs_bar_visible: bool = true
 
-## Default design applied to newly created nodes.
 @export_storage var default_design_id: String = ""
 
 # ============================================================
@@ -70,6 +61,20 @@ extends Resource
 @export_storage var default_arrow_scale: Vector2 = Vector2.ONE
 @export_storage var line_antialiasing: bool = true
 
+## Default line texture applied to freshly-created connections.
+## This is the ONLY line-texture slot on the tree now — the old
+## `line_texture_normal / _intermediate / _active` state-based
+## textures were removed.
+@export_storage var default_line_texture: Texture2D = null
+## Texture mode (matches BayterekLineData.TextureMode):
+##   0 = NONE, 1 = TILE, 2 = STRETCH, 3 = TILE_FIT_HEIGHT
+@export_storage var default_line_texture_mode: int = 1
+## Texture filter (matches BayterekLineData.TEXTURE_FILTER_*):
+##   0 = INHERIT, 1 = LINEAR, 2 = NEAREST
+@export_storage var default_line_texture_filter: int = 0
+@export_storage var default_line_texture_scale: Vector2 = Vector2.ONE
+@export_storage var default_line_texture_tint: Color = Color.WHITE
+
 # ============================================================
 # WIGGLE DEFAULTS
 # ============================================================
@@ -82,12 +87,6 @@ extends Resource
 @export_storage var wiggle_active_boost: float = 1.5
 @export_storage var wiggle_use_hover_intensity: bool = true
 @export_storage var wiggle_follow_node_animation: bool = true
-
-## Global wiggle direction mode.
-##   0 = Perpendicular   (classic — perpendicular to the line)
-##   1 = Follow Node Motion  (line sways in the direction the node is moving)
-##   2 = Axis Lock       (sway is locked to the world axis matching the
-##                        node's motion — vertical motion sways vertically)
 @export_storage var wiggle_direction_mode: int = 0
 
 var tree_state: BayterekTreeState
@@ -192,6 +191,18 @@ func apply_connection_defaults(line_data: BayterekLineData, force: bool = false)
 	if force or not line_data.is_overridden("smooth_antialiasing"):
 		line_data.smooth_antialiasing = line_antialiasing
 
+	# --- Default line texture (single slot) ---
+	if force or not line_data.is_overridden("line_texture"):
+		line_data.line_texture = default_line_texture
+	if force or not line_data.is_overridden("texture_mode"):
+		line_data.texture_mode = default_line_texture_mode as BayterekLineData.TextureMode
+	if force or not line_data.is_overridden("texture_filter_override"):
+		line_data.texture_filter_override = default_line_texture_filter
+	if force or not line_data.is_overridden("texture_scale"):
+		line_data.texture_scale = default_line_texture_scale
+	if force or not line_data.is_overridden("texture_tint"):
+		line_data.texture_tint = default_line_texture_tint
+
 	# --- Offsets ---
 	if force or not line_data.is_overridden("start_offset"):
 		line_data.start_offset = default_start_offset
@@ -224,11 +235,6 @@ func apply_connection_defaults(line_data: BayterekLineData, force: bool = false)
 # BULK DEFAULTS APPLICATION
 # ============================================================
 
-## Re-applies connection defaults to EVERY line in the tree.
-##
-## Called by BayterekEditor when the user changes a Settings-tab value,
-## so the change is reflected live on all existing connections (except
-## those with per-field overrides).
 func apply_defaults_to_all_lines(force: bool = false) -> int:
 	var count: int = 0
 

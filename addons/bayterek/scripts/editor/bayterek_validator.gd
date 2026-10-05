@@ -16,9 +16,7 @@ enum WarningType {
 	TREE_WIDTH_TOO_SMALL,
 	TREE_HEIGHT_TOO_SMALL,
 	BORDER_SCALE_INVALID,
-	NORMAL_LINE_TEXTURE_NOT_SET,
-	INTERMEDIATE_LINE_TEXTURE_NOT_SET,
-	ACTIVE_LINE_TEXTURE_NOT_SET,
+	DEFAULT_LINE_TEXTURE_NOT_SET,
 	PREALLOCATION_WITHOUT_ALLOCATION,
 	MULTIALLOCATION_WITHOUT_ALLOCATION,
 }
@@ -31,9 +29,7 @@ const WARNING_MESSAGES := {
 	WarningType.TREE_WIDTH_TOO_SMALL: "Tree width is too small. Recommended at least 100 pixels.",
 	WarningType.TREE_HEIGHT_TOO_SMALL: "Tree height is too small. Recommended at least 100 pixels.",
 	WarningType.BORDER_SCALE_INVALID: "Border scale is invalid. Recommended at least 0.1.",
-	WarningType.NORMAL_LINE_TEXTURE_NOT_SET: "Normal line texture is not set.",
-	WarningType.INTERMEDIATE_LINE_TEXTURE_NOT_SET: "Intermediate line texture is not set.",
-	WarningType.ACTIVE_LINE_TEXTURE_NOT_SET: "Active line texture is not set.",
+	WarningType.DEFAULT_LINE_TEXTURE_NOT_SET: "Default line texture is not set.",
 	WarningType.PREALLOCATION_WITHOUT_ALLOCATION: "Pre-allocation is enabled without allocation.",
 	WarningType.MULTIALLOCATION_WITHOUT_ALLOCATION: "Multi-allocation is enabled without allocation.",
 }
@@ -162,12 +158,13 @@ func _check_warnings(tree: BayterekTree) -> Array[int]:
 		result.append(WarningType.TREE_HEIGHT_TOO_SMALL)
 	if tree.border_scale < 0.1:
 		result.append(WarningType.BORDER_SCALE_INVALID)
-	if not tree.line_texture_normal:
-		result.append(WarningType.NORMAL_LINE_TEXTURE_NOT_SET)
-	if not tree.line_texture_intermediate:
-		result.append(WarningType.INTERMEDIATE_LINE_TEXTURE_NOT_SET)
-	if not tree.line_texture_active:
-		result.append(WarningType.ACTIVE_LINE_TEXTURE_NOT_SET)
+
+	# Single default line texture check. The old per-state texture
+	# warnings (normal / intermediate / active) were removed because
+	# the tree now owns a single default texture slot.
+	if tree.default_line_texture == null:
+		result.append(WarningType.DEFAULT_LINE_TEXTURE_NOT_SET)
+
 	if tree.preallocation and not tree.allocation:
 		result.append(WarningType.PREALLOCATION_WITHOUT_ALLOCATION)
 	if tree.multiallocation and not tree.allocation:

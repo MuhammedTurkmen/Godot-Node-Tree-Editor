@@ -7,7 +7,7 @@ signal changed
 signal size_changed
 signal border_scale_changed
 signal background_changed
-signal line_texture_changed
+signal default_line_texture_changed
 signal revealed_changed
 signal allocation_changed
 signal preallocation_changed
@@ -20,7 +20,6 @@ signal frame_title_align_changed
 signal texture_filter_changed
 signal default_design_changed
 
-# Aşama 6 — Connections signals
 signal connection_style_changed
 signal connection_state_color_changed
 signal connection_offsets_changed
@@ -42,9 +41,10 @@ var _texture_filter_dropdown: OptionButton
 var _bg_color_picker: ColorPickerButton
 var _bg_texture_input: BayterekInspectorTextureInput
 
-var _line_normal_input: BayterekInspectorTextureInput
-var _line_intermediate_input: BayterekInspectorTextureInput
-var _line_active_input: BayterekInspectorTextureInput
+# --- Default line texture (single slot) ---
+var _default_line_texture_input: BayterekInspectorTextureInput
+var _default_line_texture_mode_dropdown: OptionButton
+var _default_line_texture_filter_dropdown: OptionButton
 
 var _revealed_check: CheckBox
 var _allocation_check: CheckBox
@@ -63,7 +63,6 @@ var _tooltip_footer_align_dropdown: OptionButton
 
 var _default_design_dropdown: OptionButton
 
-# --- Aşama 6: Connections bölümü widget'ları ---
 var _conn_default_color: ColorPickerButton
 var _conn_default_thickness: SpinBox
 var _conn_antialiasing_check: CheckBox
@@ -164,30 +163,40 @@ func _build_ui() -> void:
 	_default_design_dropdown = _make_design_dropdown_row(_content)
 	_default_design_dropdown.item_selected.connect(_on_default_design_changed)
 
-	# --- Line Textures ---
+	# ============================================================
+	# DEFAULT LINE TEXTURE
+	# ============================================================
 	_add_separator(_content)
-	_add_section_label(_content, "Line Textures")
+	_add_section_label(_content, "Default Line Texture")
 
-	_line_normal_input = BayterekInspectorTextureInput.new()
-	_line_normal_input.title = "Normal"
-	_content.add_child(_line_normal_input)
+	_default_line_texture_input = BayterekInspectorTextureInput.new()
+	_default_line_texture_input.title = "Texture"
+	_content.add_child(_default_line_texture_input)
 
-	_line_intermediate_input = BayterekInspectorTextureInput.new()
-	_line_intermediate_input.title = "Intermediate"
-	_content.add_child(_line_intermediate_input)
+	_default_line_texture_mode_dropdown = _make_dropdown_row(
+		_content,
+		"Mode",
+		"How the texture is drawn along the line.",
+		["None", "Tile", "Stretch", "Tile Fit Height"]
+	)
+	_default_line_texture_mode_dropdown.item_selected.connect(_on_default_line_texture_mode_changed)
 
-	_line_active_input = BayterekInspectorTextureInput.new()
-	_line_active_input.title = "Active"
-	_content.add_child(_line_active_input)
+	_default_line_texture_filter_dropdown = _make_dropdown_row(
+		_content,
+		"Filter",
+		"Texture sampling: Inherit uses the tree's global filter.",
+		["Inherit", "Linear", "Nearest"]
+	)
+	_default_line_texture_filter_dropdown.item_selected.connect(_on_default_line_texture_filter_changed)
 
 	# ============================================================
-	# CONNECTIONS (Aşama 6 + 7)
+	# CONNECTIONS (defaults)
 	# ============================================================
 	_add_separator(_content)
 	_add_section_label(_content, "Connections — Default Style")
 
 	_conn_default_color = _make_color_row(_content, "Default Color",
-		"Color applied to newly-created connections. Existing lines keep their own color.")
+		"Color applied to newly-created connections.")
 	_conn_default_color.color = Color(0.7, 0.7, 0.7, 0.9)
 	_conn_default_color.color_changed.connect(_on_conn_default_color_changed)
 
@@ -201,7 +210,7 @@ func _build_ui() -> void:
 	_conn_default_thickness.value_changed.connect(_on_conn_thickness_changed)
 
 	_conn_antialiasing_check = _make_check_row(_content, "Smooth (Antialiasing)",
-		"When OFF, lines are drawn without antialiasing — a crisp flat edge.")
+		"When OFF, lines are drawn without antialiasing.")
 	_conn_antialiasing_check.button_pressed = true
 	_conn_antialiasing_check.toggled.connect(_on_conn_antialiasing_changed)
 
@@ -251,7 +260,7 @@ func _build_ui() -> void:
 	_add_section_label(_content, "Connections — Wiggle")
 
 	_conn_wiggle_enabled_check = _make_check_row(_content, "Enable Wiggle",
-		"Master toggle for connection wiggle animation. Individual lines can override this.")
+		"Master toggle for connection wiggle animation.")
 	_conn_wiggle_enabled_check.button_pressed = false
 	_conn_wiggle_enabled_check.toggled.connect(_on_conn_wiggle_enabled_changed)
 
@@ -261,7 +270,7 @@ func _build_ui() -> void:
 	_conn_wiggle_hover_intensity_check.toggled.connect(_on_conn_hover_intensity_changed)
 
 	_conn_wiggle_amplitude = _make_float_row(_content, "Base Amplitude",
-		"Maximum lateral displacement in pixels (at the middle of the line).")
+		"Maximum lateral displacement in pixels.")
 	_conn_wiggle_amplitude.min_value = 0.0
 	_conn_wiggle_amplitude.max_value = 64.0
 	_conn_wiggle_amplitude.step = 0.5
@@ -351,7 +360,7 @@ func _build_ui() -> void:
 	_allocation_confirm_check = _make_check_row(
 		_content,
 		"Require Confirm on Allocate",
-		"When ON, clicking a node preallocates it and requires the Confirm button. When OFF (default), clicking allocates immediately."
+		"When ON, clicking a node preallocates it and requires the Confirm button."
 	)
 	_allocation_confirm_check.button_pressed = false
 	_allocation_confirm_check.toggled.connect(_on_allocation_confirm_changed)
@@ -359,7 +368,7 @@ func _build_ui() -> void:
 	_refund_confirm_check = _make_check_row(
 		_content,
 		"Require Confirm on Refund",
-		"When ON, clicking a node in refund mode stages it and requires the Confirm button. When OFF (default), clicking refunds immediately."
+		"When ON, clicking a node in refund mode stages it and requires the Confirm button."
 	)
 	_refund_confirm_check.button_pressed = false
 	_refund_confirm_check.toggled.connect(_on_refund_confirm_changed)
@@ -371,7 +380,7 @@ func _build_ui() -> void:
 	_show_group_frames_check = _make_check_row(
 		_content,
 		"Show Frames",
-		"Draw colored bounding boxes around node groups. Applies to both the editor canvas and the runtime view. Also toggled by View → Show Group Frames."
+		"Draw colored bounding boxes around node groups."
 	)
 	_show_group_frames_check.button_pressed = true
 	_show_group_frames_check.toggled.connect(_on_show_group_frames_changed)
@@ -391,7 +400,7 @@ func _build_ui() -> void:
 	_tooltip_header_align_dropdown = _make_dropdown_row(
 		_content,
 		"Header Align",
-		"Horizontal alignment of the tooltip header (node name).",
+		"Horizontal alignment of the tooltip header.",
 		["Left", "Center", "Right"]
 	)
 	_tooltip_header_align_dropdown.item_selected.connect(_on_tooltip_header_align_changed)
@@ -399,7 +408,7 @@ func _build_ui() -> void:
 	_tooltip_body_align_dropdown = _make_dropdown_row(
 		_content,
 		"Body Align",
-		"Horizontal alignment of the tooltip body (attributes, description).",
+		"Horizontal alignment of the tooltip body.",
 		["Left", "Center", "Right"]
 	)
 	_tooltip_body_align_dropdown.item_selected.connect(_on_tooltip_body_align_changed)
@@ -407,7 +416,7 @@ func _build_ui() -> void:
 	_tooltip_footer_align_dropdown = _make_dropdown_row(
 		_content,
 		"Footer Align",
-		"Horizontal alignment of the tooltip footer (level).",
+		"Horizontal alignment of the tooltip footer.",
 		["Left", "Center", "Right"]
 	)
 	_tooltip_footer_align_dropdown.item_selected.connect(_on_tooltip_footer_align_changed)
@@ -423,23 +432,11 @@ func _connect_texture_signals() -> void:
 		if not _bg_texture_input.cleared.is_connected(_on_bg_texture_cleared):
 			_bg_texture_input.cleared.connect(_on_bg_texture_cleared)
 
-	if _line_normal_input:
-		if not _line_normal_input.texture_dropped.is_connected(_on_line_normal_changed):
-			_line_normal_input.texture_dropped.connect(_on_line_normal_changed)
-		if not _line_normal_input.cleared.is_connected(_on_line_normal_cleared):
-			_line_normal_input.cleared.connect(_on_line_normal_cleared)
-
-	if _line_intermediate_input:
-		if not _line_intermediate_input.texture_dropped.is_connected(_on_line_intermediate_changed):
-			_line_intermediate_input.texture_dropped.connect(_on_line_intermediate_changed)
-		if not _line_intermediate_input.cleared.is_connected(_on_line_intermediate_cleared):
-			_line_intermediate_input.cleared.connect(_on_line_intermediate_cleared)
-
-	if _line_active_input:
-		if not _line_active_input.texture_dropped.is_connected(_on_line_active_changed):
-			_line_active_input.texture_dropped.connect(_on_line_active_changed)
-		if not _line_active_input.cleared.is_connected(_on_line_active_cleared):
-			_line_active_input.cleared.connect(_on_line_active_cleared)
+	if _default_line_texture_input:
+		if not _default_line_texture_input.texture_dropped.is_connected(_on_default_line_texture_changed):
+			_default_line_texture_input.texture_dropped.connect(_on_default_line_texture_changed)
+		if not _default_line_texture_input.cleared.is_connected(_on_default_line_texture_cleared):
+			_default_line_texture_input.cleared.connect(_on_default_line_texture_cleared)
 
 # ============================================================
 # TREE LOAD
@@ -464,9 +461,12 @@ func load_tree(tree_data: BayterekTree) -> void:
 
 	_set_input_texture(_bg_texture_input, tree_data.bg_texture)
 
-	_set_input_texture(_line_normal_input, tree_data.line_texture_normal)
-	_set_input_texture(_line_intermediate_input, tree_data.line_texture_intermediate)
-	_set_input_texture(_line_active_input, tree_data.line_texture_active)
+	# --- Default line texture ---
+	_set_input_texture(_default_line_texture_input, tree_data.default_line_texture)
+	if _default_line_texture_mode_dropdown:
+		_default_line_texture_mode_dropdown.select(clampi(tree_data.default_line_texture_mode, 0, 3))
+	if _default_line_texture_filter_dropdown:
+		_default_line_texture_filter_dropdown.select(clampi(tree_data.default_line_texture_filter, 0, 2))
 
 	_revealed_check.button_pressed = tree_data.revealed
 	_allocation_check.button_pressed = tree_data.allocation
@@ -484,7 +484,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 
 	_rebuild_default_design_dropdown(tree_data.default_design_id)
 
-	# --- Connections bölümü ---
+	# --- Connections ---
 	_conn_default_color.color = tree_data.default_line_color
 	_conn_default_thickness.set_value_no_signal(tree_data.default_line_thickness)
 	_conn_antialiasing_check.button_pressed = tree_data.line_antialiasing
@@ -633,60 +633,50 @@ func _on_bg_texture_cleared() -> void:
 	changed.emit()
 	_notify_dirty()
 
-func _on_line_normal_changed(path: String) -> void:
+# ============================================================
+# DEFAULT LINE TEXTURE HANDLERS
+# ============================================================
+
+func _on_default_line_texture_changed(path: String) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
 	var tex: Texture2D = load(path) as Texture2D
-	editor.tree.line_texture_normal = tex
-	_set_input_texture(_line_normal_input, tex)
-	line_texture_changed.emit()
+	editor.tree.default_line_texture = tex
+	_set_input_texture(_default_line_texture_input, tex)
+	# Auto-enable TILE mode if it was set to NONE.
+	if tex and editor.tree.default_line_texture_mode == 0:
+		editor.tree.default_line_texture_mode = 1
+		if _default_line_texture_mode_dropdown:
+			_default_line_texture_mode_dropdown.select(1)
+	default_line_texture_changed.emit()
 	changed.emit()
 	_notify_dirty()
 
-func _on_line_normal_cleared() -> void:
+func _on_default_line_texture_cleared() -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
-	editor.tree.line_texture_normal = null
-	_set_input_texture(_line_normal_input, null)
-	line_texture_changed.emit()
+	editor.tree.default_line_texture = null
+	editor.tree.default_line_texture_mode = 0
+	_set_input_texture(_default_line_texture_input, null)
+	if _default_line_texture_mode_dropdown:
+		_default_line_texture_mode_dropdown.select(0)
+	default_line_texture_changed.emit()
 	changed.emit()
 	_notify_dirty()
 
-func _on_line_intermediate_changed(path: String) -> void:
+func _on_default_line_texture_mode_changed(index: int) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
-	var tex: Texture2D = load(path) as Texture2D
-	editor.tree.line_texture_intermediate = tex
-	_set_input_texture(_line_intermediate_input, tex)
-	line_texture_changed.emit()
+	editor.tree.default_line_texture_mode = index
+	default_line_texture_changed.emit()
 	changed.emit()
 	_notify_dirty()
 
-func _on_line_intermediate_cleared() -> void:
+func _on_default_line_texture_filter_changed(index: int) -> void:
 	if _updating_ui or not editor or not editor.tree:
 		return
-	editor.tree.line_texture_intermediate = null
-	_set_input_texture(_line_intermediate_input, null)
-	line_texture_changed.emit()
-	changed.emit()
-	_notify_dirty()
-
-func _on_line_active_changed(path: String) -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	var tex: Texture2D = load(path) as Texture2D
-	editor.tree.line_texture_active = tex
-	_set_input_texture(_line_active_input, tex)
-	line_texture_changed.emit()
-	changed.emit()
-	_notify_dirty()
-
-func _on_line_active_cleared() -> void:
-	if _updating_ui or not editor or not editor.tree:
-		return
-	editor.tree.line_texture_active = null
-	_set_input_texture(_line_active_input, null)
-	line_texture_changed.emit()
+	editor.tree.default_line_texture_filter = index
+	default_line_texture_changed.emit()
 	changed.emit()
 	_notify_dirty()
 

@@ -1,7 +1,7 @@
 @tool
 class_name BayterekLine2D
 extends Control
-## Custom polyline renderer for Bayterek connections.
+## Polyline renderer for Bayterek connections. Draws the LINE only.
 
 # ============================================================
 # ENUMS
@@ -19,15 +19,6 @@ enum DashStyle {
 	DASHED,
 	DOTTED,
 	DASH_DOT,
-}
-
-enum ArrowStyle {
-	NONE,
-	ARROW,
-	T_BAR,
-	SQUARE,
-	CIRCLE,
-	DIAMOND,
 }
 
 enum CapStyle {
@@ -59,8 +50,8 @@ const FREQ_STOP_THRESHOLD := 0.05
 const FREQ_RESPONSIVENESS := 3.0
 const INTENSITY_HARD_STOP := 0.001
 
-## Minimum arrow_size for any shape to be drawn.
-const MIN_ARROW_SIZE := 2.0
+const DEBUG_POLYGON := false
+const DEBUG_DRAW := true
 
 # ============================================================
 # GEOMETRY
@@ -75,26 +66,12 @@ var width: float = 4.0 : set = set_width
 
 var default_color: Color = Color(0.7, 0.7, 0.7, 0.9) : set = set_default_color
 var smooth_antialiasing: bool = true : set = set_smooth_antialiasing
-
 var flat_mode: bool = false
 
-## Per-line texture filter override.
-##   0 = Inherit (use CanvasItem default = linear)
-##   1 = Linear
-##   2 = Nearest
 var texture_filter_override: int = 0 :
 	set(v):
 		texture_filter_override = v
 		_apply_texture_filter()
-		queue_redraw()
-
-## Per-line arrow texture filter override.
-##   0 = Inherit (uses the same filter as the line)
-##   1 = Linear
-##   2 = Nearest
-var arrow_texture_filter_override: int = 0 :
-	set(v):
-		arrow_texture_filter_override = v
 		queue_redraw()
 
 # ============================================================
@@ -122,19 +99,6 @@ var dash_offset: float = 0.0 : set = set_dash_offset
 var cap_start: CapStyle = CapStyle.BUTT : set = set_cap_start
 var cap_end: CapStyle = CapStyle.BUTT : set = set_cap_end
 var round_joints: bool = false : set = set_round_joints
-
-# ============================================================
-# ARROWS
-# ============================================================
-
-var start_arrow: ArrowStyle = ArrowStyle.NONE : set = set_start_arrow
-var end_arrow: ArrowStyle = ArrowStyle.NONE : set = set_end_arrow
-var arrow_size: float = 12.0 : set = set_arrow_size
-var arrow_texture_start: Texture2D = null : set = set_arrow_texture_start
-var arrow_texture_end: Texture2D = null : set = set_arrow_texture_end
-var arrow_scale: Vector2 = Vector2.ONE
-var arrow_tint: Color = Color.WHITE : set = set_arrow_tint
-var arrow_offset_x: float = 0.0 : set = set_arrow_offset_x
 
 # ============================================================
 # WIGGLE
@@ -166,6 +130,7 @@ const JITTER_REFRESH_INTERVAL := 0.05
 
 var _cached_segments: Array = []
 var _cache_dirty: bool = true
+var _draw_call_count: int = 0
 
 # ============================================================
 # LIFECYCLE
@@ -277,40 +242,6 @@ func set_round_joints(v: bool) -> void:
 	round_joints = v
 	queue_redraw()
 
-func set_start_arrow(new_style: ArrowStyle) -> void:
-	start_arrow = new_style
-	queue_redraw()
-
-func set_end_arrow(new_style: ArrowStyle) -> void:
-	end_arrow = new_style
-	queue_redraw()
-
-func set_arrow_size(new_size: float) -> void:
-	arrow_size = max(1.0, new_size)
-	queue_redraw()
-
-func set_arrow_texture_start(t: Texture2D) -> void:
-	arrow_texture_start = t
-	queue_redraw()
-
-func set_arrow_texture_end(t: Texture2D) -> void:
-	arrow_texture_end = t
-	queue_redraw()
-
-func set_arrow_scale(s: Vector2) -> void:
-	# Clamp to a tiny positive minimum so the texture never collapses
-	# into a zero-sized rect that Godot silently skips.
-	arrow_scale = Vector2(maxf(0.05, s.x), maxf(0.05, s.y))
-	queue_redraw()
-
-func set_arrow_tint(c: Color) -> void:
-	arrow_tint = c
-	queue_redraw()
-
-func set_arrow_offset_x(v: float) -> void:
-	arrow_offset_x = v
-	queue_redraw()
-
 # ============================================================
 # TEXTURE FILTER
 # ============================================================
@@ -323,16 +254,6 @@ func _apply_texture_filter() -> void:
 			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		_:
 			texture_filter = CanvasItem.TEXTURE_FILTER_PARENT_NODE
-
-
-func _apply_arrow_texture_filter() -> void:
-	match arrow_texture_filter_override:
-		1:
-			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-		2:
-			texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_:
-			_apply_texture_filter()
 
 # ============================================================
 # WIGGLE SETTERS
@@ -409,6 +330,16 @@ func get_point_position(index: int) -> Vector2:
 # ============================================================
 
 func _draw() -> void:
+	_draw_call_count += 1
+	if DEBUG_DRAW:
+		print("[BayterekLine2D] _draw #", _draw_call_count,
+			" instance=", get_instance_id(),
+			" parent=", get_parent().name if get_parent() else "?",
+			" points=", points.size(),
+			" texture=", texture,
+			" texture_mode=", texture_mode,
+			" width=", width)
+
 	if points.size() < 2:
 		return
 	if width <= 0.0:
@@ -423,7 +354,6 @@ func _draw() -> void:
 		_draw_round_joints(segments)
 
 	_draw_caps(segments)
-	_draw_arrows(segments)
 
 
 func _draw_segment(a: Vector2, b: Vector2) -> void:
@@ -448,6 +378,27 @@ func _draw_segment(a: Vector2, b: Vector2) -> void:
 			_draw_textured_tile(a, b, seg_len, true)
 
 
+func _safe_draw_polygon(pts: PackedVector2Array, color: Color, tag: String = "poly") -> void:
+	if pts.size() < 3:
+		return
+
+	var area: float = 0.0
+	var n: int = pts.size()
+	for i in range(n):
+		var p0: Vector2 = pts[i]
+		var p1: Vector2 = pts[(i + 1) % n]
+		area += p0.x * p1.y - p1.x * p0.y
+
+	if DEBUG_POLYGON:
+		if absf(area) < 1.0:
+			print("[BayterekLine2D] SKIP degenerate %s: area=%.4f" % [tag, area])
+
+	if absf(area) < 1.0:
+		return
+
+	draw_colored_polygon(pts, color)
+
+
 func _draw_flat_line(a: Vector2, b: Vector2, seg_len: float) -> void:
 	if seg_len < 0.001:
 		return
@@ -459,9 +410,10 @@ func _draw_flat_line(a: Vector2, b: Vector2, seg_len: float) -> void:
 
 	var perp: Vector2 = Vector2(-dir.y, dir.x) * half_w
 
-	draw_colored_polygon(
+	_safe_draw_polygon(
 		PackedVector2Array([a - perp, b - perp, b + perp, a + perp]),
-		default_color
+		default_color,
+		"flat_line"
 	)
 
 
@@ -566,9 +518,10 @@ func _draw_caps(segments: Array) -> void:
 				dir0 = dir0.normalized()
 				var ext: Vector2 = a0 - dir0 * radius
 				var perp: Vector2 = Vector2(-dir0.y, dir0.x) * radius
-				draw_colored_polygon(
+				_safe_draw_polygon(
 					PackedVector2Array([a0 - perp, a0 + perp, ext + perp, ext - perp]),
-					default_color
+					default_color,
+					"cap_start_square"
 				)
 		_:
 			pass
@@ -586,176 +539,13 @@ func _draw_caps(segments: Array) -> void:
 				dir1 = dir1.normalized()
 				var ext2: Vector2 = b1 + dir1 * radius
 				var perp2: Vector2 = Vector2(-dir1.y, dir1.x) * radius
-				draw_colored_polygon(
+				_safe_draw_polygon(
 					PackedVector2Array([b1 - perp2, b1 + perp2, ext2 + perp2, ext2 - perp2]),
-					default_color
+					default_color,
+					"cap_end_square"
 				)
 		_:
 			pass
-
-
-func _draw_arrows(segments: Array) -> void:
-	if segments.is_empty():
-		return
-
-	var first_seg: Array = segments[0]
-	var last_seg: Array = segments[segments.size() - 1]
-
-	if start_arrow != ArrowStyle.NONE or arrow_texture_start != null:
-		var dir: Vector2 = first_seg[1] - first_seg[0]
-		if dir.length() > 0.001:
-			var tip: Vector2 = first_seg[0]
-			var outward: Vector2 = -dir.normalized()
-			_draw_arrow_endpoint(tip, outward, start_arrow, arrow_texture_start)
-
-	if end_arrow != ArrowStyle.NONE or arrow_texture_end != null:
-		var dir2: Vector2 = last_seg[1] - last_seg[0]
-		if dir2.length() > 0.001:
-			var tip2: Vector2 = last_seg[1]
-			var outward2: Vector2 = dir2.normalized()
-			_draw_arrow_endpoint(tip2, outward2, end_arrow, arrow_texture_end)
-
-
-func _draw_arrow_endpoint(tip: Vector2, outward: Vector2, style: ArrowStyle, arrow_tex: Texture2D) -> void:
-	if arrow_tex == null and arrow_size < MIN_ARROW_SIZE:
-		return
-
-	var offset_tip: Vector2 = tip + outward * arrow_offset_x
-
-	if arrow_tex != null:
-		_draw_arrow_texture(offset_tip, outward, arrow_tex)
-		return
-
-	_draw_arrow_shape(offset_tip, outward, style)
-
-
-## Draws an arrow texture.
-##
-## The key here is that we build the transform STEP BY STEP so that the
-## scaling never corrupts the origin:
-##
-##   1. Build the rotated basis (origin = zero).
-##   2. Scale the basis.
-##   3. Compute the final origin manually from the scaled basis and the
-##      desired top-left position.
-##
-## If we called `Transform2D(angle, center).scaled(v)` directly,
-## `scaled()` would scale the ORIGIN as well, which made the arrow
-## disappear whenever arrow_scale was less than 1.
-func _draw_arrow_texture(tip: Vector2, outward: Vector2, tex: Texture2D) -> void:
-	if tex == null:
-		return
-	var tex_size: Vector2 = tex.get_size()
-	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
-		return
-
-	var ax: float = maxf(0.05, absf(arrow_scale.x))
-	var ay: float = maxf(0.05, absf(arrow_scale.y))
-
-	var scaled_size: Vector2 = Vector2(tex_size.x * ax, tex_size.y * ay)
-
-	if scaled_size.x < 0.5 or scaled_size.y < 0.5:
-		return
-
-	# Apply the arrow texture filter locally, then restore afterwards.
-	var previous_filter: int = texture_filter
-	_apply_arrow_texture_filter()
-
-	var angle: float = atan2(outward.y, outward.x)
-
-	# 1. Rotate + scale the basis WITHOUT touching origin.
-	var basis := Transform2D(angle, Vector2.ZERO)
-	basis = basis.scaled(Vector2(ax, ay))
-
-	# 2. Compute where the texture's center should go:
-	#    half of the scaled width outward from the tip.
-	var center_local: Vector2 = Vector2(scaled_size.x * 0.5, 0.0)
-	var center_offset: Vector2 = center_local.rotated(angle)
-	var center: Vector2 = tip + center_offset
-
-	# 3. Top-left corner in world space = center - basis * (tex_size / 2).
-	var local_half: Vector2 = tex_size * 0.5
-	var top_left: Vector2 = center - (basis * local_half)
-
-	var xform := Transform2D(basis.x, basis.y, top_left)
-
-	draw_set_transform_matrix(xform)
-	var rect := Rect2(Vector2.ZERO, tex_size)
-	draw_texture_rect(tex, rect, false, arrow_tint)
-	draw_set_transform_matrix(Transform2D.IDENTITY)
-
-	texture_filter = previous_filter
-
-
-func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> void:
-	var size: float = arrow_size
-	var perp: Vector2 = Vector2(-outward.y, outward.x)
-
-	if size < MIN_ARROW_SIZE:
-		return
-
-	match style:
-		ArrowStyle.ARROW:
-			var apex: Vector2 = tip + outward * size
-			var left: Vector2 = tip + perp * (size * 0.5)
-			var right: Vector2 = tip - perp * (size * 0.5)
-			draw_colored_polygon(PackedVector2Array([apex, left, right]), default_color)
-
-		ArrowStyle.T_BAR:
-			var half_len: float = size * 0.6
-			var thickness: float = max(2.0, size * 0.35)
-			var half_th: float = thickness * 0.5
-
-			if half_len < 0.5 or half_th < 0.5:
-				return
-
-			var along_outward: Vector2 = outward * half_th
-
-			var left_end: Vector2 = tip + perp * half_len
-			var right_end: Vector2 = tip - perp * half_len
-
-			var p0: Vector2 = left_end + along_outward
-			var p1: Vector2 = right_end + along_outward
-			var p2: Vector2 = right_end - along_outward
-			var p3: Vector2 = left_end - along_outward
-
-			draw_colored_polygon(PackedVector2Array([p0, p1, p2, p3]), default_color)
-
-		ArrowStyle.SQUARE:
-			var half_s: float = size * 0.5
-
-			if half_s < 0.5:
-				return
-
-			var back: Vector2 = tip - outward * half_s
-			var front: Vector2 = tip + outward * half_s
-			var top_back: Vector2 = back + perp * half_s
-			var bot_back: Vector2 = back - perp * half_s
-			var top_front: Vector2 = front + perp * half_s
-			var bot_front: Vector2 = front - perp * half_s
-			draw_colored_polygon(
-				PackedVector2Array([top_back, top_front, bot_front, bot_back]),
-				default_color
-			)
-
-		ArrowStyle.CIRCLE:
-			var radius: float = size * 0.5
-			if radius < 0.5:
-				return
-			draw_circle(tip, radius, default_color)
-
-		ArrowStyle.DIAMOND:
-			var d_size: float = size * 0.65
-			if d_size < 0.5:
-				return
-			var apex: Vector2 = tip + outward * d_size
-			var back_pt: Vector2 = tip - outward * d_size
-			var left: Vector2 = tip + perp * d_size
-			var right: Vector2 = tip - perp * d_size
-			draw_colored_polygon(
-				PackedVector2Array([apex, left, back_pt, right]),
-				default_color
-			)
 
 # ============================================================
 # SEGMENT COMPUTATION
