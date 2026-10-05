@@ -58,8 +58,34 @@ extends Resource
 @export_storage var line_non_alloc_color: Color = Color(1.0, 0.4, 0.4)
 @export_storage var default_start_offset: float = 8.0
 @export_storage var default_end_offset: float = 12.0
-@export_storage var default_arrow_scale: Vector2 = Vector2.ONE
 @export_storage var line_antialiasing: bool = true
+
+# --- Arrow geometry defaults ---------------------------------------------
+#
+# The START and END arrows are fully independent: each has its own
+# scale, distance, flip flag, and anchor mode.
+
+## Uniform arrow scale for freshly-created connections.
+## Applied to both X and Y of the arrow (texture or vector).
+@export_storage var default_start_arrow_scale: float = 1.0
+@export_storage var default_end_arrow_scale: float = 1.0
+
+## Default gap (in pixels) between the node edge and the arrow's
+## node-facing edge, for freshly-created connections.
+@export_storage var default_start_arrow_distance: float = 0.0
+@export_storage var default_end_arrow_distance: float = 0.0
+
+## Flip the arrow 180° if its texture was authored pointing backwards.
+@export_storage var default_start_arrow_flip: bool = false
+@export_storage var default_end_arrow_flip: bool = false
+
+## Default anchor mode for the START and END arrows on new connections.
+##   0 = EDGE   (line stops at the arrow's line-facing edge)
+##   1 = CENTER (line runs all the way to the arrow's center)
+@export_storage var default_start_arrow_anchor: int = 0
+@export_storage var default_end_arrow_anchor: int = 0
+
+# --- Default line texture -------------------------------------------------
 
 ## Default line texture applied to freshly-created connections.
 ## This is the ONLY line-texture slot on the tree now — the old
@@ -209,9 +235,23 @@ func apply_connection_defaults(line_data: BayterekLineData, force: bool = false)
 	if force or not line_data.is_overridden("end_offset"):
 		line_data.end_offset = default_end_offset
 
-	# --- Arrow ---
-	if force or not line_data.is_overridden("arrow_scale"):
-		line_data.arrow_scale = default_arrow_scale
+	# --- Arrow geometry (per side) ---
+	if force or not line_data.is_overridden("start_arrow_scale"):
+		line_data.start_arrow_scale = default_start_arrow_scale
+	if force or not line_data.is_overridden("end_arrow_scale"):
+		line_data.end_arrow_scale = default_end_arrow_scale
+	if force or not line_data.is_overridden("start_arrow_distance"):
+		line_data.start_arrow_distance = default_start_arrow_distance
+	if force or not line_data.is_overridden("end_arrow_distance"):
+		line_data.end_arrow_distance = default_end_arrow_distance
+	if force or not line_data.is_overridden("start_arrow_flip"):
+		line_data.start_arrow_flip = default_start_arrow_flip
+	if force or not line_data.is_overridden("end_arrow_flip"):
+		line_data.end_arrow_flip = default_end_arrow_flip
+	if force or not line_data.is_overridden("start_arrow_anchor"):
+		line_data.start_arrow_anchor = default_start_arrow_anchor as BayterekLineData.ArrowAnchor
+	if force or not line_data.is_overridden("end_arrow_anchor"):
+		line_data.end_arrow_anchor = default_end_arrow_anchor as BayterekLineData.ArrowAnchor
 
 	# --- Wiggle ---
 	if force or not line_data.is_overridden("wiggle_enabled"):

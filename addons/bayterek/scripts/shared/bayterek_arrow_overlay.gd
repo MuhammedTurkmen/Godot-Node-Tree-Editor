@@ -2,6 +2,17 @@
 class_name BayterekArrowOverlay
 extends Control
 ## Draws the arrow heads of a connection as a SEPARATE CanvasItem.
+##
+## Positioning model:
+##   - The connection's service computes each arrow's CENTER (world pos)
+##     and ANGLE (radians, direction the tip points).
+##   - This overlay draws the arrow at that center, rotated by that angle.
+##   - The arrow's pivot is always its geometric center.
+##
+## ROTATION:
+##   Both START and END arrows point AT the node they are attached to.
+##   - START arrow (next to source node)  → tip points at the source node.
+##   - END arrow   (next to target node)  → tip points at the target node.
 
 # ============================================================
 # ENUMS
@@ -20,8 +31,9 @@ enum ArrowStyle {
 # CONSTANTS
 # ============================================================
 
-const MIN_ARROW_SIZE := 2.0
-const DEBUG_POLYGON := true
+const MIN_VECTOR_SIZE := 2.0
+const DEBUG_POLYGON := false
+const VECTOR_ARROW_BASE_SIZE := 16.0
 
 # ============================================================
 # ARROW CONFIG
@@ -29,16 +41,15 @@ const DEBUG_POLYGON := true
 
 var start_arrow: ArrowStyle = ArrowStyle.NONE : set = set_start_arrow
 var end_arrow: ArrowStyle = ArrowStyle.NONE : set = set_end_arrow
-var arrow_size: float = 12.0 : set = set_arrow_size
 
 var arrow_texture_start: Texture2D = null : set = set_arrow_texture_start
 var arrow_texture_end: Texture2D = null : set = set_arrow_texture_end
 
-var arrow_scale: Vector2 = Vector2.ONE
-var arrow_tint: Color = Color.WHITE : set = set_arrow_tint
-var arrow_offset_x: float = 0.0 : set = set_arrow_offset_x
+var start_arrow_scale: float = 1.0 : set = set_start_arrow_scale
+var end_arrow_scale: float = 1.0 : set = set_end_arrow_scale
 
-var arrow_texture_pivot: Vector2 = Vector2(0.5, 0.5)
+var start_arrow_tint: Color = Color.WHITE : set = set_start_arrow_tint
+var end_arrow_tint: Color = Color.WHITE : set = set_end_arrow_tint
 
 var default_color: Color = Color(0.7, 0.7, 0.7, 0.9) : set = set_default_color
 
@@ -49,13 +60,17 @@ var arrow_texture_filter_override: int = 0 :
 		queue_redraw()
 
 # ============================================================
-# GEOMETRY INPUT
+# GEOMETRY INPUT (set by the connections service)
 # ============================================================
 
-var line_start: Vector2 = Vector2.ZERO
-var line_end: Vector2 = Vector2.ZERO
-var start_outward: Vector2 = Vector2.ZERO
-var end_outward: Vector2 = Vector2.ZERO
+var start_arrow_center: Vector2 = Vector2.ZERO
+var end_arrow_center: Vector2 = Vector2.ZERO
+
+var start_arrow_angle: float = 0.0
+var end_arrow_angle: float = 0.0
+
+var start_arrow_extent: float = 0.0
+var end_arrow_extent: float = 0.0
 
 # ============================================================
 # LIFECYCLE
@@ -78,10 +93,6 @@ func set_end_arrow(style: ArrowStyle) -> void:
 	end_arrow = style
 	queue_redraw()
 
-func set_arrow_size(size: float) -> void:
-	arrow_size = max(1.0, size)
-	queue_redraw()
-
 func set_arrow_texture_start(t: Texture2D) -> void:
 	arrow_texture_start = t
 	queue_redraw()
@@ -90,16 +101,20 @@ func set_arrow_texture_end(t: Texture2D) -> void:
 	arrow_texture_end = t
 	queue_redraw()
 
-func set_arrow_scale(s: Vector2) -> void:
-	arrow_scale = Vector2(maxf(0.05, s.x), maxf(0.05, s.y))
+func set_start_arrow_scale(s: float) -> void:
+	start_arrow_scale = maxf(0.01, s)
 	queue_redraw()
 
-func set_arrow_tint(c: Color) -> void:
-	arrow_tint = c
+func set_end_arrow_scale(s: float) -> void:
+	end_arrow_scale = maxf(0.01, s)
 	queue_redraw()
 
-func set_arrow_offset_x(v: float) -> void:
-	arrow_offset_x = v
+func set_start_arrow_tint(c: Color) -> void:
+	start_arrow_tint = c
+	queue_redraw()
+
+func set_end_arrow_tint(c: Color) -> void:
+	end_arrow_tint = c
 	queue_redraw()
 
 func set_default_color(c: Color) -> void:
@@ -110,19 +125,21 @@ func set_default_color(c: Color) -> void:
 # GEOMETRY SETTER
 # ============================================================
 
-func set_endpoints(start_pt: Vector2, end_pt: Vector2) -> void:
-	line_start = start_pt
-	line_end = end_pt
+func set_arrow_geometry(
+	p_start_center: Vector2,
+	p_start_angle: float,
+	p_start_extent: float,
+	p_end_center: Vector2,
+	p_end_angle: float,
+	p_end_extent: float
+) -> void:
+	start_arrow_center = p_start_center
+	start_arrow_angle = p_start_angle
+	start_arrow_extent = p_start_extent
 
-	var delta: Vector2 = end_pt - start_pt
-	var len: float = delta.length()
-	if len > 0.0001:
-		var dir: Vector2 = delta / len
-		start_outward = -dir
-		end_outward = dir
-	else:
-		start_outward = Vector2.ZERO
-		end_outward = Vector2.ZERO
+	end_arrow_center = p_end_center
+	end_arrow_angle = p_end_angle
+	end_arrow_extent = p_end_extent
 
 	queue_redraw()
 
@@ -147,31 +164,29 @@ func _draw() -> void:
 	_draw_start_arrow()
 	_draw_end_arrow()
 
+
 func _draw_start_arrow() -> void:
 	if start_arrow == ArrowStyle.NONE and arrow_texture_start == null:
 		return
-	if start_outward == Vector2.ZERO:
+	if start_arrow_extent < 0.5:
 		return
 
-	var tip: Vector2 = line_start + start_outward * arrow_offset_x
-
 	if arrow_texture_start != null:
-		_draw_arrow_texture(tip, start_outward, arrow_texture_start)
+		_draw_arrow_texture(start_arrow_center, start_arrow_angle, start_arrow_scale, start_arrow_tint, arrow_texture_start)
 	else:
-		_draw_arrow_shape(tip, start_outward, start_arrow)
+		_draw_arrow_shape(start_arrow_center, start_arrow_angle, start_arrow_scale, start_arrow, start_arrow_tint)
+
 
 func _draw_end_arrow() -> void:
 	if end_arrow == ArrowStyle.NONE and arrow_texture_end == null:
 		return
-	if end_outward == Vector2.ZERO:
+	if end_arrow_extent < 0.5:
 		return
 
-	var tip: Vector2 = line_end + end_outward * arrow_offset_x
-
 	if arrow_texture_end != null:
-		_draw_arrow_texture(tip, end_outward, arrow_texture_end)
+		_draw_arrow_texture(end_arrow_center, end_arrow_angle, end_arrow_scale, end_arrow_tint, arrow_texture_end)
 	else:
-		_draw_arrow_shape(tip, end_outward, end_arrow)
+		_draw_arrow_shape(end_arrow_center, end_arrow_angle, end_arrow_scale, end_arrow, end_arrow_tint)
 
 # ============================================================
 # SAFE POLYGON DRAW
@@ -190,7 +205,7 @@ func _safe_draw_polygon(pts: PackedVector2Array, color: Color, tag: String = "ar
 
 	if DEBUG_POLYGON:
 		if absf(area) < 1.0:
-			print("[BayterekArrowOverlay] SKIP degenerate %s: area=%.4f pts=%s arrow_size=%.3f" % [tag, area, str(pts), arrow_size])
+			print("[BayterekArrowOverlay] SKIP degenerate %s: area=%.4f" % [tag, area])
 
 	if absf(area) < 1.0:
 		return
@@ -200,113 +215,105 @@ func _safe_draw_polygon(pts: PackedVector2Array, color: Color, tag: String = "ar
 # ============================================================
 # TEXTURE ARROW
 # ============================================================
+#
+# The arrow is drawn centered on `center`, rotated by `angle`. The
+# texture's local +X axis is aligned with the arrow's tip direction.
+#
+# NOTE: We build the transform manually so the pivot is EXACTLY the
+# arrow center, avoiding any ambiguity with the Control's own transform.
 
-func _draw_arrow_texture(tip: Vector2, outward: Vector2, tex: Texture2D) -> void:
+func _draw_arrow_texture(center: Vector2, angle: float, scale: float, tint: Color, tex: Texture2D) -> void:
 	if tex == null:
 		return
+
 	var tex_size: Vector2 = tex.get_size()
 	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
 		return
 
-	var ax: float = maxf(0.05, absf(arrow_scale.x))
-	var ay: float = maxf(0.05, absf(arrow_scale.y))
+	var half_size: Vector2 = tex_size * 0.5
 
-	var scaled_size: Vector2 = Vector2(tex_size.x * ax, tex_size.y * ay)
-
-	if scaled_size.x < 0.5 or scaled_size.y < 0.5:
-		return
-
-	var angle: float = atan2(outward.y, outward.x)
-
-	var basis := Transform2D(angle, Vector2.ZERO)
-	basis = basis.scaled(Vector2(ax, ay))
-
-	var pivot_px: Vector2 = Vector2(
-		tex_size.x * arrow_texture_pivot.x,
-		tex_size.y * arrow_texture_pivot.y
+	# Rotation matrix
+	var cos_a: float = cos(angle)
+	var sin_a: float = sin(angle)
+	var rot := Transform2D(
+		Vector2(cos_a, sin_a),
+		Vector2(-sin_a, cos_a),
+		Vector2.ZERO
 	)
 
-	var top_left: Vector2 = tip - (basis * pivot_px)
+	# Scale uniformly, then rotate
+	var basis := Transform2D(
+		rot.x * scale,
+		rot.y * scale,
+		Vector2.ZERO
+	)
 
-	var xform := Transform2D(basis.x, basis.y, top_left)
+	# origin = center - (rotated & scaled half_size)
+	var origin: Vector2 = center - (basis * half_size)
+
+	var xform := Transform2D(basis.x, basis.y, origin)
 
 	draw_set_transform_matrix(xform)
 	var rect := Rect2(Vector2.ZERO, tex_size)
-	draw_texture_rect(tex, rect, false, arrow_tint)
+	draw_texture_rect(tex, rect, false, tint)
 	draw_set_transform_matrix(Transform2D.IDENTITY)
 
 # ============================================================
 # VECTOR ARROW
 # ============================================================
 
-func _draw_arrow_shape(tip: Vector2, outward: Vector2, style: ArrowStyle) -> void:
-	var size: float = arrow_size
-	var perp: Vector2 = Vector2(-outward.y, outward.x)
-
-	if size < MIN_ARROW_SIZE:
+func _draw_arrow_shape(center: Vector2, angle: float, scale: float, style: ArrowStyle, color: Color) -> void:
+	var size: float = VECTOR_ARROW_BASE_SIZE * scale
+	if size < MIN_VECTOR_SIZE:
 		return
+
+	var ax: Vector2 = Vector2(cos(angle), sin(angle))
+	var ay: Vector2 = Vector2(-ax.y, ax.x)
 
 	match style:
 		ArrowStyle.ARROW:
-			var apex: Vector2 = tip + outward * size
-			var left: Vector2 = tip + perp * (size * 0.5)
-			var right: Vector2 = tip - perp * (size * 0.5)
-			_safe_draw_polygon(PackedVector2Array([apex, left, right]), default_color, "arrow")
+			var apex: Vector2 = center + ax * (size * 0.5)
+			var back_l: Vector2 = center - ax * (size * 0.5) + ay * (size * 0.5)
+			var back_r: Vector2 = center - ax * (size * 0.5) - ay * (size * 0.5)
+			_safe_draw_polygon(PackedVector2Array([apex, back_l, back_r]), color, "arrow")
 
 		ArrowStyle.T_BAR:
 			var half_len: float = size * 0.6
-			var thickness: float = max(2.0, size * 0.35)
+			var thickness: float = maxf(2.0, size * 0.35)
 			var half_th: float = thickness * 0.5
 
-			if half_len < 0.5 or half_th < 0.5:
-				return
+			var left_end: Vector2 = center + ay * half_len
+			var right_end: Vector2 = center - ay * half_len
 
-			var along_outward: Vector2 = outward * half_th
+			var p0: Vector2 = left_end + ax * half_th
+			var p1: Vector2 = right_end + ax * half_th
+			var p2: Vector2 = right_end - ax * half_th
+			var p3: Vector2 = left_end - ax * half_th
 
-			var left_end: Vector2 = tip + perp * half_len
-			var right_end: Vector2 = tip - perp * half_len
-
-			var p0: Vector2 = left_end + along_outward
-			var p1: Vector2 = right_end + along_outward
-			var p2: Vector2 = right_end - along_outward
-			var p3: Vector2 = left_end - along_outward
-
-			_safe_draw_polygon(PackedVector2Array([p0, p1, p2, p3]), default_color, "t_bar")
+			_safe_draw_polygon(PackedVector2Array([p0, p1, p2, p3]), color, "t_bar")
 
 		ArrowStyle.SQUARE:
 			var half_s: float = size * 0.5
-
-			if half_s < 0.5:
-				return
-
-			var back: Vector2 = tip - outward * half_s
-			var front: Vector2 = tip + outward * half_s
-			var top_back: Vector2 = back + perp * half_s
-			var bot_back: Vector2 = back - perp * half_s
-			var top_front: Vector2 = front + perp * half_s
-			var bot_front: Vector2 = front - perp * half_s
-			_safe_draw_polygon(
-				PackedVector2Array([top_back, top_front, bot_front, bot_back]),
-				default_color,
-				"square"
-			)
+			var p0: Vector2 = center - ax * half_s - ay * half_s
+			var p1: Vector2 = center + ax * half_s - ay * half_s
+			var p2: Vector2 = center + ax * half_s + ay * half_s
+			var p3: Vector2 = center - ax * half_s + ay * half_s
+			_safe_draw_polygon(PackedVector2Array([p0, p1, p2, p3]), color, "square")
 
 		ArrowStyle.CIRCLE:
 			var radius: float = size * 0.5
 			if radius < 0.5:
 				return
-			draw_circle(tip, radius, default_color)
+			draw_circle(center, radius, color)
 
 		ArrowStyle.DIAMOND:
 			var d_size: float = size * 0.65
-			if d_size < 0.5:
-				return
-			var apex: Vector2 = tip + outward * d_size
-			var back_pt: Vector2 = tip - outward * d_size
-			var left: Vector2 = tip + perp * d_size
-			var right: Vector2 = tip - perp * d_size
+			var apex: Vector2 = center + ax * d_size
+			var back_pt: Vector2 = center - ax * d_size
+			var left: Vector2 = center + ay * d_size
+			var right: Vector2 = center - ay * d_size
 			_safe_draw_polygon(
 				PackedVector2Array([apex, left, back_pt, right]),
-				default_color,
+				color,
 				"diamond"
 			)

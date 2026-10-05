@@ -53,6 +53,15 @@ enum WiggleDirectionMode {
 	AXIS_LOCK,
 }
 
+## Where the connection line terminates relative to the arrow.
+##
+##   EDGE   — line stops at the arrow's line-facing edge (middle of that edge).
+##   CENTER — line runs all the way to the arrow's center.
+enum ArrowAnchor {
+	EDGE,
+	CENTER,
+}
+
 ## Per-line texture filter override.
 ##   0 = Inherit (use tree's filter)
 ##   1 = Linear (smooth)
@@ -60,6 +69,10 @@ enum WiggleDirectionMode {
 const TEXTURE_FILTER_INHERIT := 0
 const TEXTURE_FILTER_LINEAR := 1
 const TEXTURE_FILTER_NEAREST := 2
+
+## Base pixel size used for VECTOR arrows at scale = 1.0.
+## Texture arrows ignore this and use the texture's own size.
+const VECTOR_ARROW_BASE_SIZE := 16.0
 
 # ============================================================
 # GEOMETRY
@@ -82,12 +95,12 @@ const TEXTURE_FILTER_NEAREST := 2
 
 @export var start_arrow: ArrowStyle = ArrowStyle.NONE
 @export var end_arrow: ArrowStyle = ArrowStyle.NONE
-@export var arrow_size: float = 12.0
+
 @export var start_offset: float = 0.0
 @export var end_offset: float = 0.0
 
-@export var start_arrow_backoff: float = 0.0
-@export var end_arrow_backoff: float = 0.0
+@export var start_arrow_anchor: ArrowAnchor = ArrowAnchor.EDGE
+@export var end_arrow_anchor: ArrowAnchor = ArrowAnchor.EDGE
 
 # ============================================================
 # VISUAL STYLE
@@ -111,21 +124,56 @@ const TEXTURE_FILTER_NEAREST := 2
 @export var texture_tint: Color = Color.WHITE
 
 # ============================================================
-# ARROW TEXTURE
+# ARROW — START
 # ============================================================
+#
+# Per-side configuration. START and END arrows are fully independent:
+#   - different textures
+#   - different uniform scales
+#   - different distances from the node edge
+#   - different anchor modes
+#   - different flip flags
+#
+# ROTATION RULE (both sides):
+#   The arrow ALWAYS points AT the node it is attached to.
+#   - START arrow sits next to the source node → tip points at the source.
+#   - END arrow sits next to the target node  → tip points at the target.
+#
+# POSITION RULE:
+#   `arrow_distance` is the gap between the NODE EDGE and the arrow's
+#   NODE-FACING edge. 0 = arrow sits flush against the node.
 
 @export var arrow_texture_start: Texture2D = null
-@export var arrow_texture_end: Texture2D = null
-@export var arrow_scale: Vector2 = Vector2.ONE
-@export var arrow_tint: Color = Color.WHITE
-@export var arrow_offset_x: float = 0.0
 
-## Pivot point in the arrow texture's UV space (0..1).
-## This is the point that lands exactly on the connection's tip.
-##   (0.5, 0.5) = center   ← default
-##   (1.0, 0.5) = right edge center (ideal for arrow-head textures)
-##   (0.0, 0.5) = left edge center
-@export var arrow_texture_pivot: Vector2 = Vector2(0.5, 0.5)
+## Uniform scale for the START arrow (both X and Y).
+@export var start_arrow_scale: float = 1.0
+
+## Gap between the source NODE EDGE and the START arrow's NODE-facing
+## edge, in pixels.
+@export var start_arrow_distance: float = 0.0
+
+## Flip the START arrow 180°.
+@export var start_arrow_flip: bool = false
+
+@export var start_arrow_tint: Color = Color.WHITE
+
+# ============================================================
+# ARROW — END
+# ============================================================
+
+@export var arrow_texture_end: Texture2D = null
+
+## Uniform scale for the END arrow (both X and Y).
+@export var end_arrow_scale: float = 1.0
+
+## Gap between the target NODE EDGE and the END arrow's NODE-facing
+## edge, in pixels.
+@export var end_arrow_distance: float = 0.0
+
+## Flip the END arrow 180°.
+@export var end_arrow_flip: bool = false
+
+@export var end_arrow_tint: Color = Color.WHITE
 
 # ============================================================
 # CAP STYLE
@@ -172,6 +220,135 @@ func get_overridden_fields() -> Array:
 	return overridden_fields.keys()
 
 # ============================================================
+# ARROW GEOMETRY HELPERS
+# ============================================================
+
+func get_start_arrow_extent(_dir: Vector2) -> float:
+	if not _has_start_arrow():
+		return 0.0
+	if arrow_texture_start != null:
+		var tex_size: Vector2 = arrow_texture_start.get_size()
+		return tex_size.x * start_arrow_scale
+	return VECTOR_ARROW_BASE_SIZE * start_arrow_scale
+
+
+func get_end_arrow_extent(_dir: Vector2) -> float:
+	if not _has_end_arrow():
+		return 0.0
+	if arrow_texture_end != null:
+		var tex_size: Vector2 = arrow_texture_end.get_size()
+		return tex_size.x * end_arrow_scale
+	return VECTOR_ARROW_BASE_SIZE * end_arrow_scale
+
+
+func get_start_arrow_lateral_size() -> float:
+	if not _has_start_arrow():
+		return 0.0
+	if arrow_texture_start != null:
+		var tex_size: Vector2 = arrow_texture_start.get_size()
+		return tex_size.y * start_arrow_scale
+	return VECTOR_ARROW_BASE_SIZE * start_arrow_scale
+
+
+func get_end_arrow_lateral_size() -> float:
+	if not _has_end_arrow():
+		return 0.0
+	if arrow_texture_end != null:
+		var tex_size: Vector2 = arrow_texture_end.get_size()
+		return tex_size.y * end_arrow_scale
+	return VECTOR_ARROW_BASE_SIZE * end_arrow_scale
+
+
+## Distance from the source NODE EDGE to where the LINE stops.
+## Stops at the arrow's line-facing edge (EDGE anchor) or its center
+## (CENTER anchor).
+func get_start_arrow_line_stop() -> float:
+	if not _has_start_arrow():
+		return 0.0
+
+	var extent: float = get_start_arrow_extent(Vector2.RIGHT)
+
+	match start_arrow_anchor:
+		ArrowAnchor.CENTER:
+			return start_arrow_distance + extent * 0.5
+		_:
+			return start_arrow_distance + extent
+
+
+## Same as above but for the END arrow.
+func get_end_arrow_line_stop() -> float:
+	if not _has_end_arrow():
+		return 0.0
+
+	var extent: float = get_end_arrow_extent(Vector2.RIGHT)
+
+	match end_arrow_anchor:
+		ArrowAnchor.CENTER:
+			return end_arrow_distance + extent * 0.5
+		_:
+			return end_arrow_distance + extent
+
+
+## World-space center of the START arrow.
+##
+## `node_edge`   = point on the SOURCE node's boundary facing the target.
+## `outward_dir` = direction from the SOURCE node toward the target.
+##
+## The arrow's NODE-facing edge sits at `node_edge + outward_dir * distance`.
+## Its center is `extent/2` further along `outward_dir`.
+func get_start_arrow_center(node_edge: Vector2, outward_dir: Vector2) -> Vector2:
+	if not _has_start_arrow():
+		return node_edge
+	var extent: float = get_start_arrow_extent(outward_dir)
+	var center_dist: float = start_arrow_distance + extent * 0.5
+	return node_edge + outward_dir * center_dist
+
+
+## World-space center of the END arrow.
+##
+## `node_edge`   = point on the TARGET node's boundary facing the source.
+## `outward_dir` = direction from the TARGET node toward the source.
+func get_end_arrow_center(node_edge: Vector2, outward_dir: Vector2) -> Vector2:
+	if not _has_end_arrow():
+		return node_edge
+	var extent: float = get_end_arrow_extent(outward_dir)
+	var center_dist: float = end_arrow_distance + extent * 0.5
+	return node_edge + outward_dir * center_dist
+
+
+## Rotation angle (radians) for the START arrow.
+##
+## The START arrow sits between the source node and the line. Its tip
+## MUST point AT the source node, which means pointing OPPOSITE to
+## `line_dir` (since `line_dir` goes from source → target).
+func get_start_arrow_angle(line_dir: Vector2) -> float:
+	var a: float = (-line_dir).angle()
+	if start_arrow_flip:
+		a += PI
+	return a
+
+
+## Rotation angle (radians) for the END arrow.
+##
+## The END arrow sits between the target node and the line. Its tip
+## MUST point AT the target node, which also means pointing OPPOSITE
+## to `line_dir` (since `line_dir` goes from source → target).
+func get_end_arrow_angle(line_dir: Vector2) -> float:
+	var a: float = (-line_dir).angle()
+	if end_arrow_flip:
+		a += PI
+	return a
+
+
+func _has_start_arrow() -> bool:
+	return start_arrow != ArrowStyle.NONE or arrow_texture_start != null
+
+
+func _has_end_arrow() -> bool:
+	return end_arrow != ArrowStyle.NONE or arrow_texture_end != null
+
+
+# ============================================================
 # HELPERS
 # ============================================================
 
@@ -188,11 +365,10 @@ func duplicate_line_data() -> BayterekLineData:
 	copy.dash_offset = dash_offset
 	copy.start_arrow = start_arrow
 	copy.end_arrow = end_arrow
-	copy.arrow_size = arrow_size
 	copy.start_offset = start_offset
 	copy.end_offset = end_offset
-	copy.start_arrow_backoff = start_arrow_backoff
-	copy.end_arrow_backoff = end_arrow_backoff
+	copy.start_arrow_anchor = start_arrow_anchor
+	copy.end_arrow_anchor = end_arrow_anchor
 	copy.color = color
 	copy.thickness = thickness
 	copy.smooth_antialiasing = smooth_antialiasing
@@ -205,10 +381,14 @@ func duplicate_line_data() -> BayterekLineData:
 	copy.texture_tint = texture_tint
 	copy.arrow_texture_start = arrow_texture_start
 	copy.arrow_texture_end = arrow_texture_end
-	copy.arrow_scale = arrow_scale
-	copy.arrow_tint = arrow_tint
-	copy.arrow_offset_x = arrow_offset_x
-	copy.arrow_texture_pivot = arrow_texture_pivot
+	copy.start_arrow_scale = start_arrow_scale
+	copy.end_arrow_scale = end_arrow_scale
+	copy.start_arrow_distance = start_arrow_distance
+	copy.end_arrow_distance = end_arrow_distance
+	copy.start_arrow_flip = start_arrow_flip
+	copy.end_arrow_flip = end_arrow_flip
+	copy.start_arrow_tint = start_arrow_tint
+	copy.end_arrow_tint = end_arrow_tint
 	copy.cap_start = cap_start
 	copy.cap_end = cap_end
 	copy.wiggle_enabled = wiggle_enabled
@@ -235,44 +415,3 @@ func has_start_arrow_texture() -> bool:
 
 func has_end_arrow_texture() -> bool:
 	return arrow_texture_end != null
-
-
-## Returns the effective START backoff in pixels.
-##
-## Rules:
-##   - If the user set `start_arrow_backoff > 0`, use it.
-##   - TEXTURE arrow → 0 (the texture is drawn at the node edge).
-##   - T_BAR → 0 (it sits flush on the line tip).
-##   - Other vector arrows → arrow_size * 0.5.
-##
-## IMPORTANT: texture arrows return 0 so that changing `arrow_size`
-## does NOT shift the line endpoints — arrow_size only affects vector
-## arrow shapes, and the endpoints must stay stable when a texture is
-## in use.
-func get_effective_start_backoff() -> float:
-	if start_arrow_backoff > 0.0:
-		return start_arrow_backoff
-
-	if arrow_texture_start != null:
-		return 0.0
-
-	if start_arrow == ArrowStyle.T_BAR:
-		return 0.0
-	if start_arrow != ArrowStyle.NONE:
-		return arrow_size * 0.5
-	return 0.0
-
-
-## Same rules as `get_effective_start_backoff()`, but for the END arrow.
-func get_effective_end_backoff() -> float:
-	if end_arrow_backoff > 0.0:
-		return end_arrow_backoff
-
-	if arrow_texture_end != null:
-		return 0.0
-
-	if end_arrow == ArrowStyle.T_BAR:
-		return 0.0
-	if end_arrow != ArrowStyle.NONE:
-		return arrow_size * 0.5
-	return 0.0

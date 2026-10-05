@@ -369,31 +369,54 @@ func _update_line_points(line: BayterekConnection) -> void:
 	var dir_len: float = to_from_dir.length()
 	var dir_norm: Vector2 = to_from_dir / dir_len if dir_len > 0.0001 else Vector2.RIGHT
 
-	var has_start_arrow: bool = (data.start_arrow != BayterekLineData.ArrowStyle.NONE
-		or data.arrow_texture_start != null)
-	var has_end_arrow: bool = (data.end_arrow != BayterekLineData.ArrowStyle.NONE
-		or data.arrow_texture_end != null)
+	var has_start_arrow: bool = data._has_start_arrow()
+	var has_end_arrow: bool = data._has_end_arrow()
 
-	var start_total_offset: float = data.start_offset
+	# ------------------------------------------------------------------
+	# Raw node-edge contact points (before any arrow offsets).
+	# ------------------------------------------------------------------
+	var from_edge: Vector2
 	if has_start_arrow:
-		start_total_offset += data.get_effective_start_backoff()
+		from_edge = _edge_point(from_center, to_center, from_half, 0.0)
+	else:
+		from_edge = from_center + dir_norm * data.start_offset
 
-	var end_total_offset: float = data.end_offset
+	var to_edge: Vector2
 	if has_end_arrow:
-		end_total_offset += data.get_effective_end_backoff()
+		to_edge = _edge_point(to_center, from_center, to_half, 0.0)
+	else:
+		to_edge = to_center - dir_norm * data.end_offset
 
+	# ------------------------------------------------------------------
+	# LINE endpoints: stop at the arrow's line-facing edge (EDGE anchor)
+	# or its center (CENTER anchor). If no arrow is present on a side,
+	# the line touches the node edge directly.
+	# ------------------------------------------------------------------
 	var p0: Vector2
 	if has_start_arrow:
-		p0 = _edge_point(from_center, to_center, from_half, start_total_offset)
+		var start_stop: float = data.get_start_arrow_line_stop()
+		p0 = from_edge + dir_norm * start_stop
 	else:
-		p0 = from_center + dir_norm * start_total_offset
+		p0 = from_edge
 
 	var p2: Vector2
 	if has_end_arrow:
-		p2 = _edge_point(to_center, from_center, to_half, end_total_offset)
+		var end_stop: float = data.get_end_arrow_line_stop()
+		p2 = to_edge - dir_norm * end_stop
 	else:
-		p2 = to_center - dir_norm * end_total_offset
+		p2 = to_edge
 
+	# Safety: if the arrows overlap (very short connection), collapse the
+	# line to a single midpoint so we don't render a zero-length or
+	# reversed polyline.
+	if (p2 - p0).dot(dir_norm) < 0.0:
+		var mid: Vector2 = (p0 + p2) * 0.5
+		p0 = mid
+		p2 = mid
+
+	# ------------------------------------------------------------------
+	# Polyline construction.
+	# ------------------------------------------------------------------
 	match data.line_type:
 		BayterekLineData.LineType.STRAIGHT:
 			line.clear_points()
@@ -406,20 +429,30 @@ func _update_line_points(line: BayterekConnection) -> void:
 		BayterekLineData.LineType.STEP:
 			line.set_points(_step_points(p0, p2, data))
 
+	# ------------------------------------------------------------------
+	# Arrow geometry: each arrow has its own center, angle and extent.
+	# ------------------------------------------------------------------
 	if line.arrows:
-		var arrow_start_tip: Vector2
+		var start_center: Vector2 = Vector2.ZERO
+		var start_angle: float = 0.0
+		var start_extent: float = 0.0
 		if has_start_arrow:
-			arrow_start_tip = _edge_point(from_center, to_center, from_half, data.start_offset)
-		else:
-			arrow_start_tip = from_center + dir_norm * data.start_offset
+			start_center = data.get_start_arrow_center(from_edge, dir_norm)
+			start_angle = data.get_start_arrow_angle(dir_norm)
+			start_extent = data.get_start_arrow_extent(dir_norm)
 
-		var arrow_end_tip: Vector2
+		var end_center: Vector2 = Vector2.ZERO
+		var end_angle: float = 0.0
+		var end_extent: float = 0.0
 		if has_end_arrow:
-			arrow_end_tip = _edge_point(to_center, from_center, to_half, data.end_offset)
-		else:
-			arrow_end_tip = to_center - dir_norm * data.end_offset
+			end_center = data.get_end_arrow_center(to_edge, -dir_norm)
+			end_angle = data.get_end_arrow_angle(dir_norm)
+			end_extent = data.get_end_arrow_extent(dir_norm)
 
-		line.arrows.set_endpoints(arrow_start_tip, arrow_end_tip)
+		line.arrows.set_arrow_geometry(
+			start_center, start_angle, start_extent,
+			end_center, end_angle, end_extent
+		)
 
 	_apply_line_data_visuals(line, data)
 
@@ -483,13 +516,12 @@ func _apply_line_data_visuals(line: BayterekConnection, data: BayterekLineData) 
 		var a: BayterekArrowOverlay = line.arrows
 		a.start_arrow = data.start_arrow as BayterekArrowOverlay.ArrowStyle
 		a.end_arrow = data.end_arrow as BayterekArrowOverlay.ArrowStyle
-		a.arrow_size = data.arrow_size
 		a.arrow_texture_start = data.arrow_texture_start
 		a.arrow_texture_end = data.arrow_texture_end
-		a.arrow_scale = data.arrow_scale
-		a.arrow_tint = data.arrow_tint
-		a.arrow_offset_x = data.arrow_offset_x
-		a.arrow_texture_pivot = data.arrow_texture_pivot
+		a.start_arrow_scale = data.start_arrow_scale
+		a.end_arrow_scale = data.end_arrow_scale
+		a.start_arrow_tint = data.start_arrow_tint
+		a.end_arrow_tint = data.end_arrow_tint
 		a.arrow_texture_filter_override = data.arrow_texture_filter_override
 		a.default_color = data.color
 

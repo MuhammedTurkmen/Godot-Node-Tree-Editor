@@ -274,31 +274,48 @@ func _build_texture_section(body: VBoxContainer, to_id: int, line_data: Bayterek
 
 func _build_arrows_section(body: VBoxContainer, to_id: int, line_data: BayterekLineData) -> void:
 	var arrow_items: Array = ["None", "Arrow", "T-Bar", "Square", "Circle", "Diamond"]
+	var anchor_items: Array = ["Edge (line touches edge)", "Center (line to center)"]
 
-	var start_arrow_row := _make_labeled_row(body, "Start Arrow")
-	var start_arrow_dd := _make_dropdown(start_arrow_row, arrow_items)
+	# ============================================================
+	# START ARROW
+	# ============================================================
+	var start_header := Label.new()
+	start_header.text = "Start Arrow"
+	start_header.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	body.add_child(start_header)
+
+	var start_style_row := _make_labeled_row(body, "Style")
+	var start_arrow_dd := _make_dropdown(start_style_row, arrow_items)
 	start_arrow_dd.select(int(line_data.start_arrow))
 	start_arrow_dd.item_selected.connect(_on_start_arrow_changed.bind(to_id))
 
-	var end_arrow_row := _make_labeled_row(body, "End Arrow")
-	var end_arrow_dd := _make_dropdown(end_arrow_row, arrow_items)
-	end_arrow_dd.select(int(line_data.end_arrow))
-	end_arrow_dd.item_selected.connect(_on_end_arrow_changed.bind(to_id))
+	var start_anchor_row := _make_labeled_row(body, "Anchor")
+	var start_anchor_dd := _make_dropdown(start_anchor_row, anchor_items)
+	start_anchor_dd.select(int(line_data.start_arrow_anchor))
+	start_anchor_dd.item_selected.connect(_on_start_anchor_changed.bind(to_id))
 
-	var size_row := _make_labeled_row(body, "Arrow Size")
-	var size_input := _make_spinbox(size_row, 2, 100, 1, line_data.arrow_size)
-	size_input.tooltip_text = "Size of VECTOR arrow shapes (ignored when an arrow texture is set)."
-	size_input.value_changed.connect(_on_arrow_size_changed.bind(to_id))
+	var start_scale_row := _make_labeled_row(body, "Scale")
+	var start_scale_input := _make_spinbox(start_scale_row, 0.05, 20.0, 0.05, line_data.start_arrow_scale)
+	start_scale_input.tooltip_text = "Uniform scale for the START arrow (both X and Y)."
+	start_scale_input.value_changed.connect(_on_start_arrow_scale_changed.bind(to_id))
 
-	var sback_row := _make_labeled_row(body, "Start Backoff")
-	var sback_input := _make_spinbox(sback_row, 0, 200, 1, line_data.start_arrow_backoff)
-	sback_input.tooltip_text = "Extra pixels to pull the line away from the START arrow (0 = auto)."
-	sback_input.value_changed.connect(_on_start_arrow_backoff_changed.bind(to_id))
+	var start_dist_row := _make_labeled_row(body, "Distance")
+	var start_dist_input := _make_spinbox(start_dist_row, 0.0, 500.0, 1.0, line_data.start_arrow_distance)
+	start_dist_input.tooltip_text = "Gap between the source node edge and the START arrow's node-facing edge, in pixels."
+	start_dist_input.value_changed.connect(_on_start_arrow_distance_changed.bind(to_id))
 
-	var eback_row := _make_labeled_row(body, "End Backoff")
-	var eback_input := _make_spinbox(eback_row, 0, 200, 1, line_data.end_arrow_backoff)
-	eback_input.tooltip_text = "Extra pixels to pull the line away from the END arrow (0 = auto)."
-	eback_input.value_changed.connect(_on_end_arrow_backoff_changed.bind(to_id))
+	var start_flip_row := _make_labeled_row(body, "Flip 180°")
+	var start_flip_check := _make_checkbox(start_flip_row, line_data.start_arrow_flip)
+	start_flip_check.tooltip_text = "Flip the START arrow 180° if the texture was authored pointing backwards."
+	start_flip_check.toggled.connect(_on_start_arrow_flip_changed.bind(to_id))
+
+	var start_tint_row := _make_labeled_row(body, "Tint")
+	var start_tint_picker := ColorPickerButton.new()
+	start_tint_picker.size_flags_horizontal = SIZE_EXPAND_FILL
+	start_tint_picker.custom_minimum_size = Vector2(0, 24)
+	start_tint_picker.color = line_data.start_arrow_tint
+	start_tint_picker.color_changed.connect(_on_start_arrow_tint_changed.bind(to_id))
+	start_tint_row.add_child(start_tint_picker)
 
 	var start_tex := BayterekInspectorTextureInput.new()
 	start_tex.title = "Start Tex"
@@ -307,6 +324,49 @@ func _build_arrows_section(body: VBoxContainer, to_id: int, line_data: BayterekL
 	start_tex.texture_dropped.connect(_on_start_arrow_tex_changed.bind(to_id))
 	start_tex.cleared.connect(_on_start_arrow_tex_cleared.bind(to_id))
 
+	# ============================================================
+	# END ARROW
+	# ============================================================
+	body.add_child(HSeparator.new())
+
+	var end_header := Label.new()
+	end_header.text = "End Arrow"
+	end_header.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	body.add_child(end_header)
+
+	var end_style_row := _make_labeled_row(body, "Style")
+	var end_arrow_dd := _make_dropdown(end_style_row, arrow_items)
+	end_arrow_dd.select(int(line_data.end_arrow))
+	end_arrow_dd.item_selected.connect(_on_end_arrow_changed.bind(to_id))
+
+	var end_anchor_row := _make_labeled_row(body, "Anchor")
+	var end_anchor_dd := _make_dropdown(end_anchor_row, anchor_items)
+	end_anchor_dd.select(int(line_data.end_arrow_anchor))
+	end_anchor_dd.item_selected.connect(_on_end_anchor_changed.bind(to_id))
+
+	var end_scale_row := _make_labeled_row(body, "Scale")
+	var end_scale_input := _make_spinbox(end_scale_row, 0.05, 20.0, 0.05, line_data.end_arrow_scale)
+	end_scale_input.tooltip_text = "Uniform scale for the END arrow (both X and Y)."
+	end_scale_input.value_changed.connect(_on_end_arrow_scale_changed.bind(to_id))
+
+	var end_dist_row := _make_labeled_row(body, "Distance")
+	var end_dist_input := _make_spinbox(end_dist_row, 0.0, 500.0, 1.0, line_data.end_arrow_distance)
+	end_dist_input.tooltip_text = "Gap between the target node edge and the END arrow's node-facing edge, in pixels."
+	end_dist_input.value_changed.connect(_on_end_arrow_distance_changed.bind(to_id))
+
+	var end_flip_row := _make_labeled_row(body, "Flip 180°")
+	var end_flip_check := _make_checkbox(end_flip_row, line_data.end_arrow_flip)
+	end_flip_check.tooltip_text = "Flip the END arrow 180° if the texture was authored pointing backwards."
+	end_flip_check.toggled.connect(_on_end_arrow_flip_changed.bind(to_id))
+
+	var end_tint_row := _make_labeled_row(body, "Tint")
+	var end_tint_picker := ColorPickerButton.new()
+	end_tint_picker.size_flags_horizontal = SIZE_EXPAND_FILL
+	end_tint_picker.custom_minimum_size = Vector2(0, 24)
+	end_tint_picker.color = line_data.end_arrow_tint
+	end_tint_picker.color_changed.connect(_on_end_arrow_tint_changed.bind(to_id))
+	end_tint_row.add_child(end_tint_picker)
+
 	var end_tex := BayterekInspectorTextureInput.new()
 	end_tex.title = "End Tex"
 	body.add_child(end_tex)
@@ -314,44 +374,16 @@ func _build_arrows_section(body: VBoxContainer, to_id: int, line_data: BayterekL
 	end_tex.texture_dropped.connect(_on_end_arrow_tex_changed.bind(to_id))
 	end_tex.cleared.connect(_on_end_arrow_tex_cleared.bind(to_id))
 
-	var ascale_row := _make_labeled_row(body, "Arrow Scale")
-	var ascale_x := _make_spinbox(ascale_row, 0.05, 10.0, 0.05, line_data.arrow_scale.x)
-	ascale_x.size_flags_horizontal = SIZE_EXPAND_FILL
-	var ascale_y := _make_spinbox(ascale_row, 0.05, 10.0, 0.05, line_data.arrow_scale.y)
-	ascale_y.size_flags_horizontal = SIZE_EXPAND_FILL
-	ascale_x.value_changed.connect(_on_arrow_scale_pair_changed.bind(to_id, ascale_x, ascale_y))
-	ascale_y.value_changed.connect(_on_arrow_scale_pair_changed.bind(to_id, ascale_x, ascale_y))
+	# ============================================================
+	# SHARED
+	# ============================================================
+	body.add_child(HSeparator.new())
 
-	# --- Arrow Texture Pivot ---
-	var pivot_row := _make_labeled_row(body, "Pivot UV")
-	var pivot_x := _make_spinbox(pivot_row, 0.0, 1.0, 0.05, line_data.arrow_texture_pivot.x)
-	pivot_x.size_flags_horizontal = SIZE_EXPAND_FILL
-	pivot_x.tooltip_text = "Pivot in the arrow texture's UV space. X: 0=left, 1=right."
-	var pivot_y := _make_spinbox(pivot_row, 0.0, 1.0, 0.05, line_data.arrow_texture_pivot.y)
-	pivot_y.size_flags_horizontal = SIZE_EXPAND_FILL
-	pivot_y.tooltip_text = "Pivot in the arrow texture's UV space. Y: 0=top, 1=bottom."
-	pivot_x.value_changed.connect(_on_arrow_texture_pivot_pair_changed.bind(to_id, pivot_x, pivot_y))
-	pivot_y.value_changed.connect(_on_arrow_texture_pivot_pair_changed.bind(to_id, pivot_x, pivot_y))
-
-	# --- Arrow Texture Filter ---
-	var afilter_row := _make_labeled_row(body, "Arrow Filter")
+	var afilter_row := _make_labeled_row(body, "Filter")
 	var afilter_dd := _make_dropdown(afilter_row, ["Inherit", "Linear", "Nearest"])
 	var afilter_idx: int = clampi(line_data.arrow_texture_filter_override, 0, 2)
 	afilter_dd.select(afilter_idx)
 	afilter_dd.item_selected.connect(_on_arrow_texture_filter_changed.bind(to_id))
-
-	var atint_row := _make_labeled_row(body, "Arrow Tint")
-	var atint_picker := ColorPickerButton.new()
-	atint_picker.size_flags_horizontal = SIZE_EXPAND_FILL
-	atint_picker.custom_minimum_size = Vector2(0, 24)
-	atint_picker.color = line_data.arrow_tint
-	atint_picker.color_changed.connect(_on_arrow_tint_changed.bind(to_id))
-	atint_row.add_child(atint_picker)
-
-	var aoff_row := _make_labeled_row(body, "Offset X")
-	var aoff_input := _make_spinbox(aoff_row, -50, 50, 1, line_data.arrow_offset_x)
-	aoff_input.tooltip_text = "Push the arrow along the line direction (positive = outward)."
-	aoff_input.value_changed.connect(_on_arrow_offset_x_changed.bind(to_id))
 
 # ============================================================
 # SECTION 4 — ADVANCED
@@ -660,7 +692,6 @@ func _on_start_arrow_changed(index: int, to_id: int) -> void:
 	if not line_data: return
 	line_data.start_arrow = index as BayterekLineData.ArrowStyle
 	_refresh_line(to_id)
-	_update_entry_visibility(to_id)
 	_notify_changed()
 
 func _on_end_arrow_changed(index: int, to_id: int) -> void:
@@ -669,30 +700,85 @@ func _on_end_arrow_changed(index: int, to_id: int) -> void:
 	if not line_data: return
 	line_data.end_arrow = index as BayterekLineData.ArrowStyle
 	_refresh_line(to_id)
-	_update_entry_visibility(to_id)
 	_notify_changed()
 
-func _on_arrow_size_changed(value: float, to_id: int) -> void:
+func _on_start_anchor_changed(index: int, to_id: int) -> void:
 	if _updating_ui: return
 	var line_data = _get_line_data(to_id)
 	if not line_data: return
-	line_data.arrow_size = value
+	line_data.start_arrow_anchor = index as BayterekLineData.ArrowAnchor
 	_refresh_line(to_id)
 	_notify_changed()
 
-func _on_start_arrow_backoff_changed(value: float, to_id: int) -> void:
+func _on_end_anchor_changed(index: int, to_id: int) -> void:
 	if _updating_ui: return
 	var line_data = _get_line_data(to_id)
 	if not line_data: return
-	line_data.start_arrow_backoff = value
+	line_data.end_arrow_anchor = index as BayterekLineData.ArrowAnchor
 	_refresh_line(to_id)
 	_notify_changed()
 
-func _on_end_arrow_backoff_changed(value: float, to_id: int) -> void:
+func _on_start_arrow_scale_changed(value: float, to_id: int) -> void:
 	if _updating_ui: return
 	var line_data = _get_line_data(to_id)
 	if not line_data: return
-	line_data.end_arrow_backoff = value
+	line_data.start_arrow_scale = value
+	_refresh_line(to_id)
+	_notify_changed()
+
+func _on_end_arrow_scale_changed(value: float, to_id: int) -> void:
+	if _updating_ui: return
+	var line_data = _get_line_data(to_id)
+	if not line_data: return
+	line_data.end_arrow_scale = value
+	_refresh_line(to_id)
+	_notify_changed()
+
+func _on_start_arrow_distance_changed(value: float, to_id: int) -> void:
+	if _updating_ui: return
+	var line_data = _get_line_data(to_id)
+	if not line_data: return
+	line_data.start_arrow_distance = value
+	_refresh_line(to_id)
+	_notify_changed()
+
+func _on_end_arrow_distance_changed(value: float, to_id: int) -> void:
+	if _updating_ui: return
+	var line_data = _get_line_data(to_id)
+	if not line_data: return
+	line_data.end_arrow_distance = value
+	_refresh_line(to_id)
+	_notify_changed()
+
+func _on_start_arrow_flip_changed(pressed: bool, to_id: int) -> void:
+	if _updating_ui: return
+	var line_data = _get_line_data(to_id)
+	if not line_data: return
+	line_data.start_arrow_flip = pressed
+	_refresh_line(to_id)
+	_notify_changed()
+
+func _on_end_arrow_flip_changed(pressed: bool, to_id: int) -> void:
+	if _updating_ui: return
+	var line_data = _get_line_data(to_id)
+	if not line_data: return
+	line_data.end_arrow_flip = pressed
+	_refresh_line(to_id)
+	_notify_changed()
+
+func _on_start_arrow_tint_changed(color: Color, to_id: int) -> void:
+	if _updating_ui: return
+	var line_data = _get_line_data(to_id)
+	if not line_data: return
+	line_data.start_arrow_tint = color
+	_refresh_line(to_id)
+	_notify_changed()
+
+func _on_end_arrow_tint_changed(color: Color, to_id: int) -> void:
+	if _updating_ui: return
+	var line_data = _get_line_data(to_id)
+	if not line_data: return
+	line_data.end_arrow_tint = color
 	_refresh_line(to_id)
 	_notify_changed()
 
@@ -738,50 +824,11 @@ func _on_end_arrow_tex_cleared(to_id: int) -> void:
 	_refresh_line(to_id)
 	_notify_changed()
 
-func _on_arrow_scale_pair_changed(_value: float, to_id: int, sx: SpinBox, sy: SpinBox) -> void:
-	if _updating_ui: return
-	if not is_instance_valid(sx) or not is_instance_valid(sy):
-		return
-	var line_data = _get_line_data(to_id)
-	if not line_data: return
-	line_data.arrow_scale = Vector2(sx.value, sy.value)
-	_refresh_line(to_id)
-	_notify_changed()
-
-func _on_arrow_texture_pivot_pair_changed(_value: float, to_id: int, sx: SpinBox, sy: SpinBox) -> void:
-	if _updating_ui: return
-	if not is_instance_valid(sx) or not is_instance_valid(sy):
-		return
-	var line_data = _get_line_data(to_id)
-	if not line_data: return
-	line_data.arrow_texture_pivot = Vector2(
-		clampf(sx.value, 0.0, 1.0),
-		clampf(sy.value, 0.0, 1.0)
-	)
-	_refresh_line(to_id)
-	_notify_changed()
-
 func _on_arrow_texture_filter_changed(index: int, to_id: int) -> void:
 	if _updating_ui: return
 	var line_data = _get_line_data(to_id)
 	if not line_data: return
 	line_data.arrow_texture_filter_override = index
-	_refresh_line(to_id)
-	_notify_changed()
-
-func _on_arrow_tint_changed(color: Color, to_id: int) -> void:
-	if _updating_ui: return
-	var line_data = _get_line_data(to_id)
-	if not line_data: return
-	line_data.arrow_tint = color
-	_refresh_line(to_id)
-	_notify_changed()
-
-func _on_arrow_offset_x_changed(value: float, to_id: int) -> void:
-	if _updating_ui: return
-	var line_data = _get_line_data(to_id)
-	if not line_data: return
-	line_data.arrow_offset_x = value
 	_refresh_line(to_id)
 	_notify_changed()
 
