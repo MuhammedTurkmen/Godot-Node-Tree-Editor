@@ -48,6 +48,50 @@ extends Resource
 @export_storage var default_design_id: String = ""
 
 # ============================================================
+# PURCHASE / ALLOCATION TRIGGER
+# ============================================================
+
+@export_storage var default_purchase_mode: int = 0
+@export_storage var default_hold_duration: float = 0.8
+
+# ============================================================
+# PURCHASE — VISUAL FEEDBACK
+# ============================================================
+#
+# While the user holds the node, we show progress visually:
+#   0 = NONE           — no visual feedback
+#   1 = CANVAS_BAR     — a bar at the canvas edge fills up
+#   2 = NODE_PROGRESS  — a design layer grows (mode configured on the design)
+
+@export_storage var purchase_visual_mode: int = 1
+
+# Where the canvas bar appears (only used when purchase_visual_mode = CANVAS_BAR):
+#   0 = TOP, 1 = BOTTOM, 2 = LEFT, 3 = RIGHT
+@export_storage var purchase_bar_placement: int = 1
+
+@export_storage var purchase_bar_length: float = 320.0
+@export_storage var purchase_bar_margin: float = 24.0
+
+# Direction of the NODE_PROGRESS animation:
+#   0 = INVISIBLE → VISIBLE  — layer starts at scale 0 (design), grows to 1
+#   1 = VISIBLE → INVISIBLE  — layer starts at scale 1 (design), shrinks to 0
+#
+# In BOTH modes, the layer ends at scale 0 after the hold ends.
+@export_storage var purchase_progress_direction: int = 0
+
+# ============================================================
+# PURCHASE — SOUND
+# ============================================================
+
+@export_storage var purchase_hold_sound: AudioStream = null
+@export_storage var purchase_hold_sound_volume_db: float = -6.0
+@export_storage var purchase_sound_pitch_min: float = 0.8
+@export_storage var purchase_sound_pitch_max: float = 1.4
+
+@export_storage var purchase_success_sound: AudioStream = null
+@export_storage var purchase_cancel_sound: AudioStream = null
+
+# ============================================================
 # CONNECTION DEFAULTS
 # ============================================================
 
@@ -60,43 +104,17 @@ extends Resource
 @export_storage var default_end_offset: float = 12.0
 @export_storage var line_antialiasing: bool = true
 
-# --- Arrow geometry defaults ---------------------------------------------
-#
-# The START and END arrows are fully independent: each has its own
-# scale, distance, flip flag, and anchor mode.
-
-## Uniform arrow scale for freshly-created connections.
-## Applied to both X and Y of the arrow (texture or vector).
 @export_storage var default_start_arrow_scale: float = 1.0
 @export_storage var default_end_arrow_scale: float = 1.0
-
-## Default gap (in pixels) between the node edge and the arrow's
-## node-facing edge, for freshly-created connections.
 @export_storage var default_start_arrow_distance: float = 0.0
 @export_storage var default_end_arrow_distance: float = 0.0
-
-## Flip the arrow 180° if its texture was authored pointing backwards.
 @export_storage var default_start_arrow_flip: bool = false
 @export_storage var default_end_arrow_flip: bool = false
-
-## Default anchor mode for the START and END arrows on new connections.
-##   0 = EDGE   (line stops at the arrow's line-facing edge)
-##   1 = CENTER (line runs all the way to the arrow's center)
 @export_storage var default_start_arrow_anchor: int = 0
 @export_storage var default_end_arrow_anchor: int = 0
 
-# --- Default line texture -------------------------------------------------
-
-## Default line texture applied to freshly-created connections.
-## This is the ONLY line-texture slot on the tree now — the old
-## `line_texture_normal / _intermediate / _active` state-based
-## textures were removed.
 @export_storage var default_line_texture: Texture2D = null
-## Texture mode (matches BayterekLineData.TextureMode):
-##   0 = NONE, 1 = TILE, 2 = STRETCH, 3 = TILE_FIT_HEIGHT
 @export_storage var default_line_texture_mode: int = 1
-## Texture filter (matches BayterekLineData.TEXTURE_FILTER_*):
-##   0 = INHERIT, 1 = LINEAR, 2 = NEAREST
 @export_storage var default_line_texture_filter: int = 0
 @export_storage var default_line_texture_scale: Vector2 = Vector2.ONE
 @export_storage var default_line_texture_tint: Color = Color.WHITE
@@ -137,6 +155,13 @@ func get_godot_texture_filter() -> int:
 	match texture_filter:
 		1: return CanvasItem.TEXTURE_FILTER_NEAREST
 		_: return CanvasItem.TEXTURE_FILTER_LINEAR
+
+# ============================================================
+# PURCHASE HELPERS
+# ============================================================
+
+func is_hold_purchase_mode() -> bool:
+	return default_purchase_mode == 1
 
 # ============================================================
 # PREFAB HELPERS
@@ -194,14 +219,6 @@ func get_group_of_node(node_id: int) -> BayterekNodeGroup:
 # CONNECTION DEFAULTS APPLICATION
 # ============================================================
 
-## Applies the tree's connection defaults to a BayterekLineData.
-##
-## RESPECTS PER-FIELD OVERRIDES:
-##   If a field was marked as overridden (via `set_overridden(true)`),
-##   this function will NOT touch it.
-##
-## If `force` is true, all overrides are cleared and every field is
-## reset — useful for a "reset to defaults" action.
 func apply_connection_defaults(line_data: BayterekLineData, force: bool = false) -> void:
 	if not line_data:
 		return
@@ -209,7 +226,6 @@ func apply_connection_defaults(line_data: BayterekLineData, force: bool = false)
 	if force:
 		line_data.clear_all_overrides()
 
-	# --- Base style ---
 	if force or not line_data.is_overridden("color"):
 		line_data.color = default_line_color
 	if force or not line_data.is_overridden("thickness"):
@@ -217,7 +233,6 @@ func apply_connection_defaults(line_data: BayterekLineData, force: bool = false)
 	if force or not line_data.is_overridden("smooth_antialiasing"):
 		line_data.smooth_antialiasing = line_antialiasing
 
-	# --- Default line texture (single slot) ---
 	if force or not line_data.is_overridden("line_texture"):
 		line_data.line_texture = default_line_texture
 	if force or not line_data.is_overridden("texture_mode"):
@@ -229,13 +244,11 @@ func apply_connection_defaults(line_data: BayterekLineData, force: bool = false)
 	if force or not line_data.is_overridden("texture_tint"):
 		line_data.texture_tint = default_line_texture_tint
 
-	# --- Offsets ---
 	if force or not line_data.is_overridden("start_offset"):
 		line_data.start_offset = default_start_offset
 	if force or not line_data.is_overridden("end_offset"):
 		line_data.end_offset = default_end_offset
 
-	# --- Arrow geometry (per side) ---
 	if force or not line_data.is_overridden("start_arrow_scale"):
 		line_data.start_arrow_scale = default_start_arrow_scale
 	if force or not line_data.is_overridden("end_arrow_scale"):
@@ -253,7 +266,6 @@ func apply_connection_defaults(line_data: BayterekLineData, force: bool = false)
 	if force or not line_data.is_overridden("end_arrow_anchor"):
 		line_data.end_arrow_anchor = default_end_arrow_anchor as BayterekLineData.ArrowAnchor
 
-	# --- Wiggle ---
 	if force or not line_data.is_overridden("wiggle_enabled"):
 		line_data.wiggle_enabled = wiggle_enabled
 	if force or not line_data.is_overridden("wiggle_base_amplitude"):

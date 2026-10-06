@@ -31,7 +31,6 @@ enum PivotMode {
 # PIVOT RESOLUTION
 # ============================================================
 
-## Normalized (0..1, top-left) pivot vector for the current pivot mode.
 func get_normalized_pivot() -> Vector2:
 	match pivot_mode:
 		PivotMode.TOP_LEFT:      return Vector2(0.0, 0.0)
@@ -46,23 +45,9 @@ func get_normalized_pivot() -> Vector2:
 		PivotMode.CUSTOM:        return pivot
 	return Vector2(0.5, 0.5)
 
-## Pivot in top-left-pixel coordinates (0..effective_size).
 func get_pivot_px(effective_size: Vector2) -> Vector2:
 	return effective_size * get_normalized_pivot()
 
-## Pivot in the shape's LOCAL centered coordinate system.
-##
-## pixel_mode = false (default): classic vector-space pivot, centered at
-## the shape's geometric center. This is what rotation/skew/scale uses in
-## vector mode.
-##
-## pixel_mode = true: pivot is snapped to the same integer grid that
-## `get_pixel_spans()` uses. `get_pixel_spans` lays pixels out over the
-## range `[x_off, x_off + W)` where `x_off = -W / 2` (integer division)
-## and `W = round(effective_size.x)`. Therefore the pivot's local
-## coordinate in the same grid is `x_off + norm.x * W` for X, and the
-## analogous formula for Y. This keeps rotation/scale anchored to the
-## pixel-perfect layer outline.
 func get_pivot_local(effective_size: Vector2, pixel_mode: bool = false) -> Vector2:
 	if pixel_mode:
 		var W: int = int(round(effective_size.x))
@@ -82,13 +67,25 @@ func get_pivot_local(effective_size: Vector2, pixel_mode: bool = false) -> Vecto
 # EFFECTIVE SIZE / SCALE
 # ============================================================
 
+## Returns the layer's effective size after applying `scale`.
+##
+## IMPORTANT: scale = 0 is preserved (NOT treated as "use 1.0"). This
+## lets the user collapse a layer to nothing — which is used for
+## progress-layer animations (0 → 1 growth).
+##
+## Values that are exactly 0 stay 0. Negative values are preserved
+## (they flip the layer). A tiny epsilon is only used to guard against
+## subnormal floats that would produce NaN in matrix math.
 func get_effective_size(design_size: Vector2) -> Vector2:
 	var base: Vector2 = design_size
 	if size.x > 0.0 and size.y > 0.0:
 		base = size
 
-	var sx: float = scale.x if absf(scale.x) > 0.0001 else 1.0
-	var sy: float = scale.y if absf(scale.y) > 0.0001 else 1.0
+	# NOTE: we do NOT force 0 → 1.0 anymore. If the user set scale to
+	# zero, the layer must collapse to a zero-sized rect.
+	var sx: float = scale.x
+	var sy: float = scale.y
+
 	return Vector2(base.x * sx, base.y * sy)
 
 func get_avg_scale() -> float:
@@ -98,11 +95,6 @@ func get_avg_scale() -> float:
 # MATRIX
 # ============================================================
 
-## Builds the layer's transform matrix.
-##
-## pixel_mode = true snaps the pivot to the integer pixel grid so
-## rotation / scale anchors on a real pixel edge (matching what
-## `BayterekShapeLayer.get_pixel_spans()` draws).
 func get_matrix(design_size: Vector2, pixel_mode: bool = false) -> Transform2D:
 	var effective_size: Vector2 = get_effective_size(design_size)
 	var pivot_local: Vector2 = get_pivot_local(effective_size, pixel_mode)

@@ -5,8 +5,7 @@ extends VBoxContainer
 ##
 ## All transform field changes are routed through the parent Node Editor
 ## screen's UndoRedo instance (when one is available), so Ctrl+Z works
-## on every field. The form captures old + new values on each change and
-## commits them as a single action named after the field.
+## on every field.
 
 signal changed
 
@@ -88,8 +87,11 @@ func _build_ui() -> void:
 	_size_y.value_changed.connect(_on_size_changed)
 
 	# --- Scale ---
+	# min_value is 0.0 so the user can drag the layer all the way to
+	# "invisible" (scale = 0). Negative values are still allowed via the
+	# `allow_lesser` flag for mirroring use cases.
 	var scale_row_data := _make_pair_row_container("Scale", "X", "Y",
-		0.01, 100.0, 0.01, false, 1.0, "")
+		0.0, 100.0, 0.01, false, 1.0, "")
 	_scale_row = scale_row_data["row"]
 	_scale_x = scale_row_data["a"]
 	_scale_y = scale_row_data["b"]
@@ -378,12 +380,6 @@ func _refresh_from_data() -> void:
 # UNDO-COMMIT HELPER
 # ============================================================
 
-## Commits a transform change through the Node Editor's UndoRedo, or
-## falls back to executing directly if no editor is attached.
-##
-## The captured closure mutates `_transform` directly, which is safe
-## because the transform resource is shared between the design and the
-## node view. Undo replays the same closure with the old values.
 func _commit_transform(action_name: String, do_cb: Callable, undo_cb: Callable) -> void:
 	if _node_editor and _node_editor.has_method("commit_undoable"):
 		var ok: bool = _node_editor.commit_undoable(action_name, do_cb, undo_cb)
@@ -429,10 +425,8 @@ func _on_scale_changed(_v: float) -> void:
 	if _updating or not _transform: return
 	var old_scale: Vector2 = _transform.scale
 	var new_scale := Vector2(_scale_x.value, _scale_y.value)
-	if new_scale.x <= 0.0:
-		new_scale.x = 0.01
-	if new_scale.y <= 0.0:
-		new_scale.y = 0.01
+	# No clamping — the user is allowed to go all the way to 0.0 so the
+	# layer becomes invisible, and negative values still work for mirroring.
 	if old_scale == new_scale:
 		return
 

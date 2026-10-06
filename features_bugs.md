@@ -2,6 +2,7 @@
 
 ## EASY
 [] validator'a yeni uyarı ve hata mesajları eklenecek 
+[] node'daki absolute katmanlarda node skew'dan etkilensin 
 
 ## MEDIUM
 

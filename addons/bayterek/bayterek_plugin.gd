@@ -66,10 +66,13 @@ func _register_autoloads() -> void:
 		add_autoload_singleton("BayterekLoader", "res://addons/bayterek/scripts/shared/bayterek_loader.gd")
 	if not ProjectSettings.has_setting("autoload/BayterekSerializer"):
 		add_autoload_singleton("BayterekSerializer", "res://addons/bayterek/scripts/runtime/bayterek_serializer.gd")
+	if not ProjectSettings.has_setting("autoload/BayterekAudioManager"):
+		add_autoload_singleton("BayterekAudioManager", "res://addons/bayterek/scripts/runtime/bayterek_audio_manager.gd")
 
 func _remove_autoloads() -> void:
 	remove_autoload_singleton("BayterekLoader")
 	remove_autoload_singleton("BayterekSerializer")
+	remove_autoload_singleton("BayterekAudioManager")
 
 # ============================================================
 # PROJECT SETTINGS

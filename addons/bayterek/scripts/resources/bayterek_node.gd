@@ -38,6 +38,15 @@ var _active_states_cache_key: String = ""
 
 @export_storage var design_id: String = ""
 
+## Layer id used as the "progress" indicator for HOLD-mode purchases
+## when this node is purchased.
+##
+## Populated by apply_design() and apply_exported_overrides() by
+## remapping the design's `progress_layer_id` to the corresponding
+## copy in this node's own layers array (because copy_layers_from()
+## gives every layer a fresh id).
+@export_storage var node_progress_layer_id: String = ""
+
 # ============================================================
 # LAYOUT
 # ============================================================
@@ -46,7 +55,6 @@ var _active_states_cache_key: String = ""
 @export_storage var design_size: Vector2 = Vector2(100, 100)
 @export_storage var scale: Vector2 = Vector2.ONE
 
-## Node-wide transform applied to all layers as a group.
 @export_storage var node_rotation: float = 0.0
 @export_storage var node_skew: Vector2 = Vector2.ZERO
 
@@ -135,7 +143,6 @@ func has_field_override(field_path: String) -> bool:
 # DESIGN RESOLUTION
 # ============================================================
 
-## Returns the design that this node references, or null.
 func _resolve_design() -> BayterekNodeDesign:
 	if design_id.is_empty():
 		return null
@@ -149,9 +156,27 @@ func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPr
 	if not design:
 		return
 
+	# Remember the design's progress layer POSITION before copying,
+	# because copy_layers_from() will give every copy a fresh id.
+	var design_progress_index: int = -1
+	if not design.progress_layer_id.is_empty():
+		for i in design.layers.size():
+			if design.layers[i] and design.layers[i].layer_id == design.progress_layer_id:
+				design_progress_index = i
+				break
+
 	copy_layers_from(design.layers)
 	design_size = design.design_size
 	scale = design.scale
+
+	# Remap the design's progress layer id to the freshly-copied layer
+	# at the same index. Without this, the progress visuals silently
+	# stop working after the first refresh_visuals() because the ids
+	# no longer match.
+	node_progress_layer_id = ""
+	if design_progress_index >= 0 and design_progress_index < layers.size():
+		if layers[design_progress_index]:
+			node_progress_layer_id = layers[design_progress_index].layer_id
 
 	var all_paths: Dictionary = {}
 	for p in design.exported_fields.keys():
@@ -238,7 +263,6 @@ func add_layer(layer: BayterekLayer) -> bool:
 		return false
 	if not can_add_layer():
 		return false
-	# Guard against double-add of the same instance.
 	if layers.has(layer):
 		return false
 	layers.append(layer)
@@ -283,14 +307,6 @@ func clear_layers() -> void:
 	layers.clear()
 	clear_render_cache()
 
-## Rebuilds this node's layer array from a source array, giving every
-## copied layer a NEW layer_id so the source and the copy stay fully
-## independent afterwards.
-##
-## The old implementation called `duplicate_layer()` which preserves
-## `layer_id` — meaning two nodes referencing the same design ended up
-## sharing layer ids, and any per-layer lookup (via exported field paths)
-## could silently hit the wrong instance.
 func copy_layers_from(source_layers: Array) -> void:
 	layers.clear()
 	for layer in source_layers:
@@ -298,8 +314,6 @@ func copy_layers_from(source_layers: Array) -> void:
 			continue
 		var dup: BayterekLayer = layer.duplicate_layer()
 		if dup:
-			# Fresh id so this node's layers never collide with
-			# the source node's layers.
 			dup.layer_id = BayterekUUIDGenerator.v4()
 			layers.append(dup)
 	clear_render_cache()
@@ -314,7 +328,20 @@ func apply_design(design: BayterekNodeDesign) -> void:
 	design_id = design.id
 	design_size = design.design_size
 	scale = design.scale
+
+	var design_progress_index: int = -1
+	if not design.progress_layer_id.is_empty():
+		for i in design.layers.size():
+			if design.layers[i] and design.layers[i].layer_id == design.progress_layer_id:
+				design_progress_index = i
+				break
+
 	copy_layers_from(design.layers)
+
+	node_progress_layer_id = ""
+	if design_progress_index >= 0 and design_progress_index < layers.size():
+		if layers[design_progress_index]:
+			node_progress_layer_id = layers[design_progress_index].layer_id
 
 func apply_defaults_from_tree(tree: BayterekTree) -> void:
 	if not tree:
@@ -337,7 +364,6 @@ func get_visual_bounds() -> Rect2:
 	if cache_key == _visual_bounds_cache_key:
 		return _visual_bounds_cache
 
-	# 1) If the design has a bounds layer, use its effective size.
 	var design: BayterekNodeDesign = _resolve_design()
 	if design and not design.bounds_layer_id.is_empty():
 		var result: Rect2 = design.get_bounds_rect()
@@ -345,7 +371,6 @@ func get_visual_bounds() -> Rect2:
 		_visual_bounds_cache_key = cache_key
 		return result
 
-	# 2) Otherwise, fall back to the union of all visible layers.
 	if layers.is_empty():
 		var empty_result: Rect2 = Rect2(-design_size * 0.5, design_size)
 		_visual_bounds_cache = empty_result

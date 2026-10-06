@@ -11,13 +11,19 @@ signal node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal node_drag_ended(node: BayterekNodeButton)
 signal node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 
+## Emitted the moment the left mouse button goes down on a node.
+signal node_press_started(node: BayterekNodeButton, screen_pos: Vector2)
+
+## Emitted the moment the left mouse button is released on a node.
+signal node_press_ended(node: BayterekNodeButton, screen_pos: Vector2)
+
 var _nodes: Dictionary = {}
 
 # --- Batch refresh queue (state changes) ---
 var _refresh_queue: Dictionary = {}
 var _refresh_scheduled: bool = false
 
-# --- Batch visual-offset queue (Aşama 3 — animations move nodes) ---
+# --- Batch visual-offset queue ---
 var _visual_refresh_queue: Dictionary = {}
 var _visual_refresh_scheduled: bool = false
 
@@ -131,6 +137,7 @@ func create_from_prefab(position: Vector2, prefab: BayterekPrefab) -> BayterekNo
 	if not prefab.design_id.is_empty():
 		var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
 		if design:
+			# apply_design() populates node_progress_layer_id correctly.
 			node_data.apply_design(design)
 		else:
 			node_data.apply_defaults_from_tree(_tree_data)
@@ -186,8 +193,6 @@ func delete_node(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data:
 		return
 
-	# Remove from any pending batch queues so a freed node can't be
-	# processed by a deferred flush.
 	_visual_refresh_queue.erase(node)
 	_refresh_queue.erase(node)
 
@@ -411,15 +416,6 @@ func _compute_allocatable(node: BayterekNodeButton, active_ids: Array) -> bool:
 # PRIVATE
 # ============================================================
 
-## Creates a node button sized to fit the largest visible layer.
-##
-## Size = design's natural size (no scale multiplier).
-## Scale = visual multiplier via Control.scale (pivot-centered).
-##
-## We use set_deferred for size/custom_minimum_size/pivot_offset so the
-## assignment happens after the Control has entered the tree — otherwise
-## Godot emits "Nodes with non-equal opposite anchors will have their
-## size overridden after _ready()".
 func _create_node_button(node_data: BayterekNode) -> BayterekNodeButton:
 	var node := BayterekNodeButton.new()
 
@@ -431,7 +427,6 @@ func _create_node_button(node_data: BayterekNode) -> BayterekNodeButton:
 	if node_size.x <= 0.0 or node_size.y <= 0.0:
 		node_size = Vector2(100, 100)
 
-	# set_deferred avoids the "size overridden after _ready()" anchor warning.
 	node.set_deferred("size", node_size)
 	node.set_deferred("custom_minimum_size", node_size)
 	node.set_deferred("pivot_offset", node_size * 0.5)
@@ -439,9 +434,6 @@ func _create_node_button(node_data: BayterekNode) -> BayterekNodeButton:
 	return node
 
 func _position_node(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
-	# Layout position is based on SIZE, not scale.
-	# Control.scale only affects rendering — position stays at the
-	# top-left of the layout rect.
 	var local_pos: Vector2 = pos_in_tree + (_tree_data.size * 0.5) - (node.size * 0.5)
 	node.position = local_pos
 
@@ -452,8 +444,9 @@ func _connect_node_signals(node: BayterekNodeButton) -> void:
 	node.dragged.connect(_on_node_dragged)
 	node.drag_ended.connect(_on_node_drag_ended)
 	node.right_clicked.connect(_on_node_right_clicked)
-	# Aşama 3: node's visual offset changes → glue connection lines.
 	node.visual_offset_changed.connect(_on_node_visual_offset_changed)
+	node.press_started.connect(_on_node_press_started)
+	node.press_ended.connect(_on_node_press_ended)
 
 # ============================================================
 # SIGNAL HANDLERS
@@ -478,14 +471,16 @@ func _on_node_drag_ended(node: BayterekNodeButton) -> void:
 func _on_node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
 	node_right_clicked.emit(node, screen_pos)
 
+func _on_node_press_started(node: BayterekNodeButton, screen_pos: Vector2) -> void:
+	node_press_started.emit(node, screen_pos)
+
+func _on_node_press_ended(node: BayterekNodeButton, screen_pos: Vector2) -> void:
+	node_press_ended.emit(node, screen_pos)
+
 # ============================================================
-# VISUAL OFFSET TRACKING (Aşama 3)
+# VISUAL OFFSET TRACKING
 # ============================================================
 
-## Called when a node's visual offset changes (hover lift, exit descent,
-## pop scale, etc). We coalesce multiple per-frame updates into a single
-## deferred flush so a hover_exit of N nodes doesn't cause N separate
-## connection-line recomputations.
 func _on_node_visual_offset_changed(node: BayterekNodeButton, _offset: Vector2, _distance: float) -> void:
 	if not is_instance_valid(node):
 		return
@@ -531,6 +526,21 @@ func duplicate_node(original: BayterekNodeButton, offset: Vector2 = Vector2(20, 
 	node_data.exported_overrides = src.exported_overrides.duplicate(true)
 
 	node_data.copy_layers_from(src.layers)
+
+	# CRITICAL: preserve the source's progress-layer id remap. Since
+	# copy_layers_from() assigns fresh ids to every layer, we must find
+	# the source's progress layer at its ORIGINAL index and remap it to
+	# the duplicate's layer at the same index.
+	node_data.node_progress_layer_id = ""
+	if not src.node_progress_layer_id.is_empty():
+		var src_progress_index: int = -1
+		for i in src.layers.size():
+			if src.layers[i] and src.layers[i].layer_id == src.node_progress_layer_id:
+				src_progress_index = i
+				break
+		if src_progress_index >= 0 and src_progress_index < node_data.layers.size():
+			if node_data.layers[src_progress_index]:
+				node_data.node_progress_layer_id = node_data.layers[src_progress_index].layer_id
 
 	if not src.reference_id.is_empty():
 		node_data.reference_id = src.reference_id

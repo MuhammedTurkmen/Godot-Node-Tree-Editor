@@ -21,6 +21,7 @@ GameLocalization="*uid://brfo61g2bql3o"
 BayterekLocalizationLoader="*uid://cjmtxiyjohf62"
 BayterekLoader="*uid://nkd7mhbs2vhv"
 BayterekSerializer="*uid://bncb0tmve5k7w"
+BayterekAudioManager="*uid://d3rv5nr0ujrjb"
 
 [debug]
 

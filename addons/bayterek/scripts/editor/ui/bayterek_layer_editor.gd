@@ -4,18 +4,13 @@ extends VBoxContainer
 ## Middle-column layer editor.
 ##
 ## All mutations go through `_commit()`, which routes them through the
-## parent Node Editor's UndoRedo instance when available. When the
-## editor is used standalone (no `node_editor` reference), mutations
-## fall back to direct assignment without undo support.
+## parent Node Editor's UndoRedo instance when available.
 
 signal changed
 
 var design: BayterekNodeDesign = null
 var editor: BayterekEditor = null
 
-## Reference to the parent Node Editor screen (if any). Provides access
-## to the central UndoRedo instance for undoable actions. May be null
-## if the layer editor is used outside of a Node Editor context.
 var node_editor: BayterekNodeEditorScreen = null
 
 var _layer_tree: Tree
@@ -33,20 +28,8 @@ var _context_menu: PopupMenu
 var _selected_layer_index: int = -1
 var _updating_ui: bool = false
 
-## When true, the next call to `_rebuild_detail_form()` is skipped.
-## Set while an undo/redo is executing, to avoid rebuilding the UI in
-## the middle of Godot's UndoRedo bookkeeping.
 var _suspend_detail_rebuild: bool = false
 
-## Cache for the transform form so we don't rebuild it on every
-## notify_layer_modified() / undo / redo. Rebuilding the form destroys
-## and recreates its SpinBox children, and SpinBox uses an internal
-## Timer to debounce arrow-key value changes — destroying the SpinBox
-## while that Timer is running causes Godot to emit
-## "Unable to start the timer because it's not inside the scene tree".
-##
-## By keeping the form alive and only calling set_transform() to refresh
-## its values, we avoid that failure mode entirely.
 var _transform_form: BayterekLayerTransformForm = null
 var _transform_form_layer_id: String = ""
 
@@ -63,6 +46,8 @@ const CM_MOVE_UP := 4
 const CM_MOVE_DOWN := 5
 const CM_SET_BOUNDS := 6
 const CM_TOGGLE_ABSOLUTE := 7
+const CM_SET_PROGRESS := 8
+const CM_REMOVE_PROGRESS := 9
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
@@ -145,6 +130,9 @@ func _build_context_menu() -> void:
 	_context_menu.add_item("Set as Bounds", CM_SET_BOUNDS)
 	_context_menu.add_item("Set as Absolute", CM_TOGGLE_ABSOLUTE)
 	_context_menu.add_separator()
+	_context_menu.add_item("Set as Progress Layer", CM_SET_PROGRESS)
+	_context_menu.add_item("Remove Progress Layer", CM_REMOVE_PROGRESS)
+	_context_menu.add_separator()
 	_context_menu.add_item("Delete", CM_DELETE)
 	_context_menu.id_pressed.connect(_on_context_menu_pressed)
 	add_child(_context_menu)
@@ -173,8 +161,6 @@ func set_design(d: BayterekNodeDesign) -> void:
 		design.layers_changed.connect(_on_design_layers_changed)
 
 	_selected_layer_index = -1
-	# Destroy the cached transform form when the design changes — it's
-	# tied to the old design's layer resources.
 	if _transform_form and is_instance_valid(_transform_form):
 		_transform_form.queue_free()
 	_transform_form = null
@@ -187,9 +173,6 @@ func _on_design_layers_changed(_d: BayterekNodeDesign, _change: String) -> void:
 	_rebuild_layer_list()
 	if _suspend_detail_rebuild:
 		return
-	# Use the refresh path so we don't destroy the transform form's
-	# SpinBox children — that would kill their internal debounce Timer
-	# and cause "not inside the scene tree" errors on the next edit.
 	_refresh_detail_form()
 
 # ============================================================
@@ -206,7 +189,6 @@ func _rebuild_layer_list() -> void:
 		_update_buttons_state()
 		return
 
-	# Clamp selected index — undo/redo may have changed layer count.
 	if _selected_layer_index >= design.layers.size():
 		_selected_layer_index = design.layers.size() - 1
 
@@ -219,10 +201,15 @@ func _rebuild_layer_list() -> void:
 
 		var item := _layer_root.create_child()
 		var display_name: String = layer.layer_name
-		if layer.absolute:
-			display_name = "⬚ " + display_name
+
+		# Prefix markers: bounds + progress
 		if design.bounds_layer_id == layer.layer_id:
 			display_name = "◆ " + display_name
+		if design.progress_layer_id == layer.layer_id:
+			display_name = "⏳ " + display_name
+		if layer.absolute:
+			display_name = "⬚ " + display_name
+
 		item.set_text(0, display_name)
 		item.set_metadata(0, i)
 		item.set_selectable(0, true)
@@ -231,7 +218,7 @@ func _rebuild_layer_list() -> void:
 		if theme and theme.has_icon(icon_name, Bayterek.ICON_THEME):
 			item.set_icon(0, theme.get_icon(icon_name, Bayterek.ICON_THEME))
 
-		# 1) Visibility (eye)
+		# 1) Visibility
 		var vis_icon: String = "GuiVisibilityVisible" if layer.visible else "GuiVisibilityHidden"
 		if theme and theme.has_icon(vis_icon, Bayterek.ICON_THEME):
 			item.add_button(0, theme.get_icon(vis_icon, Bayterek.ICON_THEME), BTN_VISIBILITY)
@@ -284,8 +271,6 @@ func _on_layer_selected() -> void:
 		return
 
 	_selected_layer_index = idx
-	# Refresh the existing detail form (including the cached transform
-	# form) instead of rebuilding it from scratch.
 	_refresh_detail_form()
 	_update_buttons_state()
 
@@ -561,6 +546,52 @@ func _toggle_absolute_for_selected() -> void:
 	changed.emit()
 
 # ============================================================
+# PROGRESS LAYER
+# ============================================================
+
+func _set_progress_layer_for_selected() -> void:
+	if not design or _selected_layer_index < 0:
+		return
+	var layer: BayterekLayer = design.get_layer(_selected_layer_index)
+	if not layer:
+		return
+
+	var old_id: String = design.progress_layer_id
+	var new_id: String = layer.layer_id
+
+	var do_cb := func():
+		if design:
+			design.progress_layer_id = new_id
+			design.notify_layer_modified()
+	var undo_cb := func():
+		if design:
+			design.progress_layer_id = old_id
+			design.notify_layer_modified()
+
+	_commit("Set Progress Layer", do_cb, undo_cb)
+	changed.emit()
+
+func _remove_progress_layer_for_selected() -> void:
+	if not design:
+		return
+	if design.progress_layer_id.is_empty():
+		return
+
+	var old_id: String = design.progress_layer_id
+
+	var do_cb := func():
+		if design:
+			design.progress_layer_id = ""
+			design.notify_layer_modified()
+	var undo_cb := func():
+		if design:
+			design.progress_layer_id = old_id
+			design.notify_layer_modified()
+
+	_commit("Remove Progress Layer", do_cb, undo_cb)
+	changed.emit()
+
+# ============================================================
 # RENAME DIALOG
 # ============================================================
 
@@ -630,6 +661,8 @@ func _show_layer_context_menu(pos: Vector2) -> void:
 	var down_i: int = _context_menu.get_item_index(CM_MOVE_DOWN)
 	var bounds_i: int = _context_menu.get_item_index(CM_SET_BOUNDS)
 	var abs_i: int = _context_menu.get_item_index(CM_TOGGLE_ABSOLUTE)
+	var prog_i: int = _context_menu.get_item_index(CM_SET_PROGRESS)
+	var prog_rm_i: int = _context_menu.get_item_index(CM_REMOVE_PROGRESS)
 
 	_context_menu.set_item_disabled(rename_i, false)
 	_context_menu.set_item_disabled(dup_i, false)
@@ -649,6 +682,18 @@ func _show_layer_context_menu(pos: Vector2) -> void:
 	_context_menu.set_item_text(abs_i, "Remove Absolute" if is_abs else "Set as Absolute")
 	_context_menu.set_item_checked(abs_i, is_abs)
 
+	# --- Progress Layer items ---
+	# NOTE: Godot 4's PopupMenu has no `set_item_visible`. We keep the
+	# "Remove Progress Layer" item always present and just disable it
+	# when there is nothing to remove.
+	var is_progress: bool = (layer and design.progress_layer_id == layer.layer_id)
+	_context_menu.set_item_text(prog_i, "Remove Progress Layer" if is_progress else "Set as Progress Layer")
+	_context_menu.set_item_checked(prog_i, is_progress)
+	_context_menu.set_item_disabled(prog_i, is_progress)
+
+	var has_progress: bool = not design.progress_layer_id.is_empty()
+	_context_menu.set_item_disabled(prog_rm_i, not has_progress)
+
 	_context_menu.position = Vector2i(_layer_tree.get_screen_position() + pos)
 	_context_menu.popup()
 
@@ -661,6 +706,8 @@ func _on_context_menu_pressed(id: int) -> void:
 		CM_MOVE_DOWN: _on_down_pressed()
 		CM_SET_BOUNDS: _toggle_bounds_for_selected()
 		CM_TOGGLE_ABSOLUTE: _toggle_absolute_for_selected()
+		CM_SET_PROGRESS: _set_progress_layer_for_selected()
+		CM_REMOVE_PROGRESS: _remove_progress_layer_for_selected()
 
 func _on_layer_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -707,14 +754,7 @@ func _update_buttons_state() -> void:
 # DETAIL FORM
 # ============================================================
 
-## Full rebuild of the detail panel. Destroys all child widgets and
-## recreates them from scratch. Only call this for STRUCTURAL changes
-## (selection change, layer type change, etc.) — for value updates use
-## `_refresh_detail_form()` instead so the cached transform form and
-## its SpinBox children survive.
 func _rebuild_detail_form() -> void:
-	# Destroy the cached transform form so it's recreated below with
-	# the current layer's data.
 	if _transform_form and is_instance_valid(_transform_form):
 		_transform_form.queue_free()
 	_transform_form = null
@@ -737,8 +777,6 @@ func _rebuild_detail_form() -> void:
 	if not layer:
 		return
 
-	# Capture the current index at the time the form is built so the
-	# name field's commit callbacks always refer to the right layer.
 	var form_layer_index: int = _selected_layer_index
 
 	var name_row := HBoxContainer.new()
@@ -785,6 +823,52 @@ func _rebuild_detail_form() -> void:
 		bounds_hint.add_theme_color_override("font_color", Color(0.4, 0.9, 1.0))
 		bounds_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_detail_root.add_child(bounds_hint)
+
+	# --- PROGRESS LAYER (HOLD mode) ---
+	if design.progress_layer_id == layer.layer_id:
+		var prog_hint := Label.new()
+		prog_hint.text = "⏳ Progress Layer — animates during HOLD-mode purchase"
+		prog_hint.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
+		prog_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_detail_root.add_child(prog_hint)
+
+		# Progress mode dropdown
+		var prog_mode_row := HBoxContainer.new()
+		prog_mode_row.add_theme_constant_override("separation", 4)
+		_detail_root.add_child(prog_mode_row)
+
+		var prog_mode_label := Label.new()
+		prog_mode_label.text = "Progress Mode"
+		prog_mode_label.custom_minimum_size = Vector2(110, 0)
+		prog_mode_label.tooltip_text = "How the progress layer animates as hold progress goes 0 → 1."
+		prog_mode_label.mouse_filter = Control.MOUSE_FILTER_PASS
+		prog_mode_row.add_child(prog_mode_label)
+
+		var prog_mode_dd := OptionButton.new()
+		prog_mode_dd.size_flags_horizontal = SIZE_EXPAND_FILL
+		prog_mode_dd.add_item("Scale X", 0)
+		prog_mode_dd.add_item("Scale Y", 1)
+		prog_mode_dd.add_item("Scale Uniform", 2)
+		prog_mode_dd.add_item("Radial (rotate)", 3)
+		prog_mode_dd.add_item("Reveal Y", 4)
+		prog_mode_dd.select(clampi(design.progress_layer_mode, 0, 4))
+		prog_mode_dd.item_selected.connect(func(index: int):
+			if _updating_ui or not design:
+				return
+			var old_mode: int = design.progress_layer_mode
+			var new_mode: int = index
+			var do_cb := func():
+				if design:
+					design.progress_layer_mode = new_mode
+					design.notify_layer_modified()
+			var undo_cb := func():
+				if design:
+					design.progress_layer_mode = old_mode
+					design.notify_layer_modified()
+			_commit("Change Progress Mode", do_cb, undo_cb)
+			changed.emit()
+		)
+		prog_mode_row.add_child(prog_mode_dd)
 
 	# --- Visibility checkbox ---
 	var vis_row := HBoxContainer.new()
@@ -849,7 +933,7 @@ func _rebuild_detail_form() -> void:
 		var do_cb := func():
 			layer.absolute = new_v
 			if design:
-				design.notify_layer_modified()
+					design.notify_layer_modified()
 		var undo_cb := func():
 			layer.absolute = old_v
 			if design:
@@ -971,10 +1055,6 @@ func _rebuild_detail_form() -> void:
 	transform_inner.add_theme_constant_override("separation", 6)
 	transform_fold.add_child(transform_inner)
 
-	# Reuse the cached transform form if it exists; only create it when
-	# it's missing. This is the key fix for the "Unable to start the
-	# timer" error: we never destroy and recreate the SpinBox children
-	# during a value refresh.
 	if not _transform_form or not is_instance_valid(_transform_form):
 		_transform_form = BayterekLayerTransformForm.new()
 		_transform_form.changed.connect(func():
@@ -997,16 +1077,6 @@ func _rebuild_detail_form() -> void:
 		_build_texture_detail(layer)
 
 
-## Refreshes the detail panel's field values WITHOUT destroying and
-## recreating the widget tree.
-##
-## Use this whenever the selection changes or the design mutates but
-## the structure of the form stays the same (same layer type, same
-## fields). This is what we call from _on_layer_selected() and from
-## _on_design_layers_changed() to avoid the SpinBox timer issue.
-##
-## For structural changes (layer type changed, layer added/removed),
-## call _rebuild_detail_form() instead.
 func _refresh_detail_form() -> void:
 	if not _transform_form or not is_instance_valid(_transform_form):
 		_rebuild_detail_form()
@@ -1025,16 +1095,10 @@ func _refresh_detail_form() -> void:
 		_rebuild_detail_form()
 		return
 
-	# If the layer's transform resource changed identity, or the layer
-	# id changed, we need a full rebuild to rewire all the export
-	# helpers (they hold references to the old layer's id).
 	if layer.layer_id != _transform_form_layer_id:
 		_rebuild_detail_form()
 		return
 
-	# Refresh just the transform form values in place. This does not
-	# destroy any SpinBox children, so their internal debounce Timers
-	# stay intact.
 	_transform_form.set_transform(
 		layer.transform,
 		design,

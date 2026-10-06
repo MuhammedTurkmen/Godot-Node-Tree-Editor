@@ -1,10 +1,12 @@
-[gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://cs1hc4ww5gsk6"]
+[gd_resource type="Resource" script_class="BayterekNodeDesign" format=3 uid="uid://cc7onwl1wc0na"]
 
 [ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="1_rlmi4"]
+[ext_resource type="Texture2D" uid="uid://fumij183xeqq" path="res://assets/square.png" id="2_3ujw7"]
 [ext_resource type="Script" uid="uid://c4x2qvl1il8ul" path="res://addons/bayterek/scripts/resources/bayterek_node_design.gd" id="2_8idq7"]
 [ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="2_a6nu6"]
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="3_3ujw7"]
-[ext_resource type="Texture2D" uid="uid://neinc785lt3k" path="res://assets/icon.svg" id="4_3ujw7"]
+[ext_resource type="Texture2D" uid="uid://bad5qhdfe60r3" path="res://assets/big_border.png" id="5_paddw"]
+[ext_resource type="Texture2D" uid="uid://ccrvoxhv3c5d0" path="res://assets/button_icon.png" id="6_u1mso"]
 
 [sub_resource type="Resource" id="Resource_a6nu6"]
 script = ExtResource("3_3ujw7")
@@ -15,7 +17,7 @@ script = ExtResource("2_a6nu6")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("4_3ujw7")
+"texture": ExtResource("2_3ujw7")
 }
 }
 tint_enabled = true
@@ -57,11 +59,10 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "d75848a5-929d-4f0c-94ed-56890bfefb57"
+layer_id = "c9492088-ead2-44fb-8222-ac0ab70027c7"
 layer_name = "Shadow"
 transform = SubResource("Resource_a6nu6")
 absolute = true
-texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_paddw"]
 script = ExtResource("3_3ujw7")
@@ -72,7 +73,7 @@ script = ExtResource("2_a6nu6")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("4_3ujw7")
+"texture": ExtResource("5_paddw")
 }
 }
 tint_configs = {
@@ -113,13 +114,182 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "f475b784-478a-48c1-8e71-d2cd0b9332b3"
-layer_name = "Icon"
+layer_id = "09140b4f-3e14-4c8f-8e8e-d1542fd9e858"
+layer_name = "Border"
 transform = SubResource("Resource_paddw")
 texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_joamw"]
+script = ExtResource("3_3ujw7")
+size = Vector2(94, 94)
+
+[sub_resource type="Resource" id="Resource_5qdsx"]
+script = ExtResource("2_a6nu6")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("2_3ujw7")
+}
+}
+tint_enabled = true
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.30859375, 0.25, 1, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "63e8583e-305a-477b-9ba9-568a12323b91"
+layer_name = "Background"
+transform = SubResource("Resource_joamw")
+
+[sub_resource type="Resource" id="Resource_pcukm"]
+script = ExtResource("3_3ujw7")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_ll7h2"]
+script = ExtResource("2_a6nu6")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("6_u1mso")
+}
+}
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": false
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "410c706f-6a78-4553-9dce-5d3f5d3741e1"
+layer_name = "Icon"
+transform = SubResource("Resource_pcukm")
+texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_4im17"]
+script = ExtResource("3_3ujw7")
+position = Vector2(0, 47)
+size = Vector2(94, 94)
+pivot_mode = 7
+scale_from_pivot = true
+
+[sub_resource type="Resource" id="Resource_8ioaj"]
+script = ExtResource("2_a6nu6")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("2_3ujw7")
+}
+}
+tint_enabled = true
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(1, 0, 0, 0.654902),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "18d73c1c-4b07-466d-8bd4-76b8a4695182"
+layer_name = "Filling"
+transform = SubResource("Resource_4im17")
 
 [resource]
 script = ExtResource("2_8idq7")
 id = "new_design"
-name = "Yeni"
-layers = Array[ExtResource("1_rlmi4")]([SubResource("Resource_3ujw7"), SubResource("Resource_u1mso")])
+layers = Array[ExtResource("1_rlmi4")]([SubResource("Resource_3ujw7"), SubResource("Resource_u1mso"), SubResource("Resource_5qdsx"), SubResource("Resource_ll7h2"), SubResource("Resource_8ioaj")])
+progress_layer_id = "18d73c1c-4b07-466d-8bd4-76b8a4695182"
+progress_layer_mode = 1

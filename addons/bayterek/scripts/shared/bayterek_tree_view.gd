@@ -70,12 +70,19 @@ var _drag_start_positions: Dictionary = {}
 var _group_frame_dragging: BayterekGroupFrame = null
 var _group_frame_drag_start_mc_local: Vector2 = Vector2.ZERO
 
+# --- Purchase (hold) UI state ---
+var _purchase_bar_root: Control = null
+var _purchase_bar_fill: ColorRect = null
+var _purchase_loop_handle = null
+var _purchase_hold_node: BayterekNodeButton = null
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_PASS
 
 	_create_tooltip()
+	set_process(true)
 
 func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
@@ -91,6 +98,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_create_camera()
 	_create_services()
 	_create_selection_box()
+	_create_purchase_bar()
 
 	_group_frame_dragging = null
 
@@ -100,10 +108,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 # LINE DELETE MODE
 # ============================================================
 
-## Enables/disables line-delete mode. While active, `_gui_input` does
-## manual raycasting against every connection's polyline. No
-## mouse_filter changes are made, so node dragging / selection keep
-## working normally.
 func set_line_delete_mode(enabled: bool) -> void:
 	if connections_service:
 		connections_service.set_line_delete_mode(enabled)
@@ -300,8 +304,6 @@ func _gui_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
 
-	# In line-delete mode, intercept left clicks and try to hit a line
-	# BEFORE passing the event to the camera / selection box.
 	if connections_service and connections_service.is_line_delete_mode_active():
 		if event is InputEventMouseButton:
 			if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -319,15 +321,6 @@ func _gui_input(event: InputEvent) -> void:
 		selection_box.handle_input(event)
 
 
-## Converts `screen_pos` to `main_container`'s local coordinate space
-## (the SAME space as `line.points`) and finds the CLOSEST line within
-## its hit threshold. Deletes that line and returns true if any was hit.
-##
-## Why `screen_to_mc_local` and not `screen_to_tree`?
-##   `line.points` lives in `main_container`'s LOCAL coordinate space
-##   (that's where all node positions and line points are laid out).
-##   `screen_to_tree` subtracts `tree_size / 2` because it targets the
-##   centered "tree coordinate" system; that would be wrong here.
 func _try_delete_line_at(screen_pos: Vector2) -> bool:
 	if not connections_service:
 		return false
@@ -530,15 +523,11 @@ func _on_node_pressed_internal(node: BayterekNodeButton, additive: bool) -> void
 	if node.node_data.locked:
 		return
 
-	# While line-delete mode is active, ignore node clicks so the user
-	# can click lines freely.
 	if connections_service and connections_service.is_line_delete_mode_active():
 		return
 
 	var ctrl_held: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
 	if _is_allocation_active() and not ctrl_held:
-		allocation_service.on_node_pressed(node)
-		_refresh_all_allocatable_flags()
 		return
 
 	var shift_pressed: bool = Input.is_key_pressed(KEY_SHIFT)
@@ -590,6 +579,241 @@ func _do_remove_connection(from_id: int, to_id: int) -> void:
 	_refresh_all_allocatable_flags()
 
 # ============================================================
+# PRESS START / END (purchase)
+# ============================================================
+
+func _on_node_press_started(node: BayterekNodeButton, _screen_pos: Vector2) -> void:
+	if not node or not node.node_data:
+		return
+	if node.node_data.locked:
+		return
+	if not _is_allocation_active():
+		return
+	if not allocation_service:
+		return
+
+	allocation_service.on_node_press_start(node)
+
+
+func _on_node_press_ended(node: BayterekNodeButton, _screen_pos: Vector2) -> void:
+	if not allocation_service:
+		return
+	allocation_service.on_node_press_end(node)
+
+# ============================================================
+# HOLD TICK
+# ============================================================
+
+func _process(delta: float) -> void:
+	if not allocation_service or not _tree_data:
+		return
+	if not allocation_service.is_holding():
+		return
+
+	var t: float = allocation_service.tick_hold(delta)
+	_update_purchase_visuals(t)
+
+# ============================================================
+# PURCHASE VISUALS
+# ============================================================
+
+func _create_purchase_bar() -> void:
+	if not _tree_data:
+		return
+
+	_purchase_bar_root = Control.new()
+	_purchase_bar_root.name = "PurchaseBar"
+	_purchase_bar_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_purchase_bar_root.visible = false
+	_purchase_bar_root.z_index = 200
+	add_child(_purchase_bar_root)
+
+	var track := Panel.new()
+	track.name = "Track"
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var track_style := StyleBoxFlat.new()
+	track_style.bg_color = Color(0.08, 0.08, 0.10, 0.85)
+	track_style.border_color = Color(0.35, 0.35, 0.40, 0.9)
+	track_style.set_border_width_all(1)
+	track_style.set_corner_radius_all(4)
+	track.add_theme_stylebox_override("panel", track_style)
+	_purchase_bar_root.add_child(track)
+
+	_purchase_bar_fill = ColorRect.new()
+	_purchase_bar_fill.name = "Fill"
+	_purchase_bar_fill.color = Color(0.56, 0.96, 0.56, 0.95)
+	_purchase_bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_purchase_bar_root.add_child(_purchase_bar_fill)
+
+	_layout_purchase_bar()
+
+
+func _layout_purchase_bar() -> void:
+	if not _purchase_bar_root:
+		return
+
+	var length: float = _tree_data.purchase_bar_length
+	var margin: float = _tree_data.purchase_bar_margin
+	var thickness: float = 8.0
+	var view_size: Vector2 = size
+
+	var track: Panel = _purchase_bar_root.get_node_or_null("Track")
+	if not track:
+		return
+
+	var bar_rect: Rect2
+	match _tree_data.purchase_bar_placement:
+		0:
+			bar_rect = Rect2(
+				Vector2((view_size.x - length) * 0.5, margin),
+				Vector2(length, thickness)
+			)
+		1:
+			bar_rect = Rect2(
+				Vector2((view_size.x - length) * 0.5, view_size.y - margin - thickness),
+				Vector2(length, thickness)
+			)
+		2:
+			bar_rect = Rect2(
+				Vector2(margin, (view_size.y - length) * 0.5),
+				Vector2(thickness, length)
+			)
+		3:
+			bar_rect = Rect2(
+				Vector2(view_size.x - margin - thickness, (view_size.y - length) * 0.5),
+				Vector2(thickness, length)
+			)
+		_:
+			bar_rect = Rect2(
+				Vector2((view_size.x - length) * 0.5, view_size.y - margin - thickness),
+				Vector2(length, thickness)
+			)
+
+	_purchase_bar_root.position = bar_rect.position
+	_purchase_bar_root.size = bar_rect.size
+	track.position = Vector2.ZERO
+	track.size = bar_rect.size
+
+	if _purchase_bar_fill:
+		_purchase_bar_fill.position = Vector2(2, 2)
+
+
+func _update_purchase_visuals(t: float) -> void:
+	if not _tree_data:
+		return
+
+	if _tree_data.purchase_visual_mode == 1:
+		_show_purchase_bar(t)
+	else:
+		_hide_purchase_bar()
+
+	if _tree_data.purchase_visual_mode == 2:
+		var node: BayterekNodeButton = allocation_service._hold_node
+		if node and is_instance_valid(node):
+			_purchase_hold_node = node
+			node.set_purchase_progress(t)
+
+	_update_purchase_sound(t)
+
+
+func _show_purchase_bar(t: float) -> void:
+	if not _purchase_bar_root or not _purchase_bar_fill:
+		return
+	_purchase_bar_root.visible = true
+
+	var bar_size: Vector2 = _purchase_bar_root.size
+	var horizontal: bool = _tree_data.purchase_bar_placement == 0 or _tree_data.purchase_bar_placement == 1
+
+	if horizontal:
+		_purchase_bar_fill.position = Vector2(2, 2)
+		_purchase_bar_fill.size = Vector2(maxf(0.0, (bar_size.x - 4.0) * t), maxf(0.0, bar_size.y - 4.0))
+	else:
+		var inner_h: float = maxf(0.0, bar_size.y - 4.0)
+		var inner_w: float = maxf(0.0, bar_size.x - 4.0)
+		var fill_h: float = inner_h * t
+		_purchase_bar_fill.position = Vector2(2, 2 + (inner_h - fill_h))
+		_purchase_bar_fill.size = Vector2(inner_w, fill_h)
+
+
+func _hide_purchase_bar() -> void:
+	if _purchase_bar_root:
+		_purchase_bar_root.visible = false
+
+# ============================================================
+# PURCHASE SOUND
+# ============================================================
+
+func _update_purchase_sound(t: float) -> void:
+	var audio := _get_audio_manager()
+
+	if allocation_service and allocation_service.is_holding():
+		if not _purchase_loop_handle or not _purchase_loop_handle.is_playing():
+			var stream: AudioStream = _tree_data.purchase_hold_sound if _tree_data else null
+			if stream and audio:
+				_purchase_loop_handle = audio.play_loop(
+					stream,
+					_tree_data.purchase_hold_sound_volume_db,
+					_tree_data.purchase_sound_pitch_min
+				)
+		if _purchase_loop_handle:
+			var pitch: float = lerpf(
+				_tree_data.purchase_sound_pitch_min,
+				_tree_data.purchase_sound_pitch_max,
+				clampf(t, 0.0, 1.0)
+			)
+			_purchase_loop_handle.set_pitch(pitch)
+	else:
+		if _purchase_loop_handle:
+			_purchase_loop_handle.stop(0.08)
+			_purchase_loop_handle = null
+
+
+func _on_purchase_hold_started(node: BayterekNodeButton) -> void:
+	_purchase_hold_node = node
+
+func _on_purchase_hold_cancelled(node: BayterekNodeButton) -> void:
+	_cleanup_purchase_state(false)
+	var audio := _get_audio_manager()
+	if _tree_data and _tree_data.purchase_cancel_sound and audio:
+		audio.play_sfx(_tree_data.purchase_cancel_sound, -6.0)
+
+func _on_purchase_hold_completed(node: BayterekNodeButton) -> void:
+	_cleanup_purchase_state(true)
+	var audio := _get_audio_manager()
+	if _tree_data and _tree_data.purchase_success_sound and audio:
+		audio.play_sfx(_tree_data.purchase_success_sound, -6.0)
+
+
+## Cleans up the purchase state after a hold ends.
+##
+## `completed` = true  → hold ran to full duration.
+## `completed` = false → hold was released early.
+##
+## The flag is forwarded to the node so it can decide the resting
+## visibility of the progress layer.
+func _cleanup_purchase_state(completed: bool) -> void:
+	_hide_purchase_bar()
+	if _purchase_hold_node and is_instance_valid(_purchase_hold_node):
+		_purchase_hold_node.clear_purchase_progress(completed)
+	_purchase_hold_node = null
+	if _purchase_loop_handle:
+		_purchase_loop_handle.stop(0.08)
+		_purchase_loop_handle = null
+
+
+func _get_audio_manager() -> Node:
+	var root := get_tree().root
+	if not root:
+		return null
+	return root.get_node_or_null("BayterekAudioManager")
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		_layout_purchase_bar()
+
+# ============================================================
 # MOVEMENT
 # ============================================================
 
@@ -600,9 +824,6 @@ func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) 
 		return
 	if _is_allocation_active():
 		return
-	# NOTE: We do NOT block dragging in line-delete mode. Node
-	# interaction stays fully functional; only the click interception
-	# in `_gui_input` prefers lines over nodes.
 
 	if not selected_nodes.has(node):
 		if not Input.is_key_pressed(KEY_CTRL):
@@ -845,6 +1066,8 @@ func _create_services() -> void:
 	nodes_service.node_dragged.connect(_on_node_dragged)
 	nodes_service.node_drag_ended.connect(_on_node_drag_ended)
 	nodes_service.node_right_clicked.connect(_on_nodes_service_right_clicked)
+	nodes_service.node_press_started.connect(_on_node_press_started)
+	nodes_service.node_press_ended.connect(_on_node_press_ended)
 
 	connections_service = BayterekConnectionsService.new(self)
 	connections_service.load_tree(_tree_data)
@@ -876,6 +1099,10 @@ func _create_services() -> void:
 
 	allocation_service.node_allocated.connect(func(n): node_allocated.emit(n.node_data))
 	allocation_service.node_deallocated.connect(func(n): node_deallocated.emit(n.node_data))
+
+	allocation_service.hold_started.connect(_on_purchase_hold_started)
+	allocation_service.hold_cancelled.connect(_on_purchase_hold_cancelled)
+	allocation_service.hold_completed.connect(_on_purchase_hold_completed)
 
 	prefabs_service.prefab_created.connect(func(p): prefab_created.emit(p))
 	connections_service.line_created.connect(func(l, f, t): line_created.emit(l, f, t))
@@ -973,7 +1200,7 @@ func _drag_drop_data(at_position: Vector2, data: Variant) -> void:
 			prefab_dropped.emit(prefab, tree_pos2)
 
 # ============================================================
-# GROUP FRAME INPUT (manual hit-test)
+# GROUP FRAME INPUT
 # ============================================================
 
 func _handle_group_frame_input(event: InputEvent) -> bool:

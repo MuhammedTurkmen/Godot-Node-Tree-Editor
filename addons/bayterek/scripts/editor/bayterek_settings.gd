@@ -26,6 +26,8 @@ signal connection_offsets_changed
 signal connection_wiggle_changed
 signal connection_animation_tracking_changed
 
+signal purchase_settings_changed
+
 var editor: BayterekEditor
 
 var _content: VBoxContainer
@@ -83,6 +85,21 @@ var _conn_wiggle_pattern_dropdown: OptionButton
 var _conn_wiggle_direction_dropdown: OptionButton
 var _conn_wiggle_active_boost: SpinBox
 var _conn_follow_animation_check: CheckBox
+
+# --- Purchase (HOLD mode) ---
+var _purchase_mode_dropdown: OptionButton
+var _hold_duration_input: SpinBox
+var _purchase_visual_mode_dropdown: OptionButton
+var _purchase_bar_placement_dropdown: OptionButton
+var _purchase_bar_length_input: SpinBox
+var _purchase_bar_margin_input: SpinBox
+var _purchase_progress_direction_dropdown: OptionButton
+var _purchase_hold_sound_input: AudioStreamInput
+var _purchase_hold_sound_volume_input: SpinBox
+var _purchase_pitch_min_input: SpinBox
+var _purchase_pitch_max_input: SpinBox
+var _purchase_success_sound_input: AudioStreamInput
+var _purchase_cancel_sound_input: AudioStreamInput
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -330,7 +347,9 @@ func _build_ui() -> void:
 	_conn_follow_animation_check.button_pressed = true
 	_conn_follow_animation_check.toggled.connect(_on_conn_follow_animation_changed)
 
-	# --- Interaction ---
+	# ============================================================
+	# INTERACTION
+	# ============================================================
 	_add_separator(_content)
 	_add_section_label(_content, "Interaction")
 
@@ -373,7 +392,138 @@ func _build_ui() -> void:
 	_refund_confirm_check.button_pressed = false
 	_refund_confirm_check.toggled.connect(_on_refund_confirm_changed)
 
-	# --- Group Frames ---
+	# ============================================================
+	# PURCHASE (HOLD MODE)
+	# ============================================================
+	_add_separator(_content)
+	_add_section_label(_content, "Purchase — Trigger")
+
+	_purchase_mode_dropdown = _make_dropdown_row(
+		_content,
+		"Purchase Mode",
+		"How the user purchases (allocates) a node.\n\nInstant: single click allocates immediately.\nHold: press & hold for the duration below.",
+		["Instant (single click)", "Hold (press & hold)"]
+	)
+	_purchase_mode_dropdown.item_selected.connect(_on_purchase_mode_changed)
+
+	_hold_duration_input = _make_float_row(
+		_content,
+		"Hold Duration",
+		"Seconds the user must hold to complete the purchase (HOLD mode only)."
+	)
+	_hold_duration_input.min_value = 0.1
+	_hold_duration_input.max_value = 10.0
+	_hold_duration_input.step = 0.05
+	_hold_duration_input.value = 0.8
+	_hold_duration_input.allow_greater = true
+	_hold_duration_input.value_changed.connect(_on_hold_duration_changed)
+
+	_add_separator(_content)
+	_add_section_label(_content, "Purchase — Visual Feedback")
+
+	_purchase_visual_mode_dropdown = _make_dropdown_row(
+		_content,
+		"Visual Mode",
+		"What the user sees while holding.\n\nNone: no visual feedback.\nCanvas Bar: a bar at the screen edge fills up.\nNode Progress: a design layer grows (configure the layer on the design).",
+		["None", "Canvas Bar", "Node Progress"]
+	)
+	_purchase_visual_mode_dropdown.item_selected.connect(_on_purchase_visual_mode_changed)
+
+	_purchase_bar_placement_dropdown = _make_dropdown_row(
+		_content,
+		"Bar Placement",
+		"Where the canvas bar appears (Canvas Bar mode only).",
+		["Top", "Bottom", "Left", "Right"]
+	)
+	_purchase_bar_placement_dropdown.item_selected.connect(_on_purchase_bar_placement_changed)
+
+	_purchase_bar_length_input = _make_float_row(
+		_content,
+		"Bar Length",
+		"Length of the canvas bar along its main axis (pixels)."
+	)
+	_purchase_bar_length_input.min_value = 40.0
+	_purchase_bar_length_input.max_value = 2000.0
+	_purchase_bar_length_input.step = 10.0
+	_purchase_bar_length_input.value = 320.0
+	_purchase_bar_length_input.allow_greater = true
+	_purchase_bar_length_input.value_changed.connect(_on_purchase_bar_length_changed)
+
+	_purchase_bar_margin_input = _make_float_row(
+		_content,
+		"Bar Margin",
+		"Distance from the screen edge to the bar (pixels)."
+	)
+	_purchase_bar_margin_input.min_value = 0.0
+	_purchase_bar_margin_input.max_value = 200.0
+	_purchase_bar_margin_input.step = 2.0
+	_purchase_bar_margin_input.value = 24.0
+	_purchase_bar_margin_input.allow_greater = true
+	_purchase_bar_margin_input.value_changed.connect(_on_purchase_bar_margin_changed)
+
+	_purchase_progress_direction_dropdown = _make_dropdown_row(
+		_content,
+		"Progress Direction",
+		"Node Progress mode only.\n\nInvisible → Visible: layer starts at scale 0 in the design, grows to 1 during the hold, then resets.\nVisible → Invisible: layer starts at scale 1 in the design, shrinks to 0 during the hold, then stays hidden.",
+		["Invisible → Visible", "Visible → Invisible"]
+	)
+	_purchase_progress_direction_dropdown.item_selected.connect(_on_purchase_progress_direction_changed)
+
+	_add_separator(_content)
+	_add_section_label(_content, "Purchase — Sound")
+
+	_purchase_hold_sound_input = _make_audio_row(_content, "Hold Loop SFX",
+		"Looping sound played while the user holds. Pitch rises from Min to Max.")
+	_purchase_hold_sound_input.changed.connect(_on_purchase_hold_sound_changed)
+
+	_purchase_hold_sound_volume_input = _make_float_row(
+		_content,
+		"Hold Volume (dB)",
+		"Volume of the hold loop sound."
+	)
+	_purchase_hold_sound_volume_input.min_value = -60.0
+	_purchase_hold_sound_volume_input.max_value = 12.0
+	_purchase_hold_sound_volume_input.step = 1.0
+	_purchase_hold_sound_volume_input.value = -6.0
+	_purchase_hold_sound_volume_input.allow_greater = true
+	_purchase_hold_sound_volume_input.allow_lesser = true
+	_purchase_hold_sound_volume_input.value_changed.connect(_on_purchase_hold_volume_changed)
+
+	_purchase_pitch_min_input = _make_float_row(
+		_content,
+		"Pitch Min",
+		"Loop pitch when progress is 0.0."
+	)
+	_purchase_pitch_min_input.min_value = 0.1
+	_purchase_pitch_min_input.max_value = 4.0
+	_purchase_pitch_min_input.step = 0.05
+	_purchase_pitch_min_input.value = 0.8
+	_purchase_pitch_min_input.allow_greater = true
+	_purchase_pitch_min_input.value_changed.connect(_on_purchase_pitch_min_changed)
+
+	_purchase_pitch_max_input = _make_float_row(
+		_content,
+		"Pitch Max",
+		"Loop pitch when progress reaches 1.0."
+	)
+	_purchase_pitch_max_input.min_value = 0.1
+	_purchase_pitch_max_input.max_value = 4.0
+	_purchase_pitch_max_input.step = 0.05
+	_purchase_pitch_max_input.value = 1.4
+	_purchase_pitch_max_input.allow_greater = true
+	_purchase_pitch_max_input.value_changed.connect(_on_purchase_pitch_max_changed)
+
+	_purchase_success_sound_input = _make_audio_row(_content, "Success SFX",
+		"Played when the purchase completes.")
+	_purchase_success_sound_input.changed.connect(_on_purchase_success_sound_changed)
+
+	_purchase_cancel_sound_input = _make_audio_row(_content, "Cancel SFX",
+		"Played when the hold is cancelled (released early).")
+	_purchase_cancel_sound_input.changed.connect(_on_purchase_cancel_sound_changed)
+
+	# ============================================================
+	# GROUP FRAMES
+	# ============================================================
 	_add_separator(_content)
 	_add_section_label(_content, "Group Frames")
 
@@ -393,7 +543,9 @@ func _build_ui() -> void:
 	)
 	_frame_title_align_dropdown.item_selected.connect(_on_frame_title_align_changed)
 
-	# --- Tooltip ---
+	# ============================================================
+	# TOOLTIP
+	# ============================================================
 	_add_separator(_content)
 	_add_section_label(_content, "Tooltip")
 
@@ -508,6 +660,32 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_conn_wiggle_active_boost.set_value_no_signal(tree_data.wiggle_active_boost)
 
 	_conn_follow_animation_check.button_pressed = tree_data.wiggle_follow_node_animation
+
+	# --- Purchase ---
+	if _purchase_mode_dropdown:
+		_purchase_mode_dropdown.select(clampi(tree_data.default_purchase_mode, 0, 1))
+	_hold_duration_input.set_value_no_signal(tree_data.default_hold_duration)
+
+	if _purchase_visual_mode_dropdown:
+		_purchase_visual_mode_dropdown.select(clampi(tree_data.purchase_visual_mode, 0, 2))
+	if _purchase_bar_placement_dropdown:
+		_purchase_bar_placement_dropdown.select(clampi(tree_data.purchase_bar_placement, 0, 3))
+	_purchase_bar_length_input.set_value_no_signal(tree_data.purchase_bar_length)
+	_purchase_bar_margin_input.set_value_no_signal(tree_data.purchase_bar_margin)
+
+	if _purchase_progress_direction_dropdown:
+		_purchase_progress_direction_dropdown.select(clampi(tree_data.purchase_progress_direction, 0, 1))
+
+	if _purchase_hold_sound_input:
+		_purchase_hold_sound_input.set_stream(tree_data.purchase_hold_sound)
+	_purchase_hold_sound_volume_input.set_value_no_signal(tree_data.purchase_hold_sound_volume_db)
+	_purchase_pitch_min_input.set_value_no_signal(tree_data.purchase_sound_pitch_min)
+	_purchase_pitch_max_input.set_value_no_signal(tree_data.purchase_sound_pitch_max)
+
+	if _purchase_success_sound_input:
+		_purchase_success_sound_input.set_stream(tree_data.purchase_success_sound)
+	if _purchase_cancel_sound_input:
+		_purchase_cancel_sound_input.set_stream(tree_data.purchase_cancel_sound)
 
 	_updating_ui = false
 
@@ -643,7 +821,6 @@ func _on_default_line_texture_changed(path: String) -> void:
 	var tex: Texture2D = load(path) as Texture2D
 	editor.tree.default_line_texture = tex
 	_set_input_texture(_default_line_texture_input, tex)
-	# Auto-enable TILE mode if it was set to NONE.
 	if tex and editor.tree.default_line_texture_mode == 0:
 		editor.tree.default_line_texture_mode = 1
 		if _default_line_texture_mode_dropdown:
@@ -928,6 +1105,114 @@ func _on_conn_follow_animation_changed(pressed: bool) -> void:
 	_notify_dirty()
 
 # ============================================================
+# PURCHASE HANDLERS
+# ============================================================
+
+func _on_purchase_mode_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.default_purchase_mode = index
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_hold_duration_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.default_hold_duration = value
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_visual_mode_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_visual_mode = index
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_bar_placement_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_bar_placement = index
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_bar_length_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_bar_length = value
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_bar_margin_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_bar_margin = value
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_progress_direction_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_progress_direction = index
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_hold_sound_changed(stream: AudioStream) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_hold_sound = stream
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_hold_volume_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_hold_sound_volume_db = value
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_pitch_min_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_sound_pitch_min = value
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_pitch_max_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_sound_pitch_max = value
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_success_sound_changed(stream: AudioStream) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_success_sound = stream
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+func _on_purchase_cancel_sound_changed(stream: AudioStream) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.purchase_cancel_sound = stream
+	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+# ============================================================
 # HELPERS
 # ============================================================
 
@@ -1043,6 +1328,24 @@ func _make_check_row(parent: Control, label_text: String, tooltip: String = "") 
 	row.add_child(check)
 
 	return check
+
+func _make_audio_row(parent: Control, label_text: String, tooltip: String = "") -> AudioStreamInput:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+
+	var label := Label.new()
+	label.text = label_text
+	label.custom_minimum_size = Vector2(120, 0)
+	if not tooltip.is_empty():
+		label.tooltip_text = tooltip
+	label.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(label)
+
+	var input := AudioStreamInput.new()
+	input.size_flags_horizontal = SIZE_EXPAND_FILL
+	row.add_child(input)
+
+	return input
 
 func _add_separator(parent: Control) -> void:
 	var sep := HSeparator.new()

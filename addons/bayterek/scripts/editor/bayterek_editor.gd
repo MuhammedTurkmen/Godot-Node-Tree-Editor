@@ -165,13 +165,6 @@ func _connect_split_signals() -> void:
 # LINE DELETE MODE
 # ============================================================
 
-## Toggles line-delete mode. While active, clicking a connection line
-## deletes that connection (undoable via Ctrl+Z).
-##
-## IMPORTANT: We call `tree_view.set_line_delete_mode()` (not the
-## service directly) because the tree view is responsible for flipping
-## `lines_container.mouse_filter` — without that, the click never
-## reaches the connection.
 func _toggle_line_delete_mode() -> void:
 	if not tree_view or not tree_view.connections_service:
 		return
@@ -179,8 +172,6 @@ func _toggle_line_delete_mode() -> void:
 	var svc = tree_view.connections_service
 	var new_state: bool = not svc.is_line_delete_mode_active()
 
-	# Use the tree_view's setter so it also flips `lines_container`'s
-	# mouse_filter — otherwise the click never reaches the connection.
 	tree_view.set_line_delete_mode(new_state)
 
 	if new_state:
@@ -200,7 +191,6 @@ func _on_line_clicked_for_delete(from_id: int, to_id: int) -> void:
 	if not line:
 		return
 
-	# Snapshot the LineData so undo restores the exact visual state.
 	var line_data_snapshot: BayterekLineData = line.line_data
 
 	var do_callable := func():
@@ -656,6 +646,7 @@ func _create_tree_view() -> void:
 		settings_editor.connection_offsets_changed.connect(_on_settings_connection_offsets_changed)
 		settings_editor.connection_wiggle_changed.connect(_on_settings_connection_wiggle_changed)
 		settings_editor.connection_animation_tracking_changed.connect(_on_settings_connection_animation_tracking_changed)
+		settings_editor.purchase_settings_changed.connect(_on_settings_purchase_changed)
 
 	if attributes_editor:
 		attributes_editor.editor = self
@@ -1936,7 +1927,7 @@ func _line_data_to_dict(ld: BayterekLineData) -> Dictionary:
 		"dash_gap": ld.dash_gap,
 		"start_arrow": int(ld.start_arrow),
 		"end_arrow": int(ld.end_arrow),
-		"arrow_size": ld.arrow_size,
+		"arrow_scale": ld.start_arrow_scale,
 	}
 
 func _paste_nodes() -> void:
@@ -2159,7 +2150,8 @@ func _dict_to_line_data(d: Dictionary) -> BayterekLineData:
 	ld.dash_gap = float(d.get("dash_gap", 6.0))
 	ld.start_arrow = int(d.get("start_arrow", 0)) as BayterekLineData.ArrowStyle
 	ld.end_arrow = int(d.get("end_arrow", 0)) as BayterekLineData.ArrowStyle
-	ld.arrow_size = float(d.get("arrow_size", 12.0))
+	ld.start_arrow_scale = float(d.get("arrow_scale", 1.0))
+	ld.end_arrow_scale = float(d.get("arrow_scale", 1.0))
 	return ld
 
 func _deep_copy_json(value: Variant) -> Variant:
@@ -2561,6 +2553,18 @@ func _on_settings_connection_animation_tracking_changed() -> void:
 		return
 
 	tree_view.connections_service.update_all_lines()
+	set_dirty(true)
+
+# ============================================================
+# PURCHASE SETTINGS HANDLER
+# ============================================================
+#
+# Called when the user changes any purchase-related setting in the
+# Settings tab. The tree view reads these settings live on every
+# press, so no live-update is strictly required here. We mark the
+# tree dirty so the change is persisted on save.
+
+func _on_settings_purchase_changed() -> void:
 	set_dirty(true)
 
 # ============================================================

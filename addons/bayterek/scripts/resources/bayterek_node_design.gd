@@ -9,8 +9,6 @@ signal description_changed(design: BayterekNodeDesign)
 signal exported_fields_changed(design: BayterekNodeDesign)
 
 ## Whitelist of layer fields that can be exported to prefabs.
-## NOTE: Shape-layer fields (shape_type, corner_radius, fill_enabled, ...)
-## have been removed since BayterekShapeLayer was deleted.
 const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 	"visible",
 	"absolute",
@@ -51,22 +49,40 @@ const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 @export_storage var exported_fields: Dictionary = {}
 
 # ============================================================
+# PURCHASE PROGRESS LAYER (HOLD mode)
+# ============================================================
+#
+# When the tree's `purchase_visual_mode` is NODE_PROGRESS, and the
+# user holds a node for allocation, this design's `progress_layer_id`
+# identifies which layer acts as the visual progress indicator.
+#
+# Leave `progress_layer_id` empty to disable node-progress visuals on
+# this design (the tree will fall back to no visual feedback).
+
+## Layer id used as the "progress" indicator for HOLD-mode purchases.
+@export_storage var progress_layer_id: String = ""
+
+## How the progress layer animates as hold progress goes 0 → 1.
+##   0 = SCALE_X       (scale.x: 0 → 1)
+##   1 = SCALE_Y       (scale.y: 0 → 1)
+##   2 = SCALE_UNIFORM (scale.x & scale.y: 0 → 1)
+##   3 = RADIAL        (rotation: 0 → 360°)
+##   4 = REVEAL_Y      (scale.y: 0 → 1, alias of SCALE_Y for clarity)
+@export_storage var progress_layer_mode: int = 2
+
+# ============================================================
 # INIT — guarantees every design starts with its OWN, empty state.
 # ============================================================
 #
 # Without an explicit _init(), Godot sometimes leaves typed Array
 # properties (@export_storage var layers: Array[BayterekLayer]) as
 # shared references across instances created with .new(). This is
-# exactly the "new design looks like the first design" bug: the new
-# design's `layers` points at the first design's `layers`, so adding
-# a layer to one shows up in the other, and saving both files ends
-# up writing the same content.
-#
-# Forcing fresh containers here (and only here) breaks that link.
+# exactly the "new design looks like the first design" bug.
 func _init() -> void:
 	layers = []
 	exported_fields = {}
 	bounds_layer_id = ""
+	progress_layer_id = ""
 
 # ============================================================
 # EXPORTED FIELDS
@@ -264,7 +280,6 @@ func get_layer_count() -> int:
 func add_layer(layer: BayterekLayer) -> bool:
 	if not layer or not can_add_layer():
 		return false
-	# Guard against double-add of the same instance.
 	if layers.has(layer):
 		return false
 	layers.append(layer)
@@ -278,6 +293,8 @@ func remove_layer(index: int) -> BayterekLayer:
 
 	if removed and bounds_layer_id == removed.layer_id:
 		bounds_layer_id = ""
+	if removed and progress_layer_id == removed.layer_id:
+		progress_layer_id = ""
 
 	layers.remove_at(index)
 	layers_changed.emit(self, "remove")
@@ -312,6 +329,7 @@ func get_layer_by_id(layer_id: String) -> BayterekLayer:
 func clear_layers() -> void:
 	layers.clear()
 	bounds_layer_id = ""
+	progress_layer_id = ""
 	layers_changed.emit(self, "reset")
 
 func notify_layer_modified() -> void:
@@ -320,19 +338,12 @@ func notify_layer_modified() -> void:
 ## Rebuilds this design's layer array from a source array, giving every
 ## copied layer a NEW layer_id so the source and the copy stay fully
 ## independent afterwards.
-##
-## The old implementation called `duplicate_layer()` which preserves
-## `layer_id` — meaning a duplicated design shared layer ids with the
-## original, and any lookup by id (e.g. from a node referencing the
-## design) could hit the wrong instance.
 func copy_layers_from(source_layers: Array) -> void:
 	layers.clear()
 	for layer in source_layers:
 		if layer is BayterekLayer:
 			var dup: BayterekLayer = layer.duplicate_layer()
 			if dup:
-				# Fresh id so this design's layers never collide with
-				# the source design's layers.
 				dup.layer_id = BayterekUUIDGenerator.v4()
 				layers.append(dup)
 	layers_changed.emit(self, "reset")
@@ -428,15 +439,37 @@ func set_description(new_desc: String) -> void:
 	description_changed.emit(self)
 
 # ============================================================
+# PROGRESS LAYER HELPERS
+# ============================================================
+
+## Returns the layer that is marked as the progress indicator, or null.
+func get_progress_layer() -> BayterekLayer:
+	if progress_layer_id.is_empty():
+		return null
+	return get_layer_by_id(progress_layer_id)
+
+## Sets `progress_layer_id` to the given layer id, or clears it if the
+## id doesn't match any layer.
+func set_progress_layer(layer_id: String) -> void:
+	if layer_id.is_empty():
+		progress_layer_id = ""
+		layers_changed.emit(self, "progress_layer")
+		return
+	if not get_layer_by_id(layer_id):
+		return
+	progress_layer_id = layer_id
+	layers_changed.emit(self, "progress_layer")
+
+func clear_progress_layer() -> void:
+	if progress_layer_id.is_empty():
+		return
+	progress_layer_id = ""
+	layers_changed.emit(self, "progress_layer")
+
+# ============================================================
 # DUPLICATE
 # ============================================================
 
-## Creates a fully independent copy of this design.
-##
-## Important: this used to rely on `copy_layers_from` which didn't change
-## layer ids. As a result, a duplicated design shared layer ids with its
-## source, and any per-node override keyed by layer id would silently
-## resolve to the wrong layer. Now every layer gets a fresh id.
 func duplicate_design() -> BayterekNodeDesign:
 	var copy := BayterekNodeDesign.new()
 	copy.id = ""
@@ -446,12 +479,13 @@ func duplicate_design() -> BayterekNodeDesign:
 	copy.design_size = design_size
 	copy.scale = scale
 	copy.bounds_layer_id = ""
+	copy.progress_layer_id = ""
+	copy.progress_layer_mode = progress_layer_mode
 	copy.exported_fields = exported_fields.duplicate(true)
 	copy.copy_layers_from(layers)
 
 	# If this design had a bounds layer, remap the id to the new layer
-	# with the same name. copy_layers_from() gave every layer a new id,
-	# so we need to find the corresponding one in the copy.
+	# with the same name.
 	if not bounds_layer_id.is_empty():
 		for i in layers.size():
 			if not layers[i]:
@@ -459,6 +493,16 @@ func duplicate_design() -> BayterekNodeDesign:
 			if layers[i].layer_id == bounds_layer_id:
 				if i < copy.layers.size():
 					copy.bounds_layer_id = copy.layers[i].layer_id
+				break
+
+	# Same remap for the progress layer.
+	if not progress_layer_id.is_empty():
+		for i in layers.size():
+			if not layers[i]:
+				continue
+			if layers[i].layer_id == progress_layer_id:
+				if i < copy.layers.size():
+					copy.progress_layer_id = copy.layers[i].layer_id
 				break
 
 	return copy

@@ -2,28 +2,13 @@
 class_name BayterekNodeButton
 extends BaseButton
 ## On-canvas visual representation of a node.
-##
-## Two-layer structure:
-##   BayterekNodeButton (Control)     ← hitbox. position is STABLE.
-##     ├── VisualRoot (Control)       ← animations move this, NOT the outer node.
-##     │     ├── TextureLayerRoot     ← normal texture layers live here
-##     │     ├── SelectBorder
-##     │     └── Crown
-##     └── AbsoluteLayerRoot (Node2D) ← ABSOLUTE layers live here, outside
-##                                       VisualRoot, so they are NOT affected
-##                                       by hover/animations.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
 const RENDER_MODE_VECTOR := 0
 const RENDER_MODE_PIXEL := 1
 
-## Below this distance (in pixels), a visual offset change is considered
-## insignificant and does NOT emit `visual_offset_changed`.
 const VISUAL_OFFSET_EMIT_THRESHOLD := 0.05
-
-## Below this smoothed speed (pixels/frame), the node is considered
-## "stopped" and current_visual_speed is FORCED to exactly 0.
 const SPEED_IDLE_THRESHOLD := 0.02
 
 signal node_hovered(node: BayterekNodeButton, is_hovered: bool)
@@ -32,6 +17,9 @@ signal dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal drag_ended(node: BayterekNodeButton)
 signal right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
 signal visual_offset_changed(node: BayterekNodeButton, offset: Vector2, distance: float)
+
+signal press_started(node: BayterekNodeButton, screen_pos: Vector2)
+signal press_ended(node: BayterekNodeButton, screen_pos: Vector2)
 
 var node_data: BayterekNode
 var prefab: BayterekPrefab
@@ -69,19 +57,14 @@ var node_skew: Vector2:
 			node_data.node_skew = v
 
 # --- Two-layer UI ---
-var _visual_root: Control             # animations target this
+var _visual_root: Control
 var _select_border: Panel
 var _crown_label: Label
 var _texture_layer_root: Node2D
 
-## Absolute layer root — outside VisualRoot. Layers flagged `absolute` live
-## here so they stay in place during hover/rotate animations.
 var _absolute_layer_root: Node2D
 
-## Normal layers (under VisualRoot).
 var _layer_nodes: Dictionary = {}
-
-## Absolute layers (under AbsoluteLayerRoot, outside VisualRoot).
 var _absolute_layer_nodes: Dictionary = {}
 
 var _animator: BayterekNodeAnimator = null
@@ -91,6 +74,24 @@ var _press_pos: Vector2 = Vector2.ZERO
 
 var _active_states: Dictionary = {}
 var _design_applied: bool = false
+
+# --- Purchase progress (HOLD mode, NODE_PROGRESS visual) ---
+#
+# `_progress_active` is true while a hold is in flight.
+# `_progress_finished` is true once a hold has ended.
+# `_progress_cancelled` is true if the hold ended via release/cancel
+# (as opposed to completing successfully). It is reset to false at
+# the start of every new hold.
+#
+# Resting visibility of the progress layer:
+#   - INVISIBLE → VISIBLE (dir 0): hidden in idle, hidden after both
+#     completion AND cancellation.
+#   - VISIBLE → INVISIBLE (dir 1): visible in idle, hidden after
+#     completion, VISIBLE after cancellation (back to initial look).
+var _progress_active: bool = false
+var _progress_finished: bool = false
+var _progress_cancelled: bool = false
+var _progress_t: float = 0.0
 
 var id: int:
 	get: return node_data.id if node_data else -1
@@ -147,9 +148,6 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	# ------------------------------------------------------------------
-	# SPEED + VELOCITY TRACKING (with hard-zero snap)
-	# ------------------------------------------------------------------
 	var current_offset: Vector2 = _visual_root.position if _visual_root else Vector2.ZERO
 	var frame_delta: Vector2 = current_offset - _previous_visual_offset
 	_previous_visual_offset = current_offset
@@ -180,26 +178,20 @@ func _process(_delta: float) -> void:
 
 
 func _build_children() -> void:
-	# --- VisualRoot (animation target) ---
 	_visual_root = Control.new()
 	_visual_root.name = "VisualRoot"
 	_visual_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_visual_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_visual_root)
 
-	# --- Normal texture layers (under VisualRoot) ---
 	_texture_layer_root = Node2D.new()
 	_texture_layer_root.name = "TextureLayerRoot"
 	_visual_root.add_child(_texture_layer_root)
 
-	# --- Absolute layer root (OUTSIDE VisualRoot) ---
-	# Absolute layers go here so they don't get moved by hover/rotate
-	# animations applied to VisualRoot.
 	_absolute_layer_root = Node2D.new()
 	_absolute_layer_root.name = "AbsoluteLayerRoot"
 	add_child(_absolute_layer_root)
 
-	# --- Selection border ---
 	_select_border = Panel.new()
 	_select_border.name = "SelectBorder"
 	_select_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -218,7 +210,6 @@ func _build_children() -> void:
 	_select_border.visible = false
 	_visual_root.add_child(_select_border)
 
-	# --- Crown label ---
 	_crown_label = Label.new()
 	_crown_label.name = "Crown"
 	_crown_label.text = "👑"
@@ -462,7 +453,6 @@ func _rebuild_layer_nodes() -> void:
 		_clear_all_layer_nodes()
 		return
 
-	# --- Step 1: figure out which layers should exist in each bucket. ---
 	var desired_normal_ids: Dictionary = {}
 	var desired_absolute_ids: Dictionary = {}
 
@@ -476,11 +466,9 @@ func _rebuild_layer_nodes() -> void:
 		else:
 			desired_normal_ids[layer.layer_id] = true
 
-	# --- Step 2: remove stale layer nodes. ---
 	_remove_stale_layer_nodes(_layer_nodes, desired_normal_ids)
 	_remove_stale_layer_nodes(_absolute_layer_nodes, desired_absolute_ids)
 
-	# --- Step 3: (re)create layer nodes as needed. ---
 	for layer in node_data.layers:
 		if not layer or not layer.visible:
 			continue
@@ -527,11 +515,110 @@ func _clear_all_layer_nodes() -> void:
 	_absolute_layer_nodes.clear()
 
 
-func _update_layer_nodes() -> void:
-	if not node_data:
+func _is_progress_layer(layer: BayterekTextureLayer) -> bool:
+	if not layer or not node_data or not tree_data:
+		return false
+	if tree_data.purchase_visual_mode != 2:
+		return false
+	if node_data.node_progress_layer_id.is_empty():
+		return false
+	return layer.layer_id == node_data.node_progress_layer_id
+
+
+## Returns whether the progress layer should currently be visible.
+##
+## States:
+##   1. Hold in flight                        → visible
+##   2. Idle (no hold yet):
+##        - dir 0 (INVISIBLE → VISIBLE)       → hidden
+##        - dir 1 (VISIBLE → INVISIBLE)       → visible
+##   3. Completed successfully:
+##        - both directions                   → hidden
+##   4. Cancelled:
+##        - dir 0                             → hidden
+##        - dir 1                             → visible (initial look)
+func _is_progress_layer_visible_now() -> bool:
+	if _progress_active:
+		return true
+	if not tree_data:
+		return false
+
+	if _progress_finished:
+		# Hold has ended.
+		if _progress_cancelled:
+			# Cancelled → revert to idle visibility.
+			return tree_data.purchase_progress_direction == 1
+		# Completed → always hide.
+		return false
+
+	# No hold has happened yet → idle visibility.
+	return tree_data.purchase_progress_direction == 1
+
+
+## Applies a per-frame transform override to the given layer node if
+## it is the progress layer AND a hold is active. Otherwise, falls
+## back to the layer's own transform.
+func _render_layer_node(ln: BayterekLayerNode, base_xform: Transform2D) -> void:
+	if not ln or not is_instance_valid(ln):
+		return
+	var layer: BayterekTextureLayer = ln.layer
+	if not layer:
 		return
 
 	var design_size: Vector2 = node_data.design_size
+	var effective_mode: int = layer.get_effective_render_mode()
+	var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+
+	var is_progress: bool = _is_progress_layer(layer)
+
+	if is_progress:
+		ln.visible = _is_progress_layer_visible_now()
+	else:
+		ln.visible = true
+
+	var state_key: String = layer.get_visual_state(_active_states)
+	ln.set_state(state_key)
+
+	if is_progress and _progress_active:
+		# Render with a temporary override — never mutate layer.transform.
+		var live_xform: BayterekLayerTransform = layer.transform.duplicate_transform()
+		var factor: float = _progress_t
+		if tree_data.purchase_progress_direction == 1:
+			factor = 1.0 - _progress_t
+
+		var mode: int = 2
+		if not node_data.design_id.is_empty():
+			var design: BayterekNodeDesign = Bayterek.get_designs_registry().get_design_by_id(node_data.design_id)
+			if design:
+				mode = design.progress_layer_mode
+
+		match mode:
+			0:
+				live_xform.scale.x = factor
+			1:
+				live_xform.scale.y = factor
+			2:
+				live_xform.scale = Vector2(factor, factor)
+			3:
+				live_xform.rotation += factor * 360.0
+			4:
+				live_xform.scale.y = factor
+
+		ln.update_with_override(design_size, pixel_mode, live_xform)
+		ln.transform = base_xform * live_xform.get_matrix(design_size, pixel_mode)
+	else:
+		ln.update(design_size, pixel_mode)
+		ln.transform = base_xform * layer.get_matrix(design_size, pixel_mode)
+
+	var layer_index: int = node_data.layers.find(layer)
+	if layer_index < 0:
+		layer_index = 0
+	ln.z_index = layer_index
+
+
+func _update_layer_nodes() -> void:
+	if not node_data:
+		return
 
 	var visual_bounds: Rect2 = node_data.get_visual_bounds()
 	var bounds_center: Vector2 = visual_bounds.position + visual_bounds.size * 0.5
@@ -539,9 +626,6 @@ func _update_layer_nodes() -> void:
 	var root_size: Vector2 = _visual_root.size if _visual_root else size
 	var root_center: Vector2 = root_size * 0.5
 
-	# --- Base transform for NORMAL layers ---
-	# Normal layers live under VisualRoot, so the parent's animation offset
-	# is already applied on top of this transform.
 	var base_xform := Transform2D(
 		Vector2(1.0, 0.0),
 		Vector2(0.0, 1.0),
@@ -552,61 +636,58 @@ func _update_layer_nodes() -> void:
 	var transform_with_center := _transform_around(node_transform, root_center)
 	var base_xform_with_node = transform_with_center * base_xform
 
-	# --- Base transform for ABSOLUTE layers ---
-	# Absolute layers live OUTSIDE VisualRoot, so they see NONE of the
-	# animation (no offset, no rotation, no scale). We intentionally
-	# skip the node transform too so they truly stay put.
 	var absolute_xform := Transform2D(
 		Vector2(1.0, 0.0),
 		Vector2(0.0, 1.0),
 		root_center - bounds_center
 	)
 
-	# --- Normal layers ---
 	for layer_id in _layer_nodes.keys():
 		var ln: BayterekLayerNode = _layer_nodes[layer_id]
 		if not is_instance_valid(ln):
 			continue
-		var layer: BayterekTextureLayer = ln.layer
-		if not layer:
-			continue
+		_render_layer_node(ln, base_xform_with_node)
 
-		var state_key: String = layer.get_visual_state(_active_states)
-		ln.set_state(state_key)
-
-		var effective_mode: int = layer.get_effective_render_mode()
-		var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
-
-		ln.update(design_size, pixel_mode)
-		ln.transform = base_xform_with_node * layer.get_matrix(design_size, pixel_mode)
-
-		var layer_index: int = node_data.layers.find(layer)
-		if layer_index < 0:
-			layer_index = 0
-		ln.z_index = layer_index
-
-	# --- Absolute layers ---
 	for layer_id in _absolute_layer_nodes.keys():
 		var ln: BayterekLayerNode = _absolute_layer_nodes[layer_id]
 		if not is_instance_valid(ln):
 			continue
-		var layer: BayterekTextureLayer = ln.layer
-		if not layer:
-			continue
+		_render_layer_node(ln, absolute_xform)
 
-		var state_key: String = layer.get_visual_state(_active_states)
-		ln.set_state(state_key)
+# ============================================================
+# PURCHASE PROGRESS (HOLD mode)
+# ============================================================
 
-		var effective_mode: int = layer.get_effective_render_mode()
-		var pixel_mode: bool = effective_mode == RENDER_MODE_PIXEL
+func set_purchase_progress(t: float) -> void:
+	if not node_data or not tree_data:
+		return
+	if tree_data.purchase_visual_mode != 2:
+		return
+	if node_data.node_progress_layer_id.is_empty():
+		return
 
-		ln.update(design_size, pixel_mode)
-		ln.transform = absolute_xform * layer.get_matrix(design_size, pixel_mode)
+	# Starting a NEW hold resets the previous end-state flags.
+	_progress_active = true
+	_progress_finished = false
+	_progress_cancelled = false
+	_progress_t = clampf(t, 0.0, 1.0)
+	_update_layer_nodes()
 
-		var layer_index: int = node_data.layers.find(layer)
-		if layer_index < 0:
-			layer_index = 0
-		ln.z_index = layer_index
+
+## Called when the hold ends.
+##
+## `completed` = true  → the hold ran to full duration and the node was
+##                       allocated.
+## `completed` = false → the hold was cancelled (released early).
+##
+## The resting visibility of the progress layer depends on both the
+## direction and this flag.
+func clear_purchase_progress(completed: bool = false) -> void:
+	_progress_active = false
+	_progress_finished = true
+	_progress_cancelled = not completed
+	_progress_t = 0.0
+	_update_layer_nodes()
 
 # ============================================================
 # DRAW
@@ -631,11 +712,15 @@ func _gui_input(event: InputEvent) -> void:
 				if not is_clicked:
 					is_clicked = true
 					refresh_hover_only()
+				var sp: Vector2 = get_global_transform() * event.position
+				press_started.emit(self, sp)
 				accept_event()
 			else:
 				if is_clicked:
 					is_clicked = false
 					refresh_hover_only()
+				var sp2: Vector2 = get_global_transform() * event.position
+				press_ended.emit(self, sp2)
 				if _is_dragging:
 					drag_ended.emit(self)
 					_is_dragging = false

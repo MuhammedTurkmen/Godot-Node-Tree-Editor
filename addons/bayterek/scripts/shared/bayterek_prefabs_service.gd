@@ -257,7 +257,6 @@ func reset_node_to_prefab_defaults(node: BayterekNodeButton) -> void:
 	node.node_data.description = prefab.description
 	node.node_data.attributes = prefab.attributes.duplicate(true)
 	node.node_data.max_allocations = prefab.max_allocations
-	node.node_data.design_id = prefab.design_id
 	node.node_data.clear_all_attribute_overrides()
 	node.node_data.clear_all_exported_overrides()
 
@@ -265,9 +264,10 @@ func reset_node_to_prefab_defaults(node: BayterekNodeButton) -> void:
 	if not prefab.design_id.is_empty():
 		design = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
 	if design:
-		node.node_data.design_size = design.design_size
-		node.node_data.scale = design.scale
-		node.node_data.copy_layers_from(design.layers)
+		# apply_design() copies the layers, remaps the design's progress
+		# layer id to this node's copy (populating node_progress_layer_id),
+		# and sets design_size + scale.
+		node.node_data.apply_design(design)
 
 	if not prefab.exported_values.is_empty():
 		node.node_data.exported_overrides = prefab.exported_values.duplicate(true)

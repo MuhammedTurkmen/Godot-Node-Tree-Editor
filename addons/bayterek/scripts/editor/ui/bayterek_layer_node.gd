@@ -140,3 +140,41 @@ func _apply_filter() -> void:
 		CanvasItem.TEXTURE_FILTER_NEAREST if eff == 1
 		else CanvasItem.TEXTURE_FILTER_LINEAR
 	)
+
+## Renders this layer using a one-off transform override.
+##
+## The override is used ONLY for the rendering pass; `layer.transform`
+## itself is never modified. This is what enables progress animations
+## to be applied per-frame without mutating the design data.
+func update_with_override(design_size: Vector2, pixel_mode: bool, override_xform: BayterekLayerTransform) -> void:
+	if not layer or not _rect or not is_instance_valid(_rect):
+		return
+
+	# --- Texture (use the layer's normal state resolution) ---
+	var state_key: String = _last_state_key
+	if state_key.is_empty():
+		state_key = "normal"
+
+	var tex: Texture2D = layer.get_icon_for_state(state_key)
+	var tint: Color = layer.get_tint_for_state(state_key)
+
+	_apply_texture(tex)
+	_apply_tint(tint)
+	_apply_filter()
+
+	# --- Transform (override) ---
+	if override_xform:
+		transform = override_xform.get_matrix(design_size, pixel_mode)
+	else:
+		transform = layer.get_matrix(design_size, pixel_mode)
+
+	# --- Layout ---
+	var effective_size: Vector2 = override_xform.get_effective_size(design_size) if override_xform else layer.get_size(design_size)
+	var half: Vector2 = effective_size * 0.5
+
+	_rect.position = -half
+	_rect.size = effective_size
+	_rect.pivot_offset = half
+	_rect.rotation = 0.0
+
+	_rect.visible = (tex != null)

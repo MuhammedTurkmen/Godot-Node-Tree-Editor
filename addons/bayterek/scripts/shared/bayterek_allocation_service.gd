@@ -2,6 +2,13 @@
 class_name BayterekAllocationService
 extends BayterekBaseService
 ## Allocation / preallocation / refund management.
+##
+## Purchase model (see BayterekTree):
+##   - INSTANT mode: a single click allocates immediately.
+##   - HOLD mode:    press & hold for `default_hold_duration` seconds.
+##
+## Refund and preallocation are always INSTANT, regardless of the tree
+## setting. HOLD is only used for normal allocation.
 
 signal node_preallocated(node: BayterekNodeButton)
 signal node_unpreallocated(node: BayterekNodeButton)
@@ -11,6 +18,13 @@ signal refund_mode_entered
 signal refund_mode_exited
 signal node_refund_added(node: BayterekNodeButton)
 signal node_refund_removed(node: BayterekNodeButton)
+
+## HOLD-mode events. Only emitted when the tree is in HOLD purchase mode
+## and the press is a valid allocation candidate.
+signal hold_started(node: BayterekNodeButton)
+signal hold_progress(node: BayterekNodeButton, t: float)
+signal hold_completed(node: BayterekNodeButton)
+signal hold_cancelled(node: BayterekNodeButton)
 
 # External check callbacks
 var preallocation_check: Callable
@@ -22,6 +36,11 @@ var refund_check: Callable
 var _preallocated_nodes: Array[int] = []
 var _refund_nodes: Array[int] = []
 var _refund_mode: bool = false
+
+# HOLD-mode state
+var _hold_node: BayterekNodeButton = null
+var _hold_elapsed: float = 0.0
+var _hold_active: bool = false
 
 var _allocated_nodes: Array[int]:
 	get: return _tree_data.tree_state.allocated_nodes if _tree_data else []
@@ -46,8 +65,6 @@ func load_tree(tree_data: BayterekTree) -> void:
 			continue
 		node.allocated = true
 		node.set_state(Bayterek.AllocationState.ACTIVE)
-		# Multiallocation açık veya kapalı — allocation_level her zaman
-		# en az 1 olmalı (allocated node'lar için).
 		var lvl: int = _allocation_level.get(node_id, 1)
 		if lvl <= 0:
 			lvl = 1
@@ -66,29 +83,117 @@ func get_preallocated_count() -> int:
 func get_refund_count() -> int:
 	return _refund_nodes.size()
 
+func is_holding() -> bool:
+	return _hold_active
+
+func get_hold_progress() -> float:
+	if not _hold_active or not _tree_data:
+		return 0.0
+	var d: float = maxf(0.01, _tree_data.default_hold_duration)
+	return clampf(_hold_elapsed / d, 0.0, 1.0)
+
 # ============================================================
-# MAIN ENTRY — NODE PRESSED
+# PRESS START / END
 # ============================================================
 
-func on_node_pressed(node: BayterekNodeButton) -> void:
+## Called when the user presses down on a node.
+## Decides whether to trigger an instant action or start a hold.
+func on_node_press_start(node: BayterekNodeButton) -> void:
 	if not node:
 		return
 	if not _tree_data or not _tree_data.allocation:
 		return
 
+	# --- Refund mode: always INSTANT ---
 	if _refund_mode:
-		if _tree_data.refund_confirm:
-			_handle_refund_click(node)
-		else:
-			_handle_immediate_refund_click(node)
+		_handle_refund_click_instant(node)
 		return
 
+	# --- Preallocation confirm: always INSTANT ---
 	if _tree_data.preallocation and _tree_data.allocation_confirm:
-		_handle_preallocation_click(node)
-	else:
-		_handle_direct_click(node)
+		_handle_preallocation_instant(node)
+		return
 
-func _handle_preallocation_click(node: BayterekNodeButton) -> void:
+	# --- HOLD mode ---
+	if _tree_data.is_hold_purchase_mode():
+		if _can_allocate(node):
+			_start_hold(node)
+		return
+
+	# --- INSTANT mode (classic) ---
+	if _can_allocate(node):
+		_allocate_node(node)
+
+## Called when the user releases the mouse button over the tree.
+func on_node_press_end(_node: BayterekNodeButton) -> void:
+	if _hold_active:
+		_cancel_hold()
+
+# ============================================================
+# HOLD LOGIC
+# ============================================================
+
+func _start_hold(node: BayterekNodeButton) -> void:
+	if _hold_active:
+		return
+	_hold_node = node
+	_hold_elapsed = 0.0
+	_hold_active = true
+	hold_started.emit(node)
+
+func _cancel_hold() -> void:
+	if not _hold_active:
+		return
+	var node: BayterekNodeButton = _hold_node
+	_hold_node = null
+	_hold_elapsed = 0.0
+	_hold_active = false
+	hold_cancelled.emit(node)
+
+func _complete_hold() -> void:
+	if not _hold_active:
+		return
+	var node: BayterekNodeButton = _hold_node
+	_hold_node = null
+	_hold_elapsed = 0.0
+	_hold_active = false
+
+	if node and is_instance_valid(node) and _can_allocate(node):
+		_allocate_node(node)
+
+	hold_completed.emit(node)
+
+## Called by BayterekTreeView every frame. Returns the current progress
+## if a hold is active, or 0.0 otherwise.
+func tick_hold(delta: float) -> float:
+	if not _hold_active or not _tree_data:
+		return 0.0
+
+	_hold_elapsed += delta
+	var duration: float = maxf(0.01, _tree_data.default_hold_duration)
+	var t: float = clampf(_hold_elapsed / duration, 0.0, 1.0)
+
+	if _hold_node and is_instance_valid(_hold_node):
+		hold_progress.emit(_hold_node, t)
+
+	if t >= 1.0:
+		_complete_hold()
+		return 0.0
+
+	return t
+
+# ============================================================
+# INSTANT HANDLERS
+# ============================================================
+
+func _handle_refund_click_instant(node: BayterekNodeButton) -> void:
+	# Identical to the old refund flow but triggered on press.
+	if _tree_data.refund_confirm:
+		_handle_refund_click(node)
+	else:
+		_handle_immediate_refund_click(node)
+
+func _handle_preallocation_instant(node: BayterekNodeButton) -> void:
 	var pre_size: int = _preallocated_nodes.size()
 
 	if _can_preallocate(node):
@@ -110,15 +215,6 @@ func _handle_preallocation_click(node: BayterekNodeButton) -> void:
 
 	if Input.is_key_pressed(KEY_CTRL) and pre_size == 0:
 		confirm_preallocations()
-
-## Normal mode (refund mode NOT active): clicking a node either allocates
-## it or, when multiallocation is on and max level isn't reached, raises
-## its level. If allocation isn't possible, nothing happens — no
-## deallocation from this code path. Deallocation only happens through
-## the refund flow.
-func _handle_direct_click(node: BayterekNodeButton) -> void:
-	if _can_allocate(node):
-		_allocate_node(node)
 
 func _handle_refund_click(node: BayterekNodeButton) -> void:
 	var pre_size: int = _refund_nodes.size()
@@ -156,8 +252,6 @@ func _handle_refund_click(node: BayterekNodeButton) -> void:
 	if Input.is_key_pressed(KEY_CTRL) and pre_size == 0:
 		confirm_refund()
 
-## Refund mode + refund_confirm == false: deallocate immediately.
-## Computes the refund closure and deallocates it in one step.
 func _handle_immediate_refund_click(node: BayterekNodeButton) -> void:
 	if not node.allocated:
 		return
@@ -166,7 +260,6 @@ func _handle_immediate_refund_click(node: BayterekNodeButton) -> void:
 	if closure.is_empty():
 		return
 
-	# Validate that removing this whole closure is safe.
 	if not _is_closure_valid_for_refund(closure):
 		return
 
@@ -179,7 +272,6 @@ func _handle_immediate_refund_click(node: BayterekNodeButton) -> void:
 # ============================================================
 # PUBLIC API — CONFIRM / CLEAR
 # ============================================================
-# Pattern: snapshot → clear → iterate (so listeners read the correct count).
 
 func confirm_preallocations() -> void:
 	var snapshot: Array[int] = _preallocated_nodes.duplicate()
@@ -265,7 +357,6 @@ func stage_all_for_refund() -> void:
 # ============================================================
 
 func clear_all_allocations() -> void:
-	# 1) Clear preallocations
 	var pre_snapshot: Array[int] = _preallocated_nodes.duplicate()
 	_preallocated_nodes.clear()
 	for node_id in pre_snapshot:
@@ -275,7 +366,6 @@ func clear_all_allocations() -> void:
 			node_refresh(node)
 			node_unpreallocated.emit(node)
 
-	# 2) Clear refund staging
 	var was_refund_mode: bool = _refund_mode
 	var refund_snapshot: Array[int] = _refund_nodes.duplicate()
 	_refund_nodes.clear()
@@ -287,7 +377,6 @@ func clear_all_allocations() -> void:
 			node_refresh(node)
 			node_refund_removed.emit(node)
 
-	# 3) Clear real allocations
 	var allocated_snapshot: Array[int] = _allocated_nodes.duplicate()
 	for node_id in allocated_snapshot:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
@@ -302,10 +391,8 @@ func clear_all_allocations() -> void:
 	_allocated_nodes.clear()
 	_allocation_level.clear()
 
-	# 4) Refresh visuals
 	_refresh_all_node_visuals()
 
-	# 5) Emit mode-exit if we were in refund mode
 	if was_refund_mode:
 		refund_mode_exited.emit()
 
@@ -317,8 +404,6 @@ func _refresh_all_node_visuals() -> void:
 			continue
 		node_refresh(node)
 
-## Safe refresh helper — calls refresh_state_only() if available,
-## falls back to refresh_visuals() otherwise.
 func node_refresh(node: BayterekNodeButton) -> void:
 	if not is_instance_valid(node):
 		return
@@ -442,24 +527,8 @@ func _can_allocate(node: BayterekNodeButton) -> bool:
 
 	return _is_prerequisite_satisfied(node.node_data, _allocated_nodes, [])
 
-func _can_stage_for_refund(node: BayterekNodeButton) -> bool:
-	if refund_check and not refund_check.call():
-		return false
-	if not node.allocated or _refund_nodes.has(node.id):
-		return false
-
-	return _is_valid_deallocation(node, _get_remaining_post_deallocation(node.id))
-
-func _can_unstage_refund(node: BayterekNodeButton) -> bool:
-	var remaining: Array[int] = _allocated_nodes.filter(
-		func(id): return not _refund_nodes.has(id) or id == node.id
-	)
-	if remaining.size() == _allocated_nodes.size():
-		return true
-	return _is_valid_deallocation(node, remaining, true)
-
 # ============================================================
-# GRAPH + PREREQUISITE VALIDITY
+# VALIDATION
 # ============================================================
 
 func _is_valid_deallocation(node: BayterekNodeButton, remaining: Array[int], for_unstage: bool = false) -> bool:
@@ -477,7 +546,6 @@ func _is_valid_deallocation(node: BayterekNodeButton, remaining: Array[int], for
 	if remaining.is_empty():
 		return true
 
-	# 1) Connectivity check
 	var visited: Dictionary = {}
 	var stack: Array = []
 
@@ -506,7 +574,6 @@ func _is_valid_deallocation(node: BayterekNodeButton, remaining: Array[int], for
 		if not visited.has(node_id):
 			return false
 
-	# 2) Prerequisite check
 	for node_id in remaining:
 		var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
 		if not n:
@@ -621,56 +688,6 @@ func _get_unpreallocation_closure(start_id: int) -> Array[int]:
 
 	return closure
 
-func _get_deallocation_closure(start_id: int) -> Array[int]:
-	var closure: Array[int] = [start_id]
-	var changed: bool = true
-
-	while changed:
-		changed = false
-
-		var active_remaining: Array = _allocated_nodes.filter(
-			func(id): return not closure.has(id)
-		)
-
-		for other_id in active_remaining:
-			if closure.has(other_id):
-				continue
-			var other: BayterekNodeButton = _tree_view.nodes_service.get_node(other_id)
-			if not other:
-				continue
-			if not _is_prerequisite_satisfied(other.node_data, active_remaining, []):
-				if _is_prerequisite_satisfied(other.node_data, _allocated_nodes, []):
-					closure.append(other_id)
-					changed = true
-
-		var visited: Dictionary = {}
-		var stack: Array = []
-		for node_id in active_remaining:
-			var n: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
-			if n and n.is_root:
-				stack.append(n)
-				visited[n.id] = true
-
-		while not stack.is_empty():
-			var cur: BayterekNodeButton = stack.pop_back()
-			var neighbors: Array = cur.node_data.in_nodes + cur.node_data.out_nodes
-			for nb_id in neighbors:
-				if not active_remaining.has(nb_id):
-					continue
-				if visited.has(nb_id):
-					continue
-				var nb: BayterekNodeButton = _tree_view.nodes_service.get_node(nb_id)
-				if nb:
-					visited[nb_id] = true
-					stack.append(nb)
-
-		for node_id in active_remaining:
-			if not visited.has(node_id) and not closure.has(node_id):
-				closure.append(node_id)
-				changed = true
-
-	return closure
-
 # ============================================================
 # CLOSURE VALIDITY
 # ============================================================
@@ -727,15 +744,6 @@ func _is_closure_valid_for_refund(closure: Array[int]) -> bool:
 func _get_active_nodes() -> Array[int]:
 	return _allocated_nodes + _preallocated_nodes
 
-func _get_remaining_nodes(excluded_id: int, include_prealloc: bool = false) -> Array[int]:
-	if _tree_data.multiallocation:
-		return _get_remaining_post_deallocation(excluded_id, include_prealloc)
-
-	var base: Array[int] = _allocated_nodes.duplicate()
-	if include_prealloc:
-		base += _preallocated_nodes
-	return base.filter(func(id): return id != excluded_id)
-
 func _get_remaining_post_deallocation(target_node_id: int, include_prealloc: bool = false) -> Array[int]:
 	var remaining: Array[int] = []
 	var resulting_levels: Dictionary = {}
@@ -764,15 +772,6 @@ func _get_remaining_post_deallocation(target_node_id: int, include_prealloc: boo
 
 	return remaining
 
-func _get_remaining_post_unpreallocation(target_node_id: int) -> Array[int]:
-	var remaining: Array[int] = _allocated_nodes.duplicate()
-	for node_id in _preallocated_nodes:
-		if node_id == target_node_id:
-			continue
-		if not remaining.has(node_id):
-			remaining.append(node_id)
-	return remaining
-
 # ============================================================
 # ALLOCATE / DEALLOCATE
 # ============================================================
@@ -790,16 +789,11 @@ func _allocate_node(node: BayterekNodeButton) -> void:
 		if not _allocated_nodes.has(node.id):
 			_allocated_nodes.append(node.id)
 		node.allocated = true
-		# Multiallocation kapalıyken bile allocation_level 1 olmalı.
-		# Aksi halde max_allocations == 1 olan node'larda max_level
-		# state'i hiç tetiklenmez.
 		_allocation_level[node.id] = 1
 		node.allocation_level = 1
 
 	node.preallocated = false
 
-	# Refresh the node's visual state immediately — allocation level
-	# may have changed even if the overall state stayed ACTIVE.
 	node_refresh(node)
 
 	node_allocated.emit(node)
@@ -821,7 +815,6 @@ func _deallocate_node(node: BayterekNodeButton) -> void:
 
 	node.refund = false
 
-	# Refresh the node's visual state immediately.
 	node_refresh(node)
 
 	node_deallocated.emit(node)
@@ -837,6 +830,9 @@ func reload_from_state() -> void:
 	_preallocated_nodes.clear()
 	_refund_nodes.clear()
 	_refund_mode = false
+	_hold_node = null
+	_hold_elapsed = 0.0
+	_hold_active = false
 
 	for node in _tree_view.nodes_service.get_all_nodes():
 		node.allocated = false
