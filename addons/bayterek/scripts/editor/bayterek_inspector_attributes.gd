@@ -7,6 +7,10 @@ extends VBoxContainer
 ## disable and edit per-node / per-prefab attribute values. Supports
 ## multi-allocation levels when the tree has `multiallocation = true`.
 ##
+## Currency attributes (is_currency = true) are rendered as:
+##   - ONE column (purchase) when refund_differs = false
+##   - TWO columns (purchase, refund) when refund_differs = true
+##
 ## Owned by BayterekTreeEditorInspector.
 
 signal changed
@@ -98,7 +102,7 @@ func _build_prefab_row(attr_id: String, attr: BayterekAttribute) -> void:
 	_list.add_child(block)
 
 	var check := CheckBox.new()
-	check.text = "%s (%s)" % [attr.name, attr_id]
+	check.text = _format_attr_label(attr, attr_id)
 	check.button_pressed = prefab.attributes.has(attr_id)
 	check.toggled.connect(_on_attr_toggled_prefab.bind(attr_id))
 	block.add_child(check)
@@ -128,7 +132,7 @@ func _build_node_row(attr_id: String, attr: BayterekAttribute, multi: bool) -> v
 	block.add_child(header_row)
 
 	var check := CheckBox.new()
-	check.text = "%s (%s)" % [attr.name, attr_id]
+	check.text = _format_attr_label(attr, attr_id)
 	check.size_flags_horizontal = SIZE_EXPAND_FILL
 	check.button_pressed = node.node_data.attributes.has(attr_id)
 	check.toggled.connect(_on_attr_toggled.bind(attr_id))
@@ -177,32 +181,7 @@ func _build_node_row(attr_id: String, attr: BayterekAttribute, multi: bool) -> v
 			var inputs: Array = []
 			var level_vals: Array = levels_data[level] if level < levels_data.size() else []
 
-			for i in attr.value_count:
-				var row := HBoxContainer.new()
-				level_box.add_child(row)
-
-				var vlabel := Label.new()
-				vlabel.text = "Value %d" % (i + 1)
-				vlabel.custom_minimum_size = Vector2(70, 0)
-				row.add_child(vlabel)
-
-				var spin := SpinBox.new()
-				spin.size_flags_horizontal = SIZE_EXPAND_FILL
-				spin.min_value = -999999999
-				spin.max_value = 999999999
-				spin.allow_greater = true
-				spin.allow_lesser = true
-				spin.rounded = true
-				spin.step = 1
-
-				if i < level_vals.size():
-					spin.set_value_no_signal(level_vals[i])
-				spin.editable = true
-
-				spin.value_changed.connect(_on_attr_value_changed.bind(attr_id, i, level))
-				row.add_child(spin)
-
-				inputs.append(spin)
+			_build_value_inputs(level_box, attr, attr_id, level_vals, inputs, level)
 
 			attr_inputs[level] = inputs
 	else:
@@ -211,41 +190,125 @@ func _build_node_row(attr_id: String, attr: BayterekAttribute, multi: bool) -> v
 		block.add_child(values_row)
 
 		var inputs: Array = []
-		for i in attr.value_count:
-			var row := HBoxContainer.new()
-			values_row.add_child(row)
+		var vals: Array = []
+		if has_attr:
+			var raw_vals = node.node_data.attributes[attr_id]
+			if raw_vals is Array:
+				vals = raw_vals
 
-			var vlabel := Label.new()
-			vlabel.text = "Value %d" % (i + 1)
-			vlabel.custom_minimum_size = Vector2(70, 0)
-			row.add_child(vlabel)
-
-			var spin := SpinBox.new()
-			spin.size_flags_horizontal = SIZE_EXPAND_FILL
-			spin.min_value = -999999999
-			spin.max_value = 999999999
-			spin.allow_greater = true
-			spin.allow_lesser = true
-			spin.rounded = true
-			spin.step = 1
-
-			if has_attr:
-				var vals = node.node_data.attributes[attr_id]
-				if vals is Array and i < vals.size() and not vals[i] is Array:
-					spin.set_value_no_signal(vals[i])
-				spin.editable = true
-			else:
-				spin.set_value_no_signal(0)
-				spin.editable = false
-
-			spin.value_changed.connect(_on_attr_value_changed.bind(attr_id, i, -1))
-			row.add_child(spin)
-
-			inputs.append(spin)
+		_build_value_inputs(values_row, attr, attr_id, vals, inputs, -1)
 
 		attr_inputs[-1] = inputs
 
 	_attr_value_inputs[attr_id] = attr_inputs
+
+
+## Builds the value spinboxes for a single attribute (or a single level
+## of a multi-allocation attribute).
+##
+## Currency attributes with `refund_differs = false` render a single
+## "Purchase" row. With `refund_differs = true`, they render two rows:
+## "Purchase" and "Refund".
+##
+## Non-currency attributes render `value_count` rows (Value 1, Value 2, ...).
+func _build_value_inputs(
+	parent: VBoxContainer,
+	attr: BayterekAttribute,
+	attr_id: String,
+	vals: Array,
+	inputs_out: Array,
+	level: int
+) -> void:
+	if attr.is_currency:
+		# Purchase row
+		_build_single_spin_row(
+			parent, "Purchase", attr_id, level,
+			BayterekAttribute.SLOT_PURCHASE, vals, inputs_out
+		)
+
+		# Refund row (only when refunds differ)
+		if attr.refund_differs:
+			_build_single_spin_row(
+				parent, "Refund", attr_id, level,
+				BayterekAttribute.SLOT_REFUND, vals, inputs_out
+			)
+		return
+
+	# Non-currency: one row per value_count slot
+	for i in attr.value_count:
+		var row := HBoxContainer.new()
+		parent.add_child(row)
+
+		var vlabel := Label.new()
+		vlabel.text = "Value %d" % (i + 1)
+		vlabel.custom_minimum_size = Vector2(70, 0)
+		row.add_child(vlabel)
+
+		var spin := SpinBox.new()
+		spin.size_flags_horizontal = SIZE_EXPAND_FILL
+		spin.min_value = -999999999
+		spin.max_value = 999999999
+		spin.allow_greater = true
+		spin.allow_lesser = true
+		spin.rounded = true
+		spin.step = 1
+
+		if i < vals.size():
+			spin.set_value_no_signal(vals[i])
+		spin.editable = true
+
+		spin.value_changed.connect(_on_attr_value_changed.bind(attr_id, i, level))
+		row.add_child(spin)
+
+		inputs_out.append(spin)
+
+
+## Builds a single labeled spinbox row for a currency attribute slot.
+func _build_single_spin_row(
+	parent: VBoxContainer,
+	label_text: String,
+	attr_id: String,
+	level: int,
+	slot: int,
+	vals: Array,
+	inputs_out: Array
+) -> void:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+
+	var vlabel := Label.new()
+	vlabel.text = label_text
+	vlabel.custom_minimum_size = Vector2(70, 0)
+
+	# Color the labels to distinguish purchase (red-ish) and refund (green-ish)
+	if slot == BayterekAttribute.SLOT_PURCHASE:
+		vlabel.add_theme_color_override("font_color", Color(0.95, 0.6, 0.6))
+	else:
+		vlabel.add_theme_color_override("font_color", Color(0.6, 0.95, 0.6))
+
+	row.add_child(vlabel)
+
+	var spin := SpinBox.new()
+	spin.size_flags_horizontal = SIZE_EXPAND_FILL
+	spin.min_value = 0
+	spin.max_value = 999999999
+	spin.allow_greater = true
+	spin.rounded = true
+	spin.step = 1
+
+	if slot < vals.size():
+		spin.set_value_no_signal(int(vals[slot]))
+	spin.editable = true
+
+	spin.value_changed.connect(_on_attr_value_changed.bind(attr_id, slot, level))
+	row.add_child(spin)
+
+	inputs_out.append(spin)
+
+
+func _format_attr_label(attr: BayterekAttribute, attr_id: String) -> String:
+	var prefix: String = "💰 " if attr.is_currency else ""
+	return "%s%s (%s)" % [prefix, attr.name, attr_id]
 
 # ============================================================
 # HANDLERS
@@ -268,13 +331,13 @@ func _on_attr_toggled_prefab(pressed: bool, attr_id: String) -> void:
 			var levels: Array = []
 			for level in inspector._current_prefab.max_allocations:
 				var values: Array = []
-				for i in attr.value_count:
+				for i in attr.get_effective_value_count():
 					values.append(0)
 				levels.append(values)
 			new_values = levels
 		else:
 			var values: Array = []
-			for i in attr.value_count:
+			for i in attr.get_effective_value_count():
 				values.append(0)
 			new_values = values
 
@@ -304,13 +367,13 @@ func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 			var levels: Array = []
 			for level in inspector._current_node.node_data.max_allocations:
 				var values: Array = []
-				for i in attr.value_count:
+				for i in attr.get_effective_value_count():
 					values.append(0)
 				levels.append(values)
 			new_values = levels
 		else:
 			var values: Array = []
-			for i in attr.value_count:
+			for i in attr.get_effective_value_count():
 				values.append(0)
 			new_values = values
 

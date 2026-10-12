@@ -2,13 +2,6 @@
 class_name BayterekAllocationService
 extends BayterekBaseService
 ## Allocation / preallocation / refund management.
-##
-## Purchase model (see BayterekTree):
-##   - INSTANT mode: a single click allocates immediately.
-##   - HOLD mode:    press & hold for `default_hold_duration` seconds.
-##
-## Refund and preallocation are always INSTANT, regardless of the tree
-## setting. HOLD is only used for normal allocation.
 
 signal node_preallocated(node: BayterekNodeButton)
 signal node_unpreallocated(node: BayterekNodeButton)
@@ -19,8 +12,6 @@ signal refund_mode_exited
 signal node_refund_added(node: BayterekNodeButton)
 signal node_refund_removed(node: BayterekNodeButton)
 
-## HOLD-mode events. Only emitted when the tree is in HOLD purchase mode
-## and the press is a valid allocation candidate.
 signal hold_started(node: BayterekNodeButton)
 signal hold_progress(node: BayterekNodeButton, t: float)
 signal hold_completed(node: BayterekNodeButton)
@@ -31,6 +22,17 @@ var preallocation_check: Callable
 var allocation_check: Callable
 var deallocation_check: Callable
 var refund_check: Callable
+
+# --- Wallet callbacks (currency / cost integration) ---
+#
+# The host game provides these. Bayterek never stores currency; it
+# just asks "is this affordable?" and "charge / refund this much".
+# All three callbacks receive (attribute_id: String, amount: int).
+#
+# If a callback is not set, the operation is treated as allowed / a no-op.
+var wallet_can_afford: Callable
+var wallet_spend: Callable
+var wallet_refund: Callable
 
 # Runtime state
 var _preallocated_nodes: Array[int] = []
@@ -96,35 +98,28 @@ func get_hold_progress() -> float:
 # PRESS START / END
 # ============================================================
 
-## Called when the user presses down on a node.
-## Decides whether to trigger an instant action or start a hold.
 func on_node_press_start(node: BayterekNodeButton) -> void:
 	if not node:
 		return
 	if not _tree_data or not _tree_data.allocation:
 		return
 
-	# --- Refund mode: always INSTANT ---
 	if _refund_mode:
 		_handle_refund_click_instant(node)
 		return
 
-	# --- Preallocation confirm: always INSTANT ---
 	if _tree_data.preallocation and _tree_data.allocation_confirm:
 		_handle_preallocation_instant(node)
 		return
 
-	# --- HOLD mode ---
 	if _tree_data.is_hold_purchase_mode():
 		if _can_allocate(node):
 			_start_hold(node)
 		return
 
-	# --- INSTANT mode (classic) ---
 	if _can_allocate(node):
 		_allocate_node(node)
 
-## Called when the user releases the mouse button over the tree.
 func on_node_press_end(_node: BayterekNodeButton) -> void:
 	if _hold_active:
 		_cancel_hold()
@@ -163,8 +158,6 @@ func _complete_hold() -> void:
 
 	hold_completed.emit(node)
 
-## Called by BayterekTreeView every frame. Returns the current progress
-## if a hold is active, or 0.0 otherwise.
 func tick_hold(delta: float) -> float:
 	if not _hold_active or not _tree_data:
 		return 0.0
@@ -183,11 +176,81 @@ func tick_hold(delta: float) -> float:
 	return t
 
 # ============================================================
+# CURRENCY / COST INTEGRATION
+# ============================================================
+
+## Returns an Array of {attr_id, amount} for every currency attribute
+## used by this node, at the target level.
+##
+## `for_refund` = false → purchase costs
+## `for_refund` = true  → refund values
+##
+## Missing currency attributes are treated as a hard error.
+func _collect_currency_operations(node: BayterekNodeButton, for_refund: bool, level_override: int = -1) -> Array:
+	var result: Array = []
+	if not node or not node.node_data or not _tree_data:
+		return result
+
+	for attr_id in _tree_data.attributes:
+		var attr: BayterekAttribute = _tree_data.attributes[attr_id]
+		if not attr or not attr.is_currency:
+			continue
+
+		if not node.node_data.has_currency_attribute(attr_id):
+			push_error(
+				"[Bayterek] Node '%s' (id=%d) is missing currency attribute '%s'. " %
+				[node.node_data.name, node.node_data.id, attr_id] +
+				"Every allocateable node must define a value for every currency attribute."
+			)
+			continue
+
+		var amount: int = 0
+		if for_refund:
+			if attr.refund_differs:
+				amount = node.node_data.get_currency_slot(attr_id, BayterekAttribute.SLOT_REFUND, level_override)
+			else:
+				amount = node.node_data.get_currency_slot(attr_id, BayterekAttribute.SLOT_PURCHASE, level_override)
+		else:
+			amount = node.node_data.get_currency_slot(attr_id, BayterekAttribute.SLOT_PURCHASE, level_override)
+
+		if amount <= 0:
+			continue
+
+		result.append({
+			"attr_id": attr_id,
+			"amount": amount,
+		})
+
+	return result
+
+
+func _can_afford_operations(ops: Array) -> bool:
+	if not wallet_can_afford.is_valid():
+		return true
+	for op in ops:
+		if not wallet_can_afford.call(op.attr_id, op.amount):
+			return false
+	return true
+
+
+func _pay_operations(ops: Array) -> void:
+	if not wallet_spend.is_valid():
+		return
+	for op in ops:
+		wallet_spend.call(op.attr_id, op.amount)
+
+
+func _refund_operations(ops: Array) -> void:
+	if not wallet_refund.is_valid():
+		return
+	for op in ops:
+		wallet_refund.call(op.attr_id, op.amount)
+
+# ============================================================
 # INSTANT HANDLERS
 # ============================================================
 
 func _handle_refund_click_instant(node: BayterekNodeButton) -> void:
-	# Identical to the old refund flow but triggered on press.
 	if _tree_data.refund_confirm:
 		_handle_refund_click(node)
 	else:
@@ -506,7 +569,18 @@ func _can_preallocate(node: BayterekNodeButton) -> bool:
 			return false
 
 	var active_ids: Array = _get_active_nodes()
-	return _is_prerequisite_satisfied(node.node_data, active_ids, [])
+	if not _is_prerequisite_satisfied(node.node_data, active_ids, []):
+		return false
+
+	var target_level: int = 0
+	if _tree_data.multiallocation and _allocation_level.has(node.id):
+		target_level = int(_allocation_level[node.id])
+
+	var ops: Array = _collect_currency_operations(node, false, target_level)
+	if not _can_afford_operations(ops):
+		return false
+
+	return true
 
 func _can_allocate(node: BayterekNodeButton) -> bool:
 	if allocation_check and not allocation_check.call():
@@ -525,7 +599,18 @@ func _can_allocate(node: BayterekNodeButton) -> bool:
 		if node.allocated:
 			return false
 
-	return _is_prerequisite_satisfied(node.node_data, _allocated_nodes, [])
+	if not _is_prerequisite_satisfied(node.node_data, _allocated_nodes, []):
+		return false
+
+	var target_level: int = 0
+	if _tree_data.multiallocation and _allocation_level.has(node.id):
+		target_level = int(_allocation_level[node.id])
+
+	var ops: Array = _collect_currency_operations(node, false, target_level)
+	if not _can_afford_operations(ops):
+		return false
+
+	return true
 
 # ============================================================
 # VALIDATION
@@ -744,39 +829,22 @@ func _is_closure_valid_for_refund(closure: Array[int]) -> bool:
 func _get_active_nodes() -> Array[int]:
 	return _allocated_nodes + _preallocated_nodes
 
-func _get_remaining_post_deallocation(target_node_id: int, include_prealloc: bool = false) -> Array[int]:
-	var remaining: Array[int] = []
-	var resulting_levels: Dictionary = {}
-
-	for node_id in _allocated_nodes:
-		resulting_levels[node_id] = _allocation_level.get(node_id, 1)
-
-	if _refund_mode:
-		for refund_id in _refund_nodes:
-			if resulting_levels.has(refund_id):
-				resulting_levels[refund_id] -= 1
-				if resulting_levels[refund_id] <= 0:
-					resulting_levels.erase(refund_id)
-
-	if resulting_levels.has(target_node_id):
-		resulting_levels[target_node_id] -= 1
-		if resulting_levels[target_node_id] <= 0:
-			resulting_levels.erase(target_node_id)
-
-	remaining.append_array(resulting_levels.keys())
-
-	if include_prealloc:
-		for node_id in _preallocated_nodes:
-			if node_id != target_node_id and not remaining.has(node_id):
-				remaining.append(node_id)
-
-	return remaining
-
 # ============================================================
 # ALLOCATE / DEALLOCATE
 # ============================================================
 
 func _allocate_node(node: BayterekNodeButton) -> void:
+	if not node or not node.node_data or not _tree_data:
+		return
+
+	var target_level: int = 0
+	if _tree_data.multiallocation:
+		target_level = int(_allocation_level.get(node.id, 0))
+
+	var ops: Array = _collect_currency_operations(node, false, target_level)
+	if not _can_afford_operations(ops):
+		return
+
 	if _tree_data.multiallocation:
 		if _allocation_level.has(node.id):
 			_allocation_level[node.id] += 1
@@ -794,11 +862,21 @@ func _allocate_node(node: BayterekNodeButton) -> void:
 
 	node.preallocated = false
 
-	node_refresh(node)
+	_pay_operations(ops)
 
+	node_refresh(node)
 	node_allocated.emit(node)
 
 func _deallocate_node(node: BayterekNodeButton) -> void:
+	if not node or not node.node_data or not _tree_data:
+		return
+
+	var refund_level: int = 0
+	if _tree_data.multiallocation:
+		refund_level = max(0, int(_allocation_level.get(node.id, 1)) - 1)
+
+	var ops: Array = _collect_currency_operations(node, true, refund_level)
+
 	if _tree_data.multiallocation:
 		if _allocation_level.has(node.id):
 			_allocation_level[node.id] -= 1
@@ -815,8 +893,9 @@ func _deallocate_node(node: BayterekNodeButton) -> void:
 
 	node.refund = false
 
-	node_refresh(node)
+	_refund_operations(ops)
 
+	node_refresh(node)
 	node_deallocated.emit(node)
 
 # ============================================================

@@ -538,22 +538,23 @@ func _is_progress_layer(layer: BayterekTextureLayer) -> bool:
 ##        - dir 0                             → hidden
 ##        - dir 1                             → visible (initial look)
 func _is_progress_layer_visible_now() -> bool:
+	# In the editor we never show the progress layer — it's a runtime-only
+	# visual. This keeps the editor canvas clean while designing.
+	if Engine.is_editor_hint():
+		return false
+
 	if _progress_active:
 		return true
 	if not tree_data:
 		return false
 
 	if _progress_finished:
-		# Hold has ended.
 		if _progress_cancelled:
-			# Cancelled → revert to idle visibility.
 			return tree_data.purchase_progress_direction == 1
-		# Completed → always hide.
 		return false
 
-	# No hold has happened yet → idle visibility.
 	return tree_data.purchase_progress_direction == 1
-
+	
 
 ## Applies a per-frame transform override to the given layer node if
 ## it is the progress layer AND a hold is active. Otherwise, falls

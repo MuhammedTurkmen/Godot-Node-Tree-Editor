@@ -38,13 +38,7 @@ var _active_states_cache_key: String = ""
 
 @export_storage var design_id: String = ""
 
-## Layer id used as the "progress" indicator for HOLD-mode purchases
-## when this node is purchased.
-##
-## Populated by apply_design() and apply_exported_overrides() by
-## remapping the design's `progress_layer_id` to the corresponding
-## copy in this node's own layers array (because copy_layers_from()
-## gives every layer a fresh id).
+## Layer id used as the "progress" indicator for HOLD-mode purchases.
 @export_storage var node_progress_layer_id: String = ""
 
 # ============================================================
@@ -156,8 +150,6 @@ func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPr
 	if not design:
 		return
 
-	# Remember the design's progress layer POSITION before copying,
-	# because copy_layers_from() will give every copy a fresh id.
 	var design_progress_index: int = -1
 	if not design.progress_layer_id.is_empty():
 		for i in design.layers.size():
@@ -169,10 +161,6 @@ func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPr
 	design_size = design.design_size
 	scale = design.scale
 
-	# Remap the design's progress layer id to the freshly-copied layer
-	# at the same index. Without this, the progress visuals silently
-	# stop working after the first refresh_visuals() because the ids
-	# no longer match.
 	node_progress_layer_id = ""
 	if design_progress_index >= 0 and design_progress_index < layers.size():
 		if layers[design_progress_index]:
@@ -521,3 +509,47 @@ func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
 	_active_states_cache = result
 	_active_states_cache_key = cache_key
 	return result
+
+# ============================================================
+# CURRENCY / COST HELPERS
+# ============================================================
+
+## Returns the value stored in `slot` for the given currency
+## attribute, at the given allocation level.
+##
+## `level` = -1 → use slot 0 (the first level). The runtime allocation
+## level is owned by `BayterekNodeButton` / `BayterekAllocationService`;
+## this resource only stores the raw data.
+##
+## Returns 0 if the attribute or slot is missing.
+func get_currency_slot(attr_id: String, slot: int, level: int = -1) -> int:
+	if not attributes.has(attr_id):
+		return 0
+
+	var raw = attributes[attr_id]
+	if not raw is Array:
+		return 0
+
+	# Multi-allocation:  [[slot0, slot1], [slot0, slot1], ...]
+	if raw.size() > 0 and raw[0] is Array:
+		var lvl: int = level
+		if lvl < 0:
+			lvl = 0
+		if lvl >= raw.size():
+			return 0
+		var level_vals = raw[lvl]
+		if not level_vals is Array:
+			return 0
+		if slot < 0 or slot >= level_vals.size():
+			return 0
+		return int(level_vals[slot])
+
+	# Single-allocation:  [slot0, slot1]
+	if slot < 0 or slot >= raw.size():
+		return 0
+	return int(raw[slot])
+
+
+## Returns true if this node defines the given currency attribute.
+func has_currency_attribute(attr_id: String) -> bool:
+	return attributes.has(attr_id)

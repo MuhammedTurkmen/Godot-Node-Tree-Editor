@@ -1806,6 +1806,18 @@ func _input(event: InputEvent) -> void:
 	if not _shortcuts:
 		return
 
+	# Ctrl+S must ALWAYS save, even when a LineEdit/TextEdit has focus.
+	# This is the ONLY reliable way to save from the Attributes editor
+	# where the Name field keeps focus while the user is typing.
+	if event is InputEventKey and event.pressed and not event.echo:
+		var ctrl: bool = event.ctrl_pressed or event.meta_pressed
+		if ctrl and event.keycode == KEY_S:
+			save_tree()
+			get_viewport().set_input_as_handled()
+			return
+
+	# Other shortcuts are suppressed while a text input has focus so the
+	# user can type Ctrl+C / Ctrl+V / Ctrl+A / Ctrl+D freely.
 	if _is_text_input_focused():
 		return
 
@@ -2558,11 +2570,6 @@ func _on_settings_connection_animation_tracking_changed() -> void:
 # ============================================================
 # PURCHASE SETTINGS HANDLER
 # ============================================================
-#
-# Called when the user changes any purchase-related setting in the
-# Settings tab. The tree view reads these settings live on every
-# press, so no live-update is strictly required here. We mark the
-# tree dirty so the change is persisted on save.
 
 func _on_settings_purchase_changed() -> void:
 	set_dirty(true)
@@ -2662,8 +2669,18 @@ func save_tree() -> void:
 	if not tree:
 		return
 
+	# Dump every attribute for inspection.
+	for k in tree.attributes.keys():
+		var a: BayterekAttribute = tree.attributes[k]
+
+	var conflict_check: bool = _has_attribute_conflicts()
+
 	if not _tree_has_root():
 		_show_no_root_save_dialog()
+		return
+
+	if conflict_check:
+		_show_attribute_conflict_dialog()
 		return
 
 	_perform_save()
@@ -2714,6 +2731,166 @@ func _perform_save() -> void:
 	if tree_view:
 		BayterekToast.success(tree_view, "Tree saved")
 	BayterekLogger.info("Tree saved: %s" % tree_path, "editor")
+
+# ============================================================
+# ATTRIBUTE ID CONFLICT DETECTION
+# ============================================================
+
+## Returns true if any attribute's id is empty OR its current id
+## does not match snake_case(name), OR the dict key is a temp key.
+func _has_attribute_conflicts() -> bool:
+	if not tree or tree.attributes.is_empty():
+		return false
+
+	var desired_ids: Dictionary = {}
+	var has_conflict: bool = false
+
+	for attr_key in tree.attributes.keys():
+		var attr: BayterekAttribute = tree.attributes[attr_key]
+		if not attr:
+			continue
+
+		var desired: String = Bayterek.to_snake_case(attr.name)
+
+		# Case 1: empty name.
+		if desired.is_empty():
+			has_conflict = true
+			continue
+
+		# Case 2: two attributes producing the same desired id.
+		if desired_ids.has(desired):
+			has_conflict = true
+		desired_ids[desired] = true
+
+		# Case 3: dict key is a temp key, OR doesn't match attr.id.
+		if attr_key.begins_with("__conflict_"):
+			has_conflict = true
+		elif attr_key != attr.id:
+			has_conflict = true
+
+	return has_conflict
+
+
+## Shows the "Fix & Save" / "Cancel" dialog.
+func _show_attribute_conflict_dialog() -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Attribute ID Conflict"
+	dialog.dialog_text = (
+		"Some attributes have missing or conflicting IDs.\n\n"
+		+ "Fix & Save will:\n"
+		+ "  • Generate unique IDs from each attribute's Name\n"
+		+ "  • Auto-suffix duplicates with _2, _3, ...\n"
+		+ "  • Migrate all node/prefab references\n\n"
+		+ "Continue?"
+	)
+	dialog.ok_button_text = "Fix & Save"
+	dialog.cancel_button_text = "Cancel"
+	dialog.unresizable = true
+	dialog.exclusive = true
+
+	dialog.confirmed.connect(func() -> void:
+		_apply_attribute_id_fixes()
+		dialog.queue_free()
+		_perform_save()
+	)
+	dialog.canceled.connect(func() -> void:
+		dialog.queue_free()
+	)
+	dialog.close_requested.connect(func() -> void:
+		dialog.queue_free()
+	)
+
+	add_child(dialog)
+	dialog.call_deferred("popup_centered", Vector2i(480, 240))
+
+
+## Rebuilds the attribute dictionary with fresh, unique ids derived
+## from each attribute's name.  Every reference in nodes, prefabs,
+## and override dicts is migrated.
+func _apply_attribute_id_fixes() -> void:
+	if not tree:
+		return
+
+
+	var old_attrs: Dictionary = tree.attributes
+	var new_attrs: Dictionary = {}
+	var migration_map: Dictionary = {}
+	var used_ids: Dictionary = {}
+
+	# Sort by attr.id so deterministic.
+	var sorted_entries: Array = []
+	for key in old_attrs.keys():
+		var attr: BayterekAttribute = old_attrs[key]
+		if attr:
+			sorted_entries.append({"key": key, "attr": attr})
+	sorted_entries.sort_custom(func(a, b): return a["attr"].id < b["attr"].id)
+
+	for entry in sorted_entries:
+		var key: String = entry["key"]
+		var attr: BayterekAttribute = entry["attr"]
+
+		var base: String = Bayterek.to_snake_case(attr.name)
+		if base.is_empty():
+			base = "attribute"
+
+		var candidate: String = base
+		var counter: int = 2
+		while used_ids.has(candidate):
+			candidate = "%s_%d" % [base, counter]
+			counter += 1
+
+		used_ids[candidate] = true
+
+		# Only add to migration map when the OLD key was a real id
+		# (temp keys are never referenced by nodes/prefabs).
+		if not key.begins_with("__conflict_"):
+			migration_map[key] = candidate
+
+		attr.id = candidate
+		new_attrs[candidate] = attr
+
+	# Migrate node/prefab references (real keys only).
+	for node_data in tree.nodes:
+		if not node_data:
+			continue
+		_migrate_dict_keys(node_data.attributes, migration_map)
+		_migrate_dict_keys(node_data.overridden_attributes, migration_map)
+
+	for prefab in tree.prefabs:
+		if not prefab:
+			continue
+		_migrate_dict_keys(prefab.attributes, migration_map)
+
+	tree.attributes = new_attrs
+
+	if attributes_editor and attributes_editor.has_method("_refresh"):
+		attributes_editor._refresh()
+
+
+func _migrate_dict_keys(dict: Dictionary, migration_map: Dictionary) -> void:
+	if dict.is_empty():
+		return
+
+	var to_add: Dictionary = {}
+	var to_remove: Array = []
+
+	for key in dict.keys():
+		if not migration_map.has(key):
+			continue
+		var new_key: String = migration_map[key]
+		if new_key == key:
+			continue
+		to_add[new_key] = dict[key]
+		to_remove.append(key)
+
+	for key in to_remove:
+		dict.erase(key)
+	for key in to_add.keys():
+		dict[key] = to_add[key]
+
+# ============================================================
+# DIRTY / STATE
+# ============================================================
 
 func set_dirty(is_dirty: bool) -> void:
 	if dirty != is_dirty:

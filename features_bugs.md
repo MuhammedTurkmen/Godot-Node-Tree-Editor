@@ -1,4 +1,4 @@
-# Features
+# FEATURES
 
 ## EASY
 [] validator'a yeni uyarı ve hata mesajları eklenecek 
@@ -8,7 +8,7 @@
 
 ## HARD
 
-# Bugs 
+# BUGS 
 
 ## EASY
 
