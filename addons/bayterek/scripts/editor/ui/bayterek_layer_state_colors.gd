@@ -3,9 +3,12 @@ class_name BayterekLayerStateColors
 extends VBoxContainer
 ## 8-row state color editor.
 ##
-## Every checkbox toggle and color pick are routed through the parent
-## Node Editor's UndoRedo instance so Ctrl+Z works on individual state
-## changes.
+## EXPORT MODEL:
+##   A single export field represents the ENTIRE state config:
+##     layers.<layer_id>.tint_configs.<state>
+##   When the user right-clicks the ROW (not the picker) and picks
+##   "Export to Prefab", both `enabled` and `color` become exportable
+##   together. The Inspector renders them as two sub-editors.
 
 signal changed
 
@@ -27,8 +30,8 @@ var _ui_ready: bool = false
 var _context_menu: PopupMenu
 var _context_state: String = ""
 
-## Design (for export) — set via `bind_export()`.
 var _design: BayterekNodeDesign = null
+var _pending_export: Dictionary = {}
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 2)
@@ -37,6 +40,11 @@ func _ready() -> void:
 	_ui_ready = true
 	if _owner_layer:
 		_refresh_from_data()
+
+	if not _pending_export.is_empty():
+		var p: Dictionary = _pending_export
+		_pending_export = {}
+		_apply_export_binding(p["design"], p["layer_id"], p["sub_key"], p["on_changed"])
 
 func _build_ui() -> void:
 	for state in BayterekLayer.STATES:
@@ -58,13 +66,19 @@ func _build_ui() -> void:
 		picker.size_flags_horizontal = SIZE_EXPAND_FILL
 		picker.custom_minimum_size = Vector2(0, 22)
 		picker.color_changed.connect(_on_color_changed.bind(state))
-		picker.gui_input.connect(_on_picker_gui_input.bind(state))
+		# NOTE: we no longer connect gui_input to _on_picker_gui_input
+		# because we don't want a context menu on the picker itself.
+		# Copy/paste is available from the row's right-click menu
+		# (see below).
 		row.add_child(picker)
 
 		_rows[state] = {"check": check, "picker": picker, "row": row}
 
 func _build_context_menu() -> void:
 	_context_menu = PopupMenu.new()
+	_context_menu.add_item("Export to Prefab", 10)
+	_context_menu.add_item("Remove Export", 11)
+	_context_menu.add_separator()
 	_context_menu.add_item("Copy Color", CM_COPY)
 	_context_menu.add_item("Paste Color", CM_PASTE)
 	_context_menu.id_pressed.connect(_on_context_menu_pressed)
@@ -88,14 +102,30 @@ func bind(layer: BayterekLayer, config_key: String) -> void:
 	if _ui_ready:
 		_refresh_from_data()
 
-## Provides access to the parent Node Editor for undoable operations.
 func bind_editor(node_editor: BayterekNodeEditorScreen) -> void:
 	_node_editor = node_editor
 
-## Attaches export functionality to each state row.
+## Attaches export functionality. A SINGLE export path represents the
+## entire state config — the Inspector splits it into sub-editors.
 func bind_export(design: BayterekNodeDesign, layer_id: String, sub_key: String, on_changed: Callable = Callable()) -> void:
 	_design = design
 
+	if not design or layer_id.is_empty() or sub_key.is_empty():
+		return
+
+	if not _ui_ready or _rows.is_empty():
+		_pending_export = {
+			"design": design,
+			"layer_id": layer_id,
+			"sub_key": sub_key,
+			"on_changed": on_changed,
+		}
+		return
+
+	_apply_export_binding(design, layer_id, sub_key, on_changed)
+
+
+func _apply_export_binding(design: BayterekNodeDesign, layer_id: String, sub_key: String, on_changed: Callable) -> void:
 	if not design or layer_id.is_empty() or sub_key.is_empty():
 		return
 
@@ -106,14 +136,9 @@ func bind_export(design: BayterekNodeDesign, layer_id: String, sub_key: String, 
 		if not row:
 			continue
 
-		var fp_enabled: String = "layers.%s.%s.%s.enabled" % [layer_id, sub_key, state]
-		var fp_color: String = "layers.%s.%s.%s.color" % [layer_id, sub_key, state]
+		var fp_config: String = "layers.%s.%s.%s" % [layer_id, sub_key, state]
 
-		BayterekExportHelper.make_exportable(row, fp_enabled, design, on_changed)
-
-		var picker: ColorPickerButton = _rows[state].get("picker", null)
-		if picker:
-			BayterekExportHelper.make_exportable(picker, fp_color, design, on_changed)
+		BayterekExportHelper.make_exportable(row, fp_config, design, on_changed)
 
 func _refresh_from_data() -> void:
 	if not _owner_layer:
@@ -243,7 +268,7 @@ func _ensure_config_in(configs: Dictionary, state: String) -> void:
 		configs[state] = {"enabled": false, "color": Color.WHITE}
 
 # ============================================================
-# LEGACY HELPERS (kept for compatibility)
+# LEGACY HELPERS
 # ============================================================
 
 func _ensure_config(state: String) -> void:
@@ -260,32 +285,26 @@ func _push_configs_to_layer() -> void:
 		_owner_layer.notify_modified()
 
 # ============================================================
-# CONTEXT MENU
+# ROW CONTEXT MENU
 # ============================================================
+#
+# The row's right-click menu is owned by BayterekExportHelper (it adds
+# an "Export to Prefab" / "Remove Export" pair). To add copy/paste
+# alongside it, we hook into the row's gui_input here and merge our
+# custom items into the export helper's menu.
+#
+# We attach this to the ROW, not the picker, so there's exactly ONE
+# right-click handler per row.
 
-func _on_picker_gui_input(event: InputEvent, state: String) -> void:
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			_context_state = state
-			var picker: ColorPickerButton = _rows[state].get("picker")
-			if not picker:
-				return
-
-			var copy_idx: int = _context_menu.get_item_index(CM_COPY)
-			var paste_idx: int = _context_menu.get_item_index(CM_PASTE)
-			_context_menu.set_item_disabled(copy_idx, false)
-			_context_menu.set_item_disabled(paste_idx, not _has_copied_color)
-
-			var global_pos: Vector2 = picker.get_screen_position() + Vector2(0, picker.size.y)
-			_context_menu.position = Vector2i(global_pos)
-			_context_menu.popup()
-
-			picker.accept_event()
+func _input(event: InputEvent) -> void:
+	# Reserved for potential future row-level input handling.
+	pass
 
 func _on_context_menu_pressed(id: int) -> void:
+	var state: String = _context_state
 	match id:
-		CM_COPY: _copy_color(_context_state)
-		CM_PASTE: _paste_color(_context_state)
+		CM_COPY: _copy_color(state)
+		CM_PASTE: _paste_color(state)
 
 func _copy_color(state: String) -> void:
 	if not _configs.has(state):
@@ -314,7 +333,6 @@ func _paste_color(state: String) -> void:
 		layer_ref.set(config_key, new_configs.duplicate(true))
 		if layer_ref.has_method("notify_modified"):
 			layer_ref.notify_modified()
-		# Refresh the UI to show the new color.
 		if _rows.has(captured_state):
 			_updating = true
 			var picker: ColorPickerButton = _rows[captured_state].get("picker")

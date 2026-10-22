@@ -157,7 +157,7 @@ func apply_exported_overrides(design: BayterekNodeDesign, prefab_ref: BayterekPr
 				design_progress_index = i
 				break
 
-	copy_layers_from(design.layers)
+	copy_layers_from_design(design.layers)
 	design_size = design.design_size
 	scale = design.scale
 
@@ -219,6 +219,19 @@ func _apply_override_to_layer(field_path: String, value: Variant) -> void:
 		(current as Object).set(last_seg, value)
 	elif current is Dictionary:
 		current[last_seg] = value
+
+	# Auto-enable the tint/icon when a per-state config is written.
+	# Without this, exporting `tint_configs.<state>` alone leaves
+	# `tint_enabled` at its default (false), and `get_tint_for_state()`
+	# returns WHITE for every state — the exact "white color" bug.
+	if segments.size() >= 1:
+		var first_seg: String = String(segments[0])
+		if layer is BayterekTextureLayer:
+			var tl: BayterekTextureLayer = layer as BayterekTextureLayer
+			if first_seg == "tint_configs":
+				tl.tint_enabled = true
+			elif first_seg == "icon_configs":
+				tl.icon_enabled = true
 
 	clear_render_cache()
 
@@ -295,6 +308,9 @@ func clear_layers() -> void:
 	layers.clear()
 	clear_render_cache()
 
+## Copies layers from another source, regenerating layer ids.
+## Use this for node→node duplication where the copies must be
+## independent of the source.
 func copy_layers_from(source_layers: Array) -> void:
 	layers.clear()
 	for layer in source_layers:
@@ -303,6 +319,28 @@ func copy_layers_from(source_layers: Array) -> void:
 		var dup: BayterekLayer = layer.duplicate_layer()
 		if dup:
 			dup.layer_id = BayterekUUIDGenerator.v4()
+			layers.append(dup)
+	clear_render_cache()
+
+## Copies layers from a DESIGN, PRESERVING layer ids.
+##
+## Why this exists separately from `copy_layers_from`:
+##   - Export paths (e.g. `layers.<layer_id>.tint_configs.normal`)
+##     reference the DESIGN's layer ids.
+##   - When a node copies layers from a design, the copies MUST keep
+##     those same ids, otherwise `apply_exported_overrides` cannot
+##     resolve `get_layer_by_id(design_layer_id)` and silently drops
+##     every override.
+##   - For node→node duplication we still want fresh ids, so
+##     `copy_layers_from` is kept as-is for that case.
+func copy_layers_from_design(design_layers: Array) -> void:
+	layers.clear()
+	for layer in design_layers:
+		if not layer:
+			continue
+		var dup: BayterekLayer = layer.duplicate_layer()
+		if dup:
+			# KEEP the original layer_id — do NOT regenerate.
 			layers.append(dup)
 	clear_render_cache()
 
@@ -324,7 +362,7 @@ func apply_design(design: BayterekNodeDesign) -> void:
 				design_progress_index = i
 				break
 
-	copy_layers_from(design.layers)
+	copy_layers_from_design(design.layers)
 
 	node_progress_layer_id = ""
 	if design_progress_index >= 0 and design_progress_index < layers.size():
@@ -548,7 +586,6 @@ func get_currency_slot(attr_id: String, slot: int, level: int = -1) -> int:
 	if slot < 0 or slot >= raw.size():
 		return 0
 	return int(raw[slot])
-
 
 ## Returns true if this node defines the given currency attribute.
 func has_currency_attribute(attr_id: String) -> bool:

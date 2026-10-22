@@ -34,6 +34,10 @@ const EXPORTABLE_LAYER_FIELDS: Array[String] = [
 	"nine_patch_margin_right",
 	"nine_patch_margin_bottom",
 	"nine_patch_draw_center",
+	# Per-state icon / tint configs (added so tint/icon colors can be
+	# exported to prefabs).
+	"icon_configs",
+	"tint_configs",
 ]
 
 @export_storage var id: String = ""

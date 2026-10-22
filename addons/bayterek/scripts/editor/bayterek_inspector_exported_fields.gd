@@ -3,20 +3,22 @@ class_name BayterekInspectorExportedFields
 extends VBoxContainer
 ## Exported Fields editor for the Node Inspector.
 ##
-## Fields are grouped by their source layer:
-##   Layer "Background" (uuid)
-##     ├ Scale X / Y
-##     ├ Visible
-##     ├ Rotation
-##     └ ...
-##   Layer "Icon"
-##     ├ ...
+## Supports two kinds of exported fields:
+##   1. Simple scalar fields — Value: layers.<id>.transform.scale, etc.
+##   2. Dict config fields — a single export path represents an entire
+##      state config dict like layers.<id>.tint_configs.normal. These
+##      are split into two sub-editors:
+##        - "Enabled" checkbox
+##        - "Color" / "Texture" editor
+##
+## The export model change: the user only right-clicks ONCE on the row
+## in the Node Editor. Both enabled and color/texture are exported
+## together under a single field path.
 
 signal changed
 
 var inspector: BayterekTreeEditorInspector
 
-# UI
 var _sep: HSeparator
 var _title: Label
 var _empty_label: Label
@@ -126,10 +128,7 @@ func _build_for_node() -> void:
 # GROUPED BUILD
 # ============================================================
 
-## Collects all exported field paths, groups them by layer_id, and
-## renders one block per layer.
 func _build_grouped_fields(prefab: BayterekPrefab, design: BayterekNodeDesign, is_prefab: bool) -> void:
-	# Gather field paths from both design and prefab.
 	var all_paths: Dictionary = {}
 	if design:
 		for p in design.exported_fields.keys():
@@ -141,10 +140,8 @@ func _build_grouped_fields(prefab: BayterekPrefab, design: BayterekNodeDesign, i
 	if all_paths.is_empty():
 		return
 
-	# Group by layer id, preserving layer order from the design.
-	# "design_size" and "scale" go into a "Design" pseudo-group.
 	var design_paths: Array = []
-	var layer_paths: Dictionary = {}  # layer_id -> Array[String]
+	var layer_paths: Dictionary = {}
 
 	for path in all_paths.keys():
 		if path == "design_size" or path == "scale":
@@ -158,11 +155,9 @@ func _build_grouped_fields(prefab: BayterekPrefab, design: BayterekNodeDesign, i
 				layer_paths[layer_id] = []
 			layer_paths[layer_id].append(path)
 
-	# --- Design block (if any design-level fields) ---
 	if not design_paths.is_empty():
 		_build_layer_block("Design", design_paths, prefab, design, is_prefab)
 
-	# --- Layer blocks in design order ---
 	if design:
 		for layer in design.layers:
 			if not layer:
@@ -173,7 +168,6 @@ func _build_grouped_fields(prefab: BayterekPrefab, design: BayterekNodeDesign, i
 			paths.sort_custom(func(a, b): return _field_sort_key(a) < _field_sort_key(b))
 			_build_layer_block(layer.layer_name, paths, prefab, design, is_prefab)
 
-		# Any layers present in export but missing from design
 		for layer_id in layer_paths.keys():
 			var found: bool = false
 			for layer in design.layers:
@@ -185,18 +179,15 @@ func _build_grouped_fields(prefab: BayterekPrefab, design: BayterekNodeDesign, i
 				paths.sort_custom(func(a, b): return _field_sort_key(a) < _field_sort_key(b))
 				_build_layer_block("Layer %s" % layer_id.substr(0, 8), paths, prefab, design, is_prefab)
 	else:
-		# No design — just dump everything.
 		for layer_id in layer_paths.keys():
 			var paths: Array = layer_paths[layer_id]
 			paths.sort_custom(func(a, b): return _field_sort_key(a) < _field_sort_key(b))
 			_build_layer_block("Layer %s" % layer_id.substr(0, 8), paths, prefab, design, is_prefab)
 
-## Builds one group header + all field rows for a single layer.
 func _build_layer_block(layer_name: String, paths: Array, prefab: BayterekPrefab, design: BayterekNodeDesign, is_prefab: bool) -> void:
 	if paths.is_empty():
 		return
 
-	# Layer header
 	var header := PanelContainer.new()
 	var header_style := StyleBoxFlat.new()
 	header_style.bg_color = Color(0.15, 0.22, 0.35, 0.6)
@@ -217,7 +208,6 @@ func _build_layer_block(layer_name: String, paths: Array, prefab: BayterekPrefab
 	header_label.add_theme_font_size_override("font_size", 12)
 	header.add_child(header_label)
 
-	# Field rows
 	var body := VBoxContainer.new()
 	body.add_theme_constant_override("separation", 3)
 	_list.add_child(body)
@@ -233,6 +223,229 @@ func _build_layer_block(layer_name: String, paths: Array, prefab: BayterekPrefab
 # ============================================================
 
 func _build_field_row(
+	parent: VBoxContainer,
+	prefab: BayterekPrefab,
+	field_path: String,
+	design: BayterekNodeDesign,
+	is_prefab: bool,
+	is_override: bool
+) -> void:
+	# Detect if this field is a "config dict" — i.e. its last segment
+	# is a state name (normal / hover / ...) and its root is one of
+	# the config dict keys (tint_configs / icon_configs).
+	var config_kind: String = _detect_config_kind(field_path)
+
+	if config_kind != "":
+		_build_config_dict_row(parent, prefab, field_path, design, is_prefab, is_override, config_kind)
+	else:
+		_build_scalar_field_row(parent, prefab, field_path, design, is_prefab, is_override)
+
+
+## Returns "tint" / "icon" / "" depending on the field kind.
+func _detect_config_kind(field_path: String) -> String:
+	var parts: Array = field_path.split(".")
+	if parts.size() < 4:
+		return ""
+	# Expect: layers.<layer_id>.<config_key>.<state>
+	if parts[0] != "layers":
+		return ""
+	var config_key: String = parts[2]
+	if config_key == "tint_configs":
+		return "tint"
+	if config_key == "icon_configs":
+		return "icon"
+	return ""
+
+
+## Splits the state name off the export path so we can build the
+## per-field humanized labels.
+func _split_config_path(field_path: String) -> Dictionary:
+	var parts: Array = field_path.split(".")
+	if parts.size() < 4:
+		return {}
+	return {
+		"layer_id": parts[1],
+		"config_key": parts[2],
+		"state": parts[3],
+	}
+
+
+# ------------------------------------------------------------
+# CONFIG DICT ROW (tint / icon state)
+# ------------------------------------------------------------
+
+func _build_config_dict_row(
+	parent: VBoxContainer,
+	prefab: BayterekPrefab,
+	field_path: String,
+	design: BayterekNodeDesign,
+	is_prefab: bool,
+	is_override: bool,
+	kind: String
+) -> void:
+	var info: Dictionary = _split_config_path(field_path)
+	if info.is_empty():
+		return
+
+	var state: String = info["state"]
+	var state_label: String = _humanize_single(state)
+
+	# Get the current dict value.
+	var current_dict: Dictionary = {}
+	var design_value: Variant = null
+	if design:
+		design_value = design.get_field_value(field_path)
+	if design_value is Dictionary:
+		current_dict = (design_value as Dictionary).duplicate(true)
+
+	if not is_prefab:
+		var node = inspector._current_node
+		if node and node.node_data and node.node_data.exported_overrides.has(field_path):
+			var override_value: Variant = node.node_data.exported_overrides[field_path]
+			if override_value is Dictionary:
+				current_dict = (override_value as Dictionary).duplicate(true)
+		elif prefab and prefab.exported_values.has(field_path):
+			var prefab_value: Variant = prefab.exported_values[field_path]
+			if prefab_value is Dictionary:
+				current_dict = (prefab_value as Dictionary).duplicate(true)
+	else:
+		if prefab and prefab.exported_values.has(field_path):
+			var prefab_value: Variant = prefab.exported_values[field_path]
+			if prefab_value is Dictionary:
+				current_dict = (prefab_value as Dictionary).duplicate(true)
+
+	# Outer block
+	var block := VBoxContainer.new()
+	block.add_theme_constant_override("separation", 3)
+	parent.add_child(block)
+
+	# Header row: label + reset button
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 4)
+	block.add_child(header_row)
+
+	var title := Label.new()
+	title.text = state_label
+	title.size_flags_horizontal = SIZE_EXPAND_FILL
+	title.add_theme_color_override("font_color", Color(0.9, 0.9, 0.95))
+	title.add_theme_font_size_override("font_size", 12)
+	header_row.add_child(title)
+
+	if not is_prefab and is_override:
+		var reset_btn := Button.new()
+		reset_btn.text = "↺"
+		reset_btn.tooltip_text = "Reset to default"
+		reset_btn.custom_minimum_size = Vector2(28, 0)
+		reset_btn.pressed.connect(_on_reset_override_pressed.bind(prefab, field_path))
+		header_row.add_child(reset_btn)
+
+	# Enabled sub-row
+	var enabled_row := HBoxContainer.new()
+	enabled_row.add_theme_constant_override("separation", 4)
+	block.add_child(enabled_row)
+
+	var enabled_label := Label.new()
+	enabled_label.text = "Enabled"
+	enabled_label.custom_minimum_size = Vector2(70, 0)
+	enabled_label.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	enabled_row.add_child(enabled_label)
+
+	var enabled_check := CheckBox.new()
+	enabled_check.text = "On"
+	enabled_check.size_flags_horizontal = SIZE_EXPAND_FILL
+	enabled_check.button_pressed = bool(current_dict.get("enabled", false))
+	enabled_check.toggled.connect(func(pressed: bool):
+		var updated: Dictionary = current_dict.duplicate(true)
+		updated["enabled"] = pressed
+		_apply_config_value(field_path, updated, is_prefab, prefab)
+	)
+	enabled_row.add_child(enabled_check)
+
+	# Value sub-row (color or texture)
+	var value_row := HBoxContainer.new()
+	value_row.add_theme_constant_override("separation", 4)
+	block.add_child(value_row)
+
+	if kind == "tint":
+		var color_label := Label.new()
+		color_label.text = "Color"
+		color_label.custom_minimum_size = Vector2(70, 0)
+		color_label.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+		value_row.add_child(color_label)
+
+		var color_picker := ColorPickerButton.new()
+		color_picker.size_flags_horizontal = SIZE_EXPAND_FILL
+		color_picker.custom_minimum_size = Vector2(0, 24)
+		var current_color: Color = current_dict.get("color", Color.WHITE)
+		color_picker.color = current_color
+		color_picker.color_changed.connect(func(c: Color):
+			var updated: Dictionary = current_dict.duplicate(true)
+			updated["color"] = c
+			_apply_config_value(field_path, updated, is_prefab, prefab)
+		)
+		value_row.add_child(color_picker)
+
+	elif kind == "icon":
+		var tex_label := Label.new()
+		tex_label.text = "Texture"
+		tex_label.custom_minimum_size = Vector2(70, 0)
+		tex_label.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+		value_row.add_child(tex_label)
+
+		var tex_input := BayterekInspectorTextureInput.new()
+		tex_input.title = ""
+		tex_input.size_flags_horizontal = SIZE_EXPAND_FILL
+		var current_tex: Texture2D = current_dict.get("texture", null)
+		tex_input.set_texture(current_tex)
+		tex_input.texture_dropped.connect(func(path: String):
+			var updated: Dictionary = current_dict.duplicate(true)
+			var tex: Texture2D = load(path) as Texture2D
+			updated["texture"] = tex
+			_apply_config_value(field_path, updated, is_prefab, prefab)
+		)
+		tex_input.cleared.connect(func():
+			var updated: Dictionary = current_dict.duplicate(true)
+			updated["texture"] = null
+			_apply_config_value(field_path, updated, is_prefab, prefab)
+		)
+		value_row.add_child(tex_input)
+
+
+## Applies a full config dict to the target (node override or prefab
+## exported_values). This is the single entry point for both enabled
+## and value changes.
+func _apply_config_value(
+	field_path: String,
+	value: Dictionary,
+	is_prefab: bool,
+	prefab: BayterekPrefab
+) -> void:
+	if _updating_ui:
+		return
+
+	if is_prefab:
+		if not prefab:
+			return
+		prefab.exported_values[field_path] = value
+		prefab.exported_values_changed.emit(prefab)
+		if inspector.editor and inspector.editor.tree_view and inspector.editor.tree_view.prefabs_service:
+			inspector.editor.tree_view.prefabs_service.notify_exported_values_changed(prefab)
+	else:
+		if not inspector._current_node or not inspector._current_node.node_data:
+			return
+		inspector._current_node.node_data.set_exported_override(field_path, value)
+		inspector._current_node.rebuild_from_design()
+
+	changed.emit()
+	if inspector.editor and inspector.editor.has_method("set_dirty"):
+		inspector.editor.set_dirty(true)
+
+
+# ------------------------------------------------------------
+# SCALAR FIELD ROW (existing behavior)
+# ------------------------------------------------------------
+
+func _build_scalar_field_row(
 	parent: VBoxContainer,
 	prefab: BayterekPrefab,
 	field_path: String,
@@ -288,26 +501,21 @@ func _build_field_row(
 # HUMANIZE FIELD PATH
 # ============================================================
 
-## Turns "layers.<uuid>.transform.scale" into "Scale".
 func _humanize_field_path(field_path: String) -> String:
 	var parts: Array = field_path.split(".")
 	if parts.size() < 3:
 		return field_path
 
-	# Drop "layers" and "<uuid>" — keep the rest.
 	var sub: Array = []
 	for i in range(2, parts.size()):
 		sub.append(parts[i])
 
-	# Special humanization for common field names.
 	if sub.size() == 1:
 		return _humanize_single(sub[0])
 
-	# transform.xxx → "xxx" prettified
 	if sub.size() == 2 and sub[0] == "transform":
 		return _humanize_single(sub[1])
 
-	# Fallback: join with ›
 	var out: Array[String] = []
 	for s in sub:
 		out.append(_humanize_single(String(s)))
@@ -333,6 +541,20 @@ func _humanize_single(s: String) -> String:
 		"tint_enabled": return "Tint Enabled"
 		"stretch_mode": return "Stretch Mode"
 		"nine_patch_draw_center": return "9-Patch Draw Center"
+		"icon_configs": return "Icon"
+		"tint_configs": return "Tint"
+		"normal": return "Normal"
+		"hover": return "Hover"
+		"clicked": return "Clicked"
+		"locked": return "Locked"
+		"preallocated": return "Preallocated"
+		"prerefund": return "Pre-Refund"
+		"max_level": return "Max Level"
+		"allocateable": return "Allocateable"
+		"not_allocateable": return "Not Allocateable"
+		"enabled": return "Enabled"
+		"color": return "Color"
+		"texture": return "Texture"
 		_:
 			return s.capitalize()
 
@@ -340,7 +562,6 @@ func _humanize_single(s: String) -> String:
 # SORTING
 # ============================================================
 
-## Ensures a stable, friendly field order inside a layer block.
 func _field_sort_key(path: String) -> int:
 	if path.ends_with(".transform.scale"): return 10
 	if path.ends_with(".transform.position"): return 20
@@ -359,7 +580,7 @@ func _field_sort_key(path: String) -> int:
 	return 500
 
 # ============================================================
-# VALUE EDITORS
+# SCALAR VALUE EDITORS
 # ============================================================
 
 func _build_value_editor(
@@ -419,7 +640,6 @@ func _build_value_editor(
 			parent.add_child(picker)
 
 		TYPE_VECTOR2:
-			# X / Y labels give users a clear reading of what each spinbox does.
 			var v2: Vector2 = value
 
 			var x_lbl := Label.new()

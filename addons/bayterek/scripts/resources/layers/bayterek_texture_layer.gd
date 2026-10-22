@@ -75,7 +75,15 @@ func _is_config_enabled(configs: Dictionary, state: String) -> bool:
 	var entry = configs[state]
 	if not entry is Dictionary:
 		return false
-	return entry.get("enabled", false)
+	# `entry.get("enabled", false)` returns a Variant; Godot 4.7 refuses
+	# to implicitly cast Variant → bool in a typed return. Explicit cast
+	# + type guard prevents the "returning Dictionary from bool" error
+	# that was spamming the console and forcing get_tint_for_state()
+	# to always return WHITE.
+	var enabled_val = entry.get("enabled", false)
+	if enabled_val is bool:
+		return enabled_val
+	return false
 
 # ============================================================
 # RESOLUTION
@@ -86,28 +94,39 @@ func get_icon_for_state(state_key: String) -> Texture2D:
 		return null
 	if _is_config_enabled(icon_configs, state_key):
 		var tex = icon_configs[state_key].get("texture", null)
-		if tex:
+		if tex is Texture2D:
 			return tex
 	if _is_config_enabled(icon_configs, "normal"):
-		return icon_configs["normal"].get("texture", null)
+		var normal_tex = icon_configs["normal"].get("texture", null)
+		if normal_tex is Texture2D:
+			return normal_tex
 	return null
 
 func get_tint_for_state(state_key: String) -> Color:
 	if not tint_enabled:
 		return Color.WHITE
 	if _is_config_enabled(tint_configs, state_key):
-		return tint_configs[state_key].get("color", Color.WHITE)
+		var col = tint_configs[state_key].get("color", Color.WHITE)
+		if col is Color:
+			return col
+		return Color.WHITE
 	if _is_config_enabled(tint_configs, "normal"):
-		return tint_configs["normal"].get("color", Color.WHITE)
+		var normal_col = tint_configs["normal"].get("color", Color.WHITE)
+		if normal_col is Color:
+			return normal_col
 	return Color.WHITE
 
 func should_draw_icon(state_key: String) -> bool:
 	if not icon_enabled:
 		return false
-	if _is_config_enabled(icon_configs, state_key) and icon_configs[state_key].get("texture", null) != null:
-		return true
-	if _is_config_enabled(icon_configs, "normal") and icon_configs["normal"].get("texture", null) != null:
-		return true
+	if _is_config_enabled(icon_configs, state_key):
+		var tex = icon_configs[state_key].get("texture", null)
+		if tex is Texture2D and tex != null:
+			return true
+	if _is_config_enabled(icon_configs, "normal"):
+		var normal_tex = icon_configs["normal"].get("texture", null)
+		if normal_tex is Texture2D and normal_tex != null:
+			return true
 	return false
 
 # ============================================================

@@ -3,9 +3,10 @@ class_name BayterekLayerStateTextures
 extends VBoxContainer
 ## 8-row state texture editor.
 ##
-## Every checkbox toggle, texture assignment, and texture clear is
-## routed through the parent Node Editor's UndoRedo instance so Ctrl+Z
-## works on individual state changes.
+## EXPORT MODEL:
+##   A single export field represents the ENTIRE state config:
+##     layers.<layer_id>.icon_configs.<state>
+##   Both `enabled` and `texture` are exported together.
 
 signal changed
 
@@ -19,6 +20,7 @@ var _node_editor: BayterekNodeEditorScreen = null
 var _ui_ready: bool = false
 
 var _design: BayterekNodeDesign = null
+var _pending_export: Dictionary = {}
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 2)
@@ -26,6 +28,11 @@ func _ready() -> void:
 	_ui_ready = true
 	if _owner_layer:
 		_refresh_from_data()
+
+	if not _pending_export.is_empty():
+		var p: Dictionary = _pending_export
+		_pending_export = {}
+		_apply_export_binding(p["design"], p["layer_id"], p["on_changed"])
 
 func _build_ui() -> void:
 	for state in BayterekLayer.STATES:
@@ -61,15 +68,29 @@ func bind(layer: BayterekLayer) -> void:
 	if _ui_ready:
 		_refresh_from_data()
 
-## Provides access to the parent Node Editor for undoable operations.
-## Called by the layer editor after it's built.
 func bind_editor(node_editor: BayterekNodeEditorScreen) -> void:
 	_node_editor = node_editor
 
-## Attaches export functionality to each state row.
+## Attaches export functionality. A SINGLE export path represents the
+## entire state config.
 func bind_export(design: BayterekNodeDesign, layer_id: String, on_changed: Callable = Callable()) -> void:
 	_design = design
 
+	if not design or layer_id.is_empty():
+		return
+
+	if not _ui_ready or _rows.is_empty():
+		_pending_export = {
+			"design": design,
+			"layer_id": layer_id,
+			"on_changed": on_changed,
+		}
+		return
+
+	_apply_export_binding(design, layer_id, on_changed)
+
+
+func _apply_export_binding(design: BayterekNodeDesign, layer_id: String, on_changed: Callable) -> void:
 	if not design or layer_id.is_empty():
 		return
 
@@ -80,14 +101,9 @@ func bind_export(design: BayterekNodeDesign, layer_id: String, on_changed: Calla
 		if not row:
 			continue
 
-		var fp_enabled: String = "layers.%s.icon_configs.%s.enabled" % [layer_id, state]
-		var fp_texture: String = "layers.%s.icon_configs.%s.texture" % [layer_id, state]
+		var fp_config: String = "layers.%s.icon_configs.%s" % [layer_id, state]
 
-		BayterekExportHelper.make_exportable(row, fp_enabled, design, on_changed)
-
-		var tex_input: BayterekInspectorTextureInput = _rows[state].get("input", null)
-		if tex_input:
-			BayterekExportHelper.make_exportable(tex_input, fp_texture, design, on_changed)
+		BayterekExportHelper.make_exportable(row, fp_config, design, on_changed)
 
 func _refresh_from_data() -> void:
 	if not _owner_layer:
@@ -223,16 +239,12 @@ func _ensure_config_in(configs: Dictionary, state: String) -> void:
 	elif not configs[state] is Dictionary:
 		configs[state] = {"enabled": false, "texture": null}
 
-## Legacy helper kept for compatibility. The public API now goes through
-## _commit() so this is no longer called from the UI, but external code
-## may still rely on it.
 func _ensure_config(state: String) -> void:
 	if not _configs.has(state):
 		_configs[state] = {"enabled": false, "texture": null}
 	elif not _configs[state] is Dictionary:
 		_configs[state] = {"enabled": false, "texture": null}
 
-## Legacy helper kept for compatibility.
 func _push_configs_to_layer() -> void:
 	if not _owner_layer:
 		return

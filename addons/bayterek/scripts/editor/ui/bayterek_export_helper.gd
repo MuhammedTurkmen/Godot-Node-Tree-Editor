@@ -16,14 +16,19 @@ static func make_exportable(
 	if not row or field_path.is_empty():
 		return
 
-	# Guard: if this row was already set up, do nothing. Prevents
-	# "Signal 'gui_input' is already connected" errors when the detail
-	# form is rebuilt multiple times.
+	# If this row was already bound, check whether it was bound to the
+	# SAME field path. If yes, just refresh the design reference and
+	# marker state. If it was bound to a DIFFERENT path, tear down the
+	# old binding and set up a new one — otherwise the second call
+	# would be silently ignored, and the row would keep pointing at
+	# the old field (this was the "Tint color doesn't show up" bug).
 	if row.has_meta("__export_field_path"):
-		# Still refresh the design reference and marker state.
-		row.set_meta("__export_design", design)
-		_refresh_marker(row)
-		return
+		var existing_path: String = row.get_meta("__export_field_path", "")
+		if existing_path == field_path:
+			row.set_meta("__export_design", design)
+			_refresh_marker(row)
+			return
+		_teardown_binding(row)
 
 	# Marker Label at the end
 	var marker := Label.new()
@@ -55,6 +60,28 @@ static func make_exportable(
 	menu.id_pressed.connect(_on_menu_pressed.bind(row))
 
 	_refresh_marker(row)
+
+
+## Removes the marker and menu added by a previous make_exportable() call.
+static func _teardown_binding(row: Control) -> void:
+	# Disconnect the old gui_input handler if possible.
+	if row.gui_input.is_connected(_on_row_gui_input):
+		row.gui_input.disconnect(_on_row_gui_input)
+
+	var old_marker: Node = row.get_node_or_null("__export_marker")
+	if old_marker:
+		old_marker.queue_free()
+
+	var old_menu: Node = row.get_node_or_null("__export_menu")
+	if old_menu:
+		old_menu.queue_free()
+
+	row.remove_meta("__export_field_path")
+	row.remove_meta("__export_design")
+	row.remove_meta("__export_marker")
+	row.remove_meta("__export_menu")
+	row.remove_meta("__export_on_changed")
+
 
 static func _on_row_gui_input(event: InputEvent, row: Control) -> void:
 	if not (event is InputEventMouseButton):
