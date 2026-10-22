@@ -11,7 +11,16 @@
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="7_j5a67"]
 [ext_resource type="Texture2D" uid="uid://bad5qhdfe60r3" path="res://assets/big_border.png" id="8_wfhhu"]
 [ext_resource type="Texture2D" uid="uid://c1atrbecaesx" path="res://assets/Icon.png" id="9_nrko7"]
+[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="10_6p5mu"]
 [ext_resource type="AudioStream" uid="uid://c54qd30dnbq0b" path="res://assets/Hit7.wav" id="11_qlprm"]
+
+[sub_resource type="Resource" id="Resource_6p5mu"]
+script = ExtResource("1_6p5mu")
+is_currency = true
+id = "diamond"
+name = "diamond"
+effect = "Effect #"
+value_count = 1
 
 [sub_resource type="Resource" id="Resource_txiuo"]
 script = ExtResource("1_6p5mu")
@@ -20,6 +29,124 @@ id = "gold"
 name = "gold"
 effect = "Effect #"
 value_count = 1
+
+[sub_resource type="Resource" id="Resource_0rgdv"]
+script = ExtResource("1_6p5mu")
+id = "health"
+name = "health"
+effect = "Effect #"
+value_count = 1
+
+[sub_resource type="Resource" id="Resource_5lgyx"]
+script = ExtResource("7_j5a67")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_j5a67"]
+script = ExtResource("6_5lgyx")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("5_6p5mu")
+}
+}
+tint_enabled = true
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
+layer_name = "Texture 3"
+transform = SubResource("Resource_5lgyx")
+
+[sub_resource type="Resource" id="Resource_wfhhu"]
+script = ExtResource("7_j5a67")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_nrko7"]
+script = ExtResource("6_5lgyx")
+icon_configs = {
+"normal": {
+"enabled": true,
+"texture": ExtResource("8_wfhhu")
+}
+}
+tint_enabled = true
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.03125, 0.03125, 0.03125, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
+layer_name = "Texture 2"
+transform = SubResource("Resource_wfhhu")
+texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_53451"]
 script = ExtResource("7_j5a67")
@@ -30,7 +157,7 @@ script = ExtResource("6_5lgyx")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("5_6p5mu")
+"texture": ExtResource("9_nrko7")
 }
 }
 tint_enabled = true
@@ -56,7 +183,7 @@ tint_configs = {
 "enabled": false
 },
 "normal": {
-"color": Color(0.49803922, 0.72156864, 1, 1),
+"color": Color(0.8828125, 0.010345459, 0.010345459, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -72,9 +199,41 @@ tint_configs = {
 "enabled": false
 }
 }
-layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
-layer_name = "Texture 3"
+layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
+layer_name = "Texture 1"
 transform = SubResource("Resource_53451")
+texture_filter_override = 2
+
+[sub_resource type="Resource" id="Resource_ss5fq"]
+script = ExtResource("10_6p5mu")
+start_offset = 8.0
+end_offset = 12.0
+texture_filter_override = 2
+wiggle_phase_offset = 2.2420087952941072
+
+[sub_resource type="Resource" id="Resource_mklcx"]
+script = ExtResource("1_immpc")
+is_root = true
+reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
+id = 44
+name = "New Design"
+design_id = "new_design"
+position = Vector2(-80, 192)
+line_data = {
+46: SubResource("Resource_ss5fq")
+}
+out_nodes = Array[int]([46])
+attributes = {
+"diamond": [[5]],
+"gold": [[15]],
+"health": [[5]]
+}
+layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_j5a67"), SubResource("Resource_nrko7"), SubResource("Resource_l2tvo")])
+overridden_attributes = {
+"diamond": true,
+"gold": true,
+"health": true
+}
 
 [sub_resource type="Resource" id="Resource_k0kgc"]
 script = ExtResource("7_j5a67")
@@ -85,6 +244,61 @@ script = ExtResource("6_5lgyx")
 icon_configs = {
 "normal": {
 "enabled": true,
+"texture": ExtResource("5_6p5mu")
+}
+}
+tint_enabled = true
+tint_configs = {
+"allocateable": {
+"color": Color(0.5568628, 0.9607843, 0.5568628, 1),
+"enabled": false
+},
+"clicked": {
+"color": Color(0.7019608, 0.5411765, 0, 1),
+"enabled": false
+},
+"hover": {
+"color": Color(1, 0.8509804, 0.4, 1),
+"enabled": false
+},
+"locked": {
+"color": Color(0.4, 0.4, 0.4, 1),
+"enabled": false
+},
+"max_level": {
+"color": Color(1, 0.8784314, 0.4, 1),
+"enabled": false
+},
+"normal": {
+"color": Color(0.49803922, 0.72156864, 1, 1),
+"enabled": true
+},
+"not_allocateable": {
+"color": Color(1, 0.4, 0.4, 1),
+"enabled": false
+},
+"preallocated": {
+"color": Color(1, 0.6509804, 0.2509804, 1),
+"enabled": false
+},
+"prerefund": {
+"color": Color(1, 0.5019608, 0.5019608, 1),
+"enabled": false
+}
+}
+layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
+layer_name = "Texture 3"
+transform = SubResource("Resource_k0kgc")
+
+[sub_resource type="Resource" id="Resource_tmiro"]
+script = ExtResource("7_j5a67")
+size = Vector2(100, 100)
+
+[sub_resource type="Resource" id="Resource_3cysg"]
+script = ExtResource("6_5lgyx")
+icon_configs = {
+"normal": {
+"enabled": true,
 "texture": ExtResource("8_wfhhu")
 }
 }
@@ -129,14 +343,14 @@ tint_configs = {
 }
 layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
 layer_name = "Texture 2"
-transform = SubResource("Resource_k0kgc")
+transform = SubResource("Resource_tmiro")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_tmiro"]
+[sub_resource type="Resource" id="Resource_67hed"]
 script = ExtResource("7_j5a67")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_3cysg"]
+[sub_resource type="Resource" id="Resource_vn7yg"]
 script = ExtResource("6_5lgyx")
 icon_configs = {
 "normal": {
@@ -167,7 +381,7 @@ tint_configs = {
 "enabled": false
 },
 "normal": {
-"color": Color(0.08691406, 0.6953125, 0, 1),
+"color": Color(0.8828125, 0.010345459, 0.010345459, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -185,24 +399,45 @@ tint_configs = {
 }
 layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
 layer_name = "Texture 1"
-transform = SubResource("Resource_tmiro")
+transform = SubResource("Resource_67hed")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_mklcx"]
-script = ExtResource("1_immpc")
-is_root = true
-reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
-id = 44
-name = "New Design"
-design_id = "new_design"
-position = Vector2(-353.5, -73.5)
-layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_l2tvo"), SubResource("Resource_x2q8f"), SubResource("Resource_3cysg")])
+[sub_resource type="Resource" id="Resource_botrw"]
+script = ExtResource("10_6p5mu")
+start_offset = 8.0
+end_offset = 12.0
+texture_filter_override = 2
+wiggle_phase_offset = 1.3790487283091917
 
 [sub_resource type="Resource" id="Resource_safsq"]
+script = ExtResource("1_immpc")
+reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
+id = 46
+name = "New Design"
+design_id = "new_design"
+position = Vector2(-80, -32)
+line_data = {
+47: SubResource("Resource_botrw")
+}
+out_nodes = Array[int]([47])
+in_nodes = Array[int]([44])
+attributes = {
+"diamond": [[10]],
+"gold": [[25]],
+"health": [[10]]
+}
+layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_x2q8f"), SubResource("Resource_3cysg"), SubResource("Resource_vn7yg")])
+overridden_attributes = {
+"diamond": true,
+"gold": true,
+"health": true
+}
+
+[sub_resource type="Resource" id="Resource_bjop0"]
 script = ExtResource("7_j5a67")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_ss5fq"]
+[sub_resource type="Resource" id="Resource_pvlmy"]
 script = ExtResource("6_5lgyx")
 icon_configs = {
 "normal": {
@@ -251,13 +486,13 @@ tint_configs = {
 }
 layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
 layer_name = "Texture 3"
-transform = SubResource("Resource_safsq")
+transform = SubResource("Resource_bjop0")
 
-[sub_resource type="Resource" id="Resource_botrw"]
+[sub_resource type="Resource" id="Resource_p8dnb"]
 script = ExtResource("7_j5a67")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_67hed"]
+[sub_resource type="Resource" id="Resource_451aj"]
 script = ExtResource("6_5lgyx")
 icon_configs = {
 "normal": {
@@ -306,14 +541,14 @@ tint_configs = {
 }
 layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
 layer_name = "Texture 2"
-transform = SubResource("Resource_botrw")
+transform = SubResource("Resource_p8dnb")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_vn7yg"]
+[sub_resource type="Resource" id="Resource_44f6a"]
 script = ExtResource("7_j5a67")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_bjop0"]
+[sub_resource type="Resource" id="Resource_x43e0"]
 script = ExtResource("6_5lgyx")
 icon_configs = {
 "normal": {
@@ -344,7 +579,7 @@ tint_configs = {
 "enabled": false
 },
 "normal": {
-"color": Color(0.08691406, 0.6953125, 0, 1),
+"color": Color(0.8828125, 0.010345459, 0.010345459, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -362,17 +597,28 @@ tint_configs = {
 }
 layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
 layer_name = "Texture 1"
-transform = SubResource("Resource_vn7yg")
+transform = SubResource("Resource_44f6a")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_pvlmy"]
+[sub_resource type="Resource" id="Resource_uf3jb"]
 script = ExtResource("1_immpc")
 reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
-id = 45
+id = 47
 name = "New Design"
 design_id = "new_design"
-position = Vector2(-292.5, 164.5)
-layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_ss5fq"), SubResource("Resource_67hed"), SubResource("Resource_bjop0")])
+position = Vector2(96, -224)
+in_nodes = Array[int]([46])
+attributes = {
+"diamond": [[15]],
+"gold": [[35]],
+"health": [[15]]
+}
+layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_pvlmy"), SubResource("Resource_451aj"), SubResource("Resource_x43e0")])
+overridden_attributes = {
+"diamond": true,
+"gold": true,
+"health": true
+}
 
 [sub_resource type="Resource" id="Resource_bxwvi"]
 script = ExtResource("3_k1nh3")
@@ -380,6 +626,11 @@ reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
 id = "new_design"
 node_name = "New Design"
 design_id = "new_design"
+attributes = {
+"diamond": [[0]],
+"gold": [[0]],
+"health": [[0]]
+}
 exported_fields = {
 "layers.02216fb3-8823-4f1a-b353-5252c195f8aa.tint_configs.normal": true
 }
@@ -396,13 +647,15 @@ id = "tree_1"
 name = "Tree 1"
 multiallocation = true
 hover_animations_enabled = false
-id_counter = 45
-nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_mklcx"), SubResource("Resource_pvlmy")])
+id_counter = 47
+nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_mklcx"), SubResource("Resource_safsq"), SubResource("Resource_uf3jb")])
 prefabs = Array[ExtResource("3_k1nh3")]([SubResource("Resource_bxwvi")])
 attributes = {
-"gold": SubResource("Resource_txiuo")
+"diamond": SubResource("Resource_6p5mu"),
+"gold": SubResource("Resource_txiuo"),
+"health": SubResource("Resource_0rgdv")
 }
-hierarchy_split_offset = -408
+hierarchy_split_offset = -423
 default_purchase_mode = 1
 purchase_visual_mode = 2
 purchase_progress_direction = 1

@@ -7,6 +7,9 @@ extends RefCounted
 ##   var view = BayterekBuilder.new(tree) \
 ##       .set_parent(some_control) \
 ##       .node_allocated_callback(_on_allocated) \
+##       .wallet_can_afford_callback(_on_can_afford) \
+##       .wallet_spend_callback(_on_spend) \
+##       .wallet_refund_callback(_on_refund) \
 ##       .build()
 ##
 ## The builder returns a BayterekTreeView with services already wired.
@@ -29,6 +32,17 @@ var _preallocation_check_callback: Callable
 var _allocation_check_callback: Callable
 var _deallocation_check_callback: Callable
 var _refund_check_callback: Callable
+
+# --- Wallet callbacks (currency / cost integration) ---
+#
+# The host game provides these. Bayterek never stores currency; it
+# just asks "is this affordable?" and "charge / refund this much".
+# All three callbacks receive (attribute_id: String, amount: int).
+#
+# If a callback is not set, the operation is treated as allowed / a no-op.
+var _wallet_can_afford_callback: Callable
+var _wallet_spend_callback: Callable
+var _wallet_refund_callback: Callable
 
 func _init(tree_data: BayterekTree) -> void:
 	_tree = tree_data
@@ -87,6 +101,26 @@ func deallocation_check_callback(callback: Callable) -> BayterekBuilder:
 
 func refund_check_callback(callback: Callable) -> BayterekBuilder:
 	_refund_check_callback = callback
+	return self
+
+# --- Wallet setters ---
+
+## Set the callback that checks whether the player can afford a cost.
+## Signature: `func(attr_id: String, amount: int) -> bool`
+func wallet_can_afford_callback(callback: Callable) -> BayterekBuilder:
+	_wallet_can_afford_callback = callback
+	return self
+
+## Set the callback that charges the player.
+## Signature: `func(attr_id: String, amount: int) -> void`
+func wallet_spend_callback(callback: Callable) -> BayterekBuilder:
+	_wallet_spend_callback = callback
+	return self
+
+## Set the callback that refunds the player.
+## Signature: `func(attr_id: String, amount: int) -> void`
+func wallet_refund_callback(callback: Callable) -> BayterekBuilder:
+	_wallet_refund_callback = callback
 	return self
 
 # ============================================================
@@ -149,7 +183,15 @@ func build() -> BayterekTreeView:
 		if _refund_check_callback:
 			tree_view.allocation_service.refund_check = _refund_check_callback
 
-	# 7. Wire node_pressed callback (user hook, if provided)
+		# 7. Wire wallet callbacks
+		if _wallet_can_afford_callback:
+			tree_view.allocation_service.wallet_can_afford = _wallet_can_afford_callback
+		if _wallet_spend_callback:
+			tree_view.allocation_service.wallet_spend = _wallet_spend_callback
+		if _wallet_refund_callback:
+			tree_view.allocation_service.wallet_refund = _wallet_refund_callback
+
+	# 8. Wire node_pressed callback (user hook, if provided)
 	if _node_pressed_callback and tree_view.nodes_service:
 		tree_view.nodes_service.node_pressed.connect(_node_pressed_callback)
 
