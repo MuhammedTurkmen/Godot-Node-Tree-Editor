@@ -30,10 +30,19 @@ name = "gold"
 effect = "Effect #"
 value_count = 1
 
+[sub_resource type="Resource" id="Resource_wbej3"]
+script = ExtResource("1_6p5mu")
+id = "health_regen"
+name = "health regen"
+effect = "previous {P}
+current {C}
+next {N}"
+value_count = 1
+
 [sub_resource type="Resource" id="Resource_0rgdv"]
 script = ExtResource("1_6p5mu")
-id = "health"
-name = "health"
+id = "max_health"
+name = "max health"
 effect = "previous {P}
 current {C}
 next {N}"
@@ -218,7 +227,7 @@ script = ExtResource("1_immpc")
 is_root = true
 reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
 id = 44
-name = "New Design"
+name = "Max Health 1"
 design_id = "new_design"
 position = Vector2(-15.3845215, 262)
 line_data = {
@@ -228,14 +237,14 @@ out_nodes = Array[int]([46])
 attributes = {
 "diamond": [[5], [10], [15]],
 "gold": [[15], [35], [55]],
-"health": [[5], [15], [35]]
+"max_health": [[5], [15], [25]]
 }
 max_allocations = 3
 layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_j5a67"), SubResource("Resource_nrko7"), SubResource("Resource_l2tvo")])
 overridden_attributes = {
 "diamond": true,
 "gold": true,
-"health": true
+"max_health": true
 }
 
 [sub_resource type="Resource" id="Resource_k0kgc"]
@@ -416,7 +425,7 @@ wiggle_phase_offset = 1.3790487283091915
 script = ExtResource("1_immpc")
 reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
 id = 46
-name = "New Design"
+name = "Max Health 2"
 design_id = "new_design"
 position = Vector2(-80, -32)
 line_data = {
@@ -427,14 +436,14 @@ in_nodes = Array[int]([44])
 attributes = {
 "diamond": [[10], [10], [10], [10], [10]],
 "gold": [[25], [25], [25], [25], [25]],
-"health": [[10], [10], [10], [10], [10]]
+"max_health": [[35], [65], [85], [105], [135]]
 }
 max_allocations = 5
 layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_x2q8f"), SubResource("Resource_3cysg"), SubResource("Resource_vn7yg")])
 overridden_attributes = {
 "diamond": true,
 "gold": true,
-"health": true
+"max_health": true
 }
 
 [sub_resource type="Resource" id="Resource_bjop0"]
@@ -608,33 +617,34 @@ texture_filter_override = 2
 script = ExtResource("1_immpc")
 reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
 id = 47
-name = "New Design"
+name = "Health Regen"
 design_id = "new_design"
 position = Vector2(96, -224)
 in_nodes = Array[int]([46])
 attributes = {
 "diamond": [[15], [15], [15], [15], [15]],
 "gold": [[35], [35], [35], [35], [35]],
-"health": [[15], [15], [15], [15], [15]]
+"health_regen": [[6], [25], [35], [45], [75]]
 }
 max_allocations = 5
 layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_pvlmy"), SubResource("Resource_451aj"), SubResource("Resource_x43e0")])
 overridden_attributes = {
 "diamond": true,
 "gold": true,
-"health": true
+"health_regen": true,
+"max_health": true
 }
 
 [sub_resource type="Resource" id="Resource_bxwvi"]
 script = ExtResource("3_k1nh3")
 reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
-id = "yeni"
-node_name = "Yeni"
+id = "health"
+node_name = "Health"
 design_id = "new_design"
 attributes = {
 "diamond": [[0]],
 "gold": [[0]],
-"health": [[0]]
+"health_regen": [[0], [0], [0], [0], [0]]
 }
 exported_fields = {
 "layers.02216fb3-8823-4f1a-b353-5252c195f8aa.tint_configs.normal": true
@@ -658,9 +668,10 @@ prefabs = Array[ExtResource("3_k1nh3")]([SubResource("Resource_bxwvi")])
 attributes = {
 "diamond": SubResource("Resource_6p5mu"),
 "gold": SubResource("Resource_txiuo"),
-"health": SubResource("Resource_0rgdv")
+"health_regen": SubResource("Resource_wbej3"),
+"max_health": SubResource("Resource_0rgdv")
 }
-hierarchy_split_offset = -429
+hierarchy_split_offset = -356
 default_purchase_mode = 1
 purchase_visual_mode = 2
 purchase_progress_direction = 1

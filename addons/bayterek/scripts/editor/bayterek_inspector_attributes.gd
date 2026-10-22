@@ -7,6 +7,13 @@ extends VBoxContainer
 ## disable and edit per-node / per-prefab attribute values. Supports
 ## multi-allocation levels when the tree has `multiallocation = true`.
 ##
+## PER-INSTANCE ACTIVE STATE:
+##   For prefab-bound nodes, the CHECKBOX (enabled/disabled) is
+##   ALWAYS stored on the node instance, never on the shared prefab.
+##   This means two instances of the same prefab can have different
+##   active attributes. The prefab only provides DEFAULT values for
+##   attributes that an instance chooses to enable.
+##
 ## Currency attributes (is_currency = true) are rendered as:
 ##   - ONE column (purchase) when refund_differs = false
 ##   - TWO columns (purchase, refund) when refund_differs = true
@@ -202,15 +209,6 @@ func _build_node_row(attr_id: String, attr: BayterekAttribute, multi: bool) -> v
 
 	_attr_value_inputs[attr_id] = attr_inputs
 
-
-## Builds the value spinboxes for a single attribute (or a single level
-## of a multi-allocation attribute).
-##
-## Currency attributes with `refund_differs = false` render a single
-## "Purchase" row. With `refund_differs = true`, they render two rows:
-## "Purchase" and "Refund".
-##
-## Non-currency attributes render `value_count` rows (Value 1, Value 2, ...).
 func _build_value_inputs(
 	parent: VBoxContainer,
 	attr: BayterekAttribute,
@@ -220,13 +218,11 @@ func _build_value_inputs(
 	level: int
 ) -> void:
 	if attr.is_currency:
-		# Purchase row
 		_build_single_spin_row(
 			parent, "Purchase", attr_id, level,
 			BayterekAttribute.SLOT_PURCHASE, vals, inputs_out
 		)
 
-		# Refund row (only when refunds differ)
 		if attr.refund_differs:
 			_build_single_spin_row(
 				parent, "Refund", attr_id, level,
@@ -234,7 +230,6 @@ func _build_value_inputs(
 			)
 		return
 
-	# Non-currency: one row per value_count slot
 	for i in attr.value_count:
 		var row := HBoxContainer.new()
 		parent.add_child(row)
@@ -262,8 +257,6 @@ func _build_value_inputs(
 
 		inputs_out.append(spin)
 
-
-## Builds a single labeled spinbox row for a currency attribute slot.
 func _build_single_spin_row(
 	parent: VBoxContainer,
 	label_text: String,
@@ -280,7 +273,6 @@ func _build_single_spin_row(
 	vlabel.text = label_text
 	vlabel.custom_minimum_size = Vector2(70, 0)
 
-	# Color the labels to distinguish purchase (red-ish) and refund (green-ish)
 	if slot == BayterekAttribute.SLOT_PURCHASE:
 		vlabel.add_theme_color_override("font_color", Color(0.95, 0.6, 0.6))
 	else:
@@ -304,7 +296,6 @@ func _build_single_spin_row(
 	row.add_child(spin)
 
 	inputs_out.append(spin)
-
 
 func _format_attr_label(attr: BayterekAttribute, attr_id: String) -> String:
 	var prefix: String = "💰 " if attr.is_currency else ""
@@ -350,6 +341,10 @@ func _on_attr_toggled_prefab(pressed: bool, attr_id: String) -> void:
 		inspector.editor.set_dirty(true)
 	changed.emit()
 
+## PER-INSTANCE TOGGLE:
+## For prefab-bound nodes we still toggle the attribute on the NODE
+## only. The shared prefab is never touched. This lets two instances
+## of the same prefab have different active attribute sets.
 func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 	if _updating_ui or not inspector._current_node:
 		return
@@ -358,6 +353,7 @@ func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 	if not inspector.editor.tree.attributes.has(attr_id):
 		return
 
+	var node: BayterekNodeButton = inspector._current_node
 	var attr: BayterekAttribute = inspector.editor.tree.attributes[attr_id]
 	var multi: bool = inspector.editor.tree.multiallocation
 
@@ -365,7 +361,7 @@ func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 		var new_values: Variant
 		if multi:
 			var levels: Array = []
-			for level in inspector._current_node.node_data.max_allocations:
+			for level in node.node_data.max_allocations:
 				var values: Array = []
 				for i in attr.get_effective_value_count():
 					values.append(0)
@@ -377,15 +373,18 @@ func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 				values.append(0)
 			new_values = values
 
-		if inspector._current_node.prefab:
-			inspector._current_node.prefab.set_attribute(attr_id, new_values)
-		else:
-			inspector._current_node.node_data.attributes[attr_id] = new_values
+		# ALWAYS write to the node's own attributes dict.
+		node.node_data.attributes[attr_id] = new_values
+
+		# Mark as an override so the reset button appears.
+		if node.prefab:
+			node.node_data.mark_attribute_override(attr_id)
 	else:
-		if inspector._current_node.prefab:
-			inspector._current_node.prefab.remove_attribute(attr_id)
-		else:
-			inspector._current_node.node_data.attributes.erase(attr_id)
+		# ALWAYS erase from the node's own attributes dict.
+		node.node_data.attributes.erase(attr_id)
+
+		if node.prefab:
+			node.node_data.clear_attribute_override(attr_id)
 
 	if _attr_value_inputs.has(attr_id):
 		var attr_inputs: Dictionary = _attr_value_inputs[attr_id]

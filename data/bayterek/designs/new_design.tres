@@ -60,7 +60,7 @@ tint_configs = {
 }
 }
 layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
-layer_name = "Texture 3"
+layer_name = "Background"
 transform = SubResource("Resource_joamw")
 
 [sub_resource type="Resource" id="Resource_paddw"]
@@ -83,22 +83,22 @@ tint_configs = {
 },
 "clicked": {
 "color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
+"enabled": true
 },
 "hover": {
 "color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "locked": {
 "color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "max_level": {
 "color": Color(1, 0.8784314, 0.4, 1),
 "enabled": false
 },
 "normal": {
-"color": Color(0.03125, 0.03125, 0.03125, 1),
+"color": Color(1, 0.11328125, 0.11328125, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -107,15 +107,15 @@ tint_configs = {
 },
 "preallocated": {
 "color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
+"enabled": true
 },
 "prerefund": {
 "color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
+"enabled": true
 }
 }
 layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
-layer_name = "Texture 2"
+layer_name = "Border"
 transform = SubResource("Resource_paddw")
 texture_filter_override = 2
 
@@ -171,7 +171,7 @@ tint_configs = {
 }
 }
 layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
-layer_name = "Texture 1"
+layer_name = "Icon"
 transform = SubResource("Resource_a6nu6")
 texture_filter_override = 2
 
