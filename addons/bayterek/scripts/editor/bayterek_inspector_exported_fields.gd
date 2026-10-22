@@ -11,9 +11,10 @@ extends VBoxContainer
 ##        - "Enabled" checkbox
 ##        - "Color" / "Texture" editor
 ##
-## The export model change: the user only right-clicks ONCE on the row
-## in the Node Editor. Both enabled and color/texture are exported
-## together under a single field path.
+## PREFAB-BOUND NODES:
+##   When the inspected node is bound to a prefab, appearance changes
+##   are routed to the SHARED prefab (so every instance updates), not
+##   to the node's own override. Attribute values remain per-instance.
 
 signal changed
 
@@ -240,7 +241,6 @@ func _build_field_row(
 	else:
 		_build_scalar_field_row(parent, prefab, field_path, design, is_prefab, is_override)
 
-
 ## Returns "tint" / "icon" / "" depending on the field kind.
 func _detect_config_kind(field_path: String) -> String:
 	var parts: Array = field_path.split(".")
@@ -256,7 +256,6 @@ func _detect_config_kind(field_path: String) -> String:
 		return "icon"
 	return ""
 
-
 ## Splits the state name off the export path so we can build the
 ## per-field humanized labels.
 func _split_config_path(field_path: String) -> Dictionary:
@@ -268,7 +267,6 @@ func _split_config_path(field_path: String) -> Dictionary:
 		"config_key": parts[2],
 		"state": parts[3],
 	}
-
 
 # ------------------------------------------------------------
 # CONFIG DICT ROW (tint / icon state)
@@ -410,10 +408,13 @@ func _build_config_dict_row(
 		)
 		value_row.add_child(tex_input)
 
+# ------------------------------------------------------------
+# CONFIG VALUE APPLICATION (tint / icon)
+# ------------------------------------------------------------
+#
+# Prefab-bound nodes route appearance changes to the SHARED prefab
+# so every instance updates. Non-prefab nodes write a local override.
 
-## Applies a full config dict to the target (node override or prefab
-## exported_values). This is the single entry point for both enabled
-## and value changes.
 func _apply_config_value(
 	field_path: String,
 	value: Dictionary,
@@ -433,16 +434,32 @@ func _apply_config_value(
 	else:
 		if not inspector._current_node or not inspector._current_node.node_data:
 			return
-		inspector._current_node.node_data.set_exported_override(field_path, value)
-		inspector._current_node.rebuild_from_design()
+		var node = inspector._current_node
+
+		# Prefab-bound node → route to the SHARED prefab so every
+		# instance picks up the change. Also clear the local override
+		# so the prefab's value shows through unambiguously.
+		if node.prefab and node.prefab.is_field_exported(field_path):
+			var svc = null
+			if inspector.editor and inspector.editor.tree_view:
+				svc = inspector.editor.tree_view.prefabs_service
+			if svc:
+				svc.set_prefab_bound_exported_value(node, field_path, value)
+				node.node_data.clear_exported_override(field_path)
+				node.rebuild_from_design()
+			else:
+				node.node_data.set_exported_override(field_path, value)
+				node.rebuild_from_design()
+		else:
+			node.node_data.set_exported_override(field_path, value)
+			node.rebuild_from_design()
 
 	changed.emit()
 	if inspector.editor and inspector.editor.has_method("set_dirty"):
 		inspector.editor.set_dirty(true)
 
-
 # ------------------------------------------------------------
-# SCALAR FIELD ROW (existing behavior)
+# SCALAR FIELD ROW
 # ------------------------------------------------------------
 
 func _build_scalar_field_row(
@@ -698,8 +715,11 @@ func _build_value_editor(
 			parent.add_child(lbl)
 
 # ============================================================
-# HANDLERS
+# HANDLERS — SCALAR
 # ============================================================
+#
+# Same prefab-routing logic as _apply_config_value: prefab-bound
+# nodes push the change into the shared prefab.
 
 func _on_value_changed(
 	field_path: String,
@@ -721,18 +741,58 @@ func _on_value_changed(
 	else:
 		if not inspector._current_node or not inspector._current_node.node_data:
 			return
-		inspector._current_node.node_data.set_exported_override(field_path, value)
-		inspector._current_node.rebuild_from_design()
+		var node = inspector._current_node
+
+		# Prefab-bound node → route to the SHARED prefab.
+		if node.prefab and node.prefab.is_field_exported(field_path):
+			var svc = null
+			if inspector.editor and inspector.editor.tree_view:
+				svc = inspector.editor.tree_view.prefabs_service
+			if svc:
+				svc.set_prefab_bound_exported_value(node, field_path, value)
+				node.node_data.clear_exported_override(field_path)
+				node.rebuild_from_design()
+			else:
+				node.node_data.set_exported_override(field_path, value)
+				node.rebuild_from_design()
+		else:
+			node.node_data.set_exported_override(field_path, value)
+			node.rebuild_from_design()
 
 	changed.emit()
 	if inspector.editor and inspector.editor.has_method("set_dirty"):
 		inspector.editor.set_dirty(true)
 
+# ============================================================
+# HANDLERS — RESET
+# ============================================================
+#
+# Resets the field on the SHARED prefab (if bound) so every instance
+# returns to the design's default value.
+
 func _on_reset_override_pressed(_prefab: BayterekPrefab, field_path: String) -> void:
 	if not inspector._current_node or not inspector._current_node.node_data:
 		return
-	inspector._current_node.node_data.clear_exported_override(field_path)
-	inspector._current_node.rebuild_from_design()
+	var node = inspector._current_node
+
+	node.node_data.clear_exported_override(field_path)
+
+	# If the node is bound to a prefab, reset the SHARED value to the
+	# design's default so every instance gets the new default.
+	if node.prefab and node.prefab.is_field_exported(field_path):
+		var design = null
+		if not node.prefab.design_id.is_empty():
+			design = Bayterek.get_designs_registry().get_design_by_id(node.prefab.design_id)
+		if design:
+			var default_value = design.get_field_value(field_path)
+			if default_value != null:
+				var svc = null
+				if inspector.editor and inspector.editor.tree_view:
+					svc = inspector.editor.tree_view.prefabs_service
+				if svc:
+					svc.set_prefab_bound_exported_value(node, field_path, default_value)
+
+	node.rebuild_from_design()
 	refresh()
 	changed.emit()
 	if inspector.editor and inspector.editor.has_method("set_dirty"):

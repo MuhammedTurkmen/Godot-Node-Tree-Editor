@@ -244,6 +244,49 @@ func notify_exported_values_changed(prefab: BayterekPrefab) -> void:
 	prefab_changed.emit(prefab)
 
 # ============================================================
+# PREFAB-BOUND APPEARANCE CHANGES
+# ============================================================
+#
+# When a node is bound to a prefab, appearance changes made on that
+# node should propagate to EVERY instance of the prefab. This is the
+# "shared appearance" model:
+#
+#   - Appearance fields (tint color, transform, etc.) → stored in the
+#     prefab's `exported_values`, applied to ALL bound nodes.
+#   - Attribute values (strength, agility, etc.) → stored per-node in
+#     `node_data.attributes`, fully independent.
+#
+# This function is the single entry point for appearance changes made
+# on a prefab-bound node. It writes to the PREFAB (not the node's own
+# override) and re-applies to every bound instance.
+
+## Routes an appearance change from a prefab-bound node to the shared
+## prefab. Returns true if the change was routed (i.e. the node is
+## bound to a prefab that exports this field).
+##
+## When this returns true, the caller should ALSO clear any local
+## override the node had for this field so the prefab's value shows
+## through cleanly.
+func set_prefab_bound_exported_value(
+	node: BayterekNodeButton,
+	field_path: String,
+	value: Variant
+) -> bool:
+	if not node or not node.prefab:
+		return false
+	if not node.prefab.is_field_exported(field_path):
+		return false
+
+	# Write to the SHARED prefab, not the node's own override.
+	node.prefab.exported_values[field_path] = value
+
+	# Re-apply to every bound instance (including this one).
+	notify_exported_values_changed(node.prefab)
+
+	prefab_changed.emit(node.prefab)
+	return true
+
+# ============================================================
 # RESET TO PREFAB
 # ============================================================
 
