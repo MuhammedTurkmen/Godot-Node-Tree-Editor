@@ -66,8 +66,6 @@ func _ready() -> void:
 
 	# Guard: if inspect() was called before _ready() finished building the
 	# sub-panels, apply the pending target now that everything exists.
-	# Without this, an early inspect() call (e.g. from a signal fired during
-	# scene construction) would leave the inspector stuck on the empty view.
 	if _current_node:
 		inspect(_current_node)
 	elif _current_prefab:
@@ -252,7 +250,7 @@ func _build_ui() -> void:
 	var max_alloc_label := Label.new()
 	max_alloc_label.text = "Max Allocations"
 	max_alloc_label.size_flags_horizontal = SIZE_EXPAND_FILL
-	max_alloc_label.tooltip_text = "Max level for multi-allocation"
+	max_alloc_label.tooltip_text = "Max level for multi-allocation (per-instance value)."
 	max_alloc_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	_max_alloc_panel.add_child(max_alloc_label)
 
@@ -500,8 +498,6 @@ func _show_content() -> void:
 # ============================================================
 
 func inspect(node: BayterekNodeButton) -> void:
-	# If _ready() hasn't built the UI yet, just remember the target.
-	# _ready() will call inspect() again once everything exists.
 	if not _content:
 		_current_node = node
 		return
@@ -563,7 +559,6 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_updating_ui = false
 
-	# Safe sub-panel refresh — these may be null during early init.
 	if _exported_fields and is_instance_valid(_exported_fields):
 		_exported_fields.refresh()
 	if _attributes and is_instance_valid(_attributes):
@@ -690,7 +685,6 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	if not prefab:
 		return
 
-	# If _ready() hasn't built the UI yet, just remember the target.
 	if not _content:
 		_current_prefab = prefab
 		return
@@ -722,7 +716,6 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_max_alloc_input.set_value_no_signal(prefab.max_allocations)
 	_updating_ui = false
 
-	# Safe sub-panel refresh.
 	if _exported_fields and is_instance_valid(_exported_fields):
 		_exported_fields.refresh()
 	if _attributes and is_instance_valid(_attributes):
@@ -816,12 +809,16 @@ func _on_description_changed() -> void:
 	changed.emit()
 	_notify_editor_dirty()
 
+## max_allocations is PER-INSTANCE — we never touch the prefab here,
+## so two instances of the same prefab can have different values.
 func _on_max_alloc_changed(value: float) -> void:
 	if _updating_ui:
 		return
 
 	var new_max: int = int(value)
 
+	# PREFAB MODE (editing the prefab itself via the prefab bar):
+	# update the prefab's default and reshape its attribute arrays.
 	if _current_prefab:
 		_current_prefab.set_max_allocations(new_max)
 		_reshape_prefab_attribute_arrays(_current_prefab, new_max)
@@ -834,30 +831,30 @@ func _on_max_alloc_changed(value: float) -> void:
 	if not _current_node:
 		return
 
-	if _current_node.prefab:
-		_current_node.prefab.set_max_allocations(new_max)
-	else:
-		_current_node.node_data.max_allocations = new_max
-		if editor and editor.tree and editor.tree.multiallocation:
-			for attr_id in _current_node.node_data.attributes.keys():
-				var data = _current_node.node_data.attributes[attr_id]
-				if not data is Array:
-					continue
-				if data.size() > 0 and not data[0] is Array:
-					var single: Array = data.duplicate()
-					var new_data: Array = []
-					for l in new_max:
-						new_data.append(single.duplicate())
-					_current_node.node_data.attributes[attr_id] = new_data
-					continue
-				var sample: Array = []
-				if data.size() > 0:
-					for v in data[0]:
-						sample.append(v)
-				while data.size() < new_max:
-					data.append(sample.duplicate())
-				while data.size() > new_max:
-					data.pop_back()
+	# NODE MODE: always write to the instance. Never propagate to the
+	# prefab — each instance keeps its own value.
+	_current_node.node_data.max_allocations = new_max
+
+	if editor and editor.tree and editor.tree.multiallocation:
+		for attr_id in _current_node.node_data.attributes.keys():
+			var data = _current_node.node_data.attributes[attr_id]
+			if not data is Array:
+				continue
+			if data.size() > 0 and not data[0] is Array:
+				var single: Array = data.duplicate()
+				var new_data: Array = []
+				for l in new_max:
+					new_data.append(single.duplicate())
+				_current_node.node_data.attributes[attr_id] = new_data
+				continue
+			var sample: Array = []
+			if data.size() > 0:
+				for v in data[0]:
+					sample.append(v)
+			while data.size() < new_max:
+				data.append(sample.duplicate())
+			while data.size() > new_max:
+				data.pop_back()
 
 	if _attributes and is_instance_valid(_attributes):
 		_attributes.refresh()

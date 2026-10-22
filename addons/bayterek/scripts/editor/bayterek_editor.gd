@@ -181,7 +181,6 @@ func _toggle_line_delete_mode() -> void:
 
 	tree_view.mouse_default_cursor_shape = Control.CURSOR_CROSS if new_state else Control.CURSOR_ARROW
 
-
 func _on_line_clicked_for_delete(from_id: int, to_id: int) -> void:
 	if not tree_view or not tree_view.connections_service:
 		return
@@ -266,7 +265,6 @@ func _toggle_hover_animations() -> void:
 
 	set_dirty(true)
 
-
 func _pass_state_to_hover_menu(value: bool) -> void:
 	if not menu_bar:
 		return
@@ -277,7 +275,6 @@ func _pass_state_to_hover_menu(value: bool) -> void:
 			if idx >= 0:
 				popup.set_item_checked(idx, value)
 			break
-
 
 func _stop_all_node_animations() -> void:
 	if not tree_view or not tree_view.nodes_service:
@@ -299,7 +296,6 @@ func _toggle_group_frames() -> void:
 		return
 	_set_show_group_frames(not tree.show_group_frames)
 
-
 func _set_show_group_frames(value: bool, show_toast: bool = true) -> void:
 	if not tree:
 		return
@@ -320,7 +316,6 @@ func _set_show_group_frames(value: bool, show_toast: bool = true) -> void:
 	if state_changed:
 		set_dirty(true)
 
-
 func _pass_state_to_view_menu(value: bool) -> void:
 	if not menu_bar:
 		return
@@ -331,7 +326,6 @@ func _pass_state_to_view_menu(value: bool) -> void:
 			if idx >= 0:
 				popup.set_item_checked(idx, value)
 			break
-
 
 func _pass_state_to_settings_editor(value: bool) -> void:
 	if not settings_editor or not is_instance_valid(settings_editor):
@@ -1393,12 +1387,13 @@ func _on_prefab_attribute_changed(prefab: BayterekPrefab, attribute_id: String, 
 			inspector.refresh_attributes()
 	set_dirty(true)
 
+## Prefab's default max_allocations changed. Do NOT override existing
+## instances — each node keeps its own per-instance value. The new
+## prefab default only applies to NEW nodes created from this prefab,
+## or when the user explicitly does "Reset to Prefab".
 func _on_prefab_max_allocations_changed(prefab: BayterekPrefab) -> void:
-	var affected: Array = _get_nodes_of_prefab(prefab)
-	for node in affected:
-		node.node_data.max_allocations = prefab.max_allocations
-		if inspector and inspector._current_node == node:
-			inspector.refresh_attributes()
+	if prefabs_bar:
+		prefabs_bar.refresh()
 	set_dirty(true)
 
 func _on_prefab_exported_values_changed(prefab: BayterekPrefab) -> void:
@@ -1807,8 +1802,6 @@ func _input(event: InputEvent) -> void:
 		return
 
 	# Ctrl+S must ALWAYS save, even when a LineEdit/TextEdit has focus.
-	# This is the ONLY reliable way to save from the Attributes editor
-	# where the Name field keeps focus while the user is typing.
 	if event is InputEventKey and event.pressed and not event.echo:
 		var ctrl: bool = event.ctrl_pressed or event.meta_pressed
 		if ctrl and event.keycode == KEY_S:
@@ -1823,7 +1816,6 @@ func _input(event: InputEvent) -> void:
 
 	if _shortcuts.handle_input(event):
 		get_viewport().set_input_as_handled()
-
 
 func _is_text_input_focused() -> bool:
 	var vp: Viewport = get_viewport()
@@ -2050,7 +2042,6 @@ func _paste_nodes() -> void:
 
 	set_dirty(true)
 
-
 func _looks_like_bayterek_payload(text: String) -> bool:
 	if text.is_empty():
 		return false
@@ -2060,7 +2051,6 @@ func _looks_like_bayterek_payload(text: String) -> bool:
 	if not trimmed.begins_with("{"):
 		return false
 	return true
-
 
 func _safe_json_parse(text: String) -> Variant:
 	var json := JSON.new()
@@ -2499,7 +2489,6 @@ func _on_settings_default_line_texture_changed() -> void:
 func _on_settings_connection_style_changed() -> void:
 	set_dirty(true)
 
-
 func _on_settings_connection_state_color_changed() -> void:
 	if not tree_view or not tree_view.connections_service:
 		set_dirty(true)
@@ -2522,10 +2511,8 @@ func _on_settings_connection_state_color_changed() -> void:
 	svc.update_all_lines()
 	set_dirty(true)
 
-
 func _on_settings_connection_offsets_changed() -> void:
 	set_dirty(true)
-
 
 func _on_settings_connection_wiggle_changed() -> void:
 	if not tree or not tree_view or not tree_view.connections_service:
@@ -2557,7 +2544,6 @@ func _on_settings_connection_wiggle_changed() -> void:
 				svc.on_node_allocation_changed(node)
 
 	set_dirty(true)
-
 
 func _on_settings_connection_animation_tracking_changed() -> void:
 	if not tree_view or not tree_view.connections_service:
@@ -2669,7 +2655,6 @@ func save_tree() -> void:
 	if not tree:
 		return
 
-	# Dump every attribute for inspection.
 	for k in tree.attributes.keys():
 		var a: BayterekAttribute = tree.attributes[k]
 
@@ -2752,17 +2737,14 @@ func _has_attribute_conflicts() -> bool:
 
 		var desired: String = Bayterek.to_snake_case(attr.name)
 
-		# Case 1: empty name.
 		if desired.is_empty():
 			has_conflict = true
 			continue
 
-		# Case 2: two attributes producing the same desired id.
 		if desired_ids.has(desired):
 			has_conflict = true
 		desired_ids[desired] = true
 
-		# Case 3: dict key is a temp key, OR doesn't match attr.id.
 		if attr_key.begins_with("__conflict_"):
 			has_conflict = true
 		elif attr_key != attr.id:
@@ -2770,8 +2752,6 @@ func _has_attribute_conflicts() -> bool:
 
 	return has_conflict
 
-
-## Shows the "Fix & Save" / "Cancel" dialog.
 func _show_attribute_conflict_dialog() -> void:
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Attribute ID Conflict"
@@ -2803,21 +2783,15 @@ func _show_attribute_conflict_dialog() -> void:
 	add_child(dialog)
 	dialog.call_deferred("popup_centered", Vector2i(480, 240))
 
-
-## Rebuilds the attribute dictionary with fresh, unique ids derived
-## from each attribute's name.  Every reference in nodes, prefabs,
-## and override dicts is migrated.
 func _apply_attribute_id_fixes() -> void:
 	if not tree:
 		return
-
 
 	var old_attrs: Dictionary = tree.attributes
 	var new_attrs: Dictionary = {}
 	var migration_map: Dictionary = {}
 	var used_ids: Dictionary = {}
 
-	# Sort by attr.id so deterministic.
 	var sorted_entries: Array = []
 	for key in old_attrs.keys():
 		var attr: BayterekAttribute = old_attrs[key]
@@ -2841,15 +2815,12 @@ func _apply_attribute_id_fixes() -> void:
 
 		used_ids[candidate] = true
 
-		# Only add to migration map when the OLD key was a real id
-		# (temp keys are never referenced by nodes/prefabs).
 		if not key.begins_with("__conflict_"):
 			migration_map[key] = candidate
 
 		attr.id = candidate
 		new_attrs[candidate] = attr
 
-	# Migrate node/prefab references (real keys only).
 	for node_data in tree.nodes:
 		if not node_data:
 			continue
@@ -2865,7 +2836,6 @@ func _apply_attribute_id_fixes() -> void:
 
 	if attributes_editor and attributes_editor.has_method("_refresh"):
 		attributes_editor._refresh()
-
 
 func _migrate_dict_keys(dict: Dictionary, migration_map: Dictionary) -> void:
 	if dict.is_empty():

@@ -224,10 +224,11 @@ line_data = {
 }
 out_nodes = Array[int]([46])
 attributes = {
-"diamond": [[5]],
-"gold": [[15]],
-"health": [[5]]
+"diamond": [[5], [5], [5]],
+"gold": [[15], [15], [15]],
+"health": [[5], [5], [5]]
 }
+max_allocations = 3
 layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_j5a67"), SubResource("Resource_nrko7"), SubResource("Resource_l2tvo")])
 overridden_attributes = {
 "diamond": true,
@@ -407,7 +408,7 @@ script = ExtResource("10_6p5mu")
 start_offset = 8.0
 end_offset = 12.0
 texture_filter_override = 2
-wiggle_phase_offset = 1.3790487283091917
+wiggle_phase_offset = 1.3790487283091915
 
 [sub_resource type="Resource" id="Resource_safsq"]
 script = ExtResource("1_immpc")
@@ -422,10 +423,11 @@ line_data = {
 out_nodes = Array[int]([47])
 in_nodes = Array[int]([44])
 attributes = {
-"diamond": [[10]],
-"gold": [[25]],
-"health": [[10]]
+"diamond": [[10], [10], [10], [10], [10]],
+"gold": [[25], [25], [25], [25], [25]],
+"health": [[10], [10], [10], [10], [10]]
 }
+max_allocations = 5
 layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_x2q8f"), SubResource("Resource_3cysg"), SubResource("Resource_vn7yg")])
 overridden_attributes = {
 "diamond": true,
@@ -609,10 +611,11 @@ design_id = "new_design"
 position = Vector2(96, -224)
 in_nodes = Array[int]([46])
 attributes = {
-"diamond": [[15]],
-"gold": [[35]],
-"health": [[15]]
+"diamond": [[15], [15], [15], [15], [15]],
+"gold": [[35], [35], [35], [35], [35]],
+"health": [[15], [15], [15], [15], [15]]
 }
+max_allocations = 5
 layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_pvlmy"), SubResource("Resource_451aj"), SubResource("Resource_x43e0")])
 overridden_attributes = {
 "diamond": true,
