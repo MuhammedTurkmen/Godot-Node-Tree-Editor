@@ -765,6 +765,9 @@ func _on_name_changed(new_text: String) -> void:
 	if _updating_ui:
 		return
 
+	# PREFAB MODE (editing the prefab itself via the prefab bar):
+	# this SHOULD update the prefab's node_name, because we're
+	# explicitly editing the prefab — not an instance of it.
 	if _current_prefab:
 		_current_prefab.set_node_name(new_text)
 		changed.emit()
@@ -774,10 +777,11 @@ func _on_name_changed(new_text: String) -> void:
 	if not _current_node:
 		return
 
-	if _current_node.prefab:
-		_current_node.prefab.set_node_name(new_text)
-	else:
-		_current_node.node_data.name = new_text
+	# NODE MODE: always edit the INSTANCE's name.
+	# Even when bound to a prefab, we only touch node_data.name —
+	# never the shared prefab. This keeps each instance's name
+	# independent while appearance stays shared.
+	_current_node.node_data.name = new_text
 
 	if editor and editor.has_method("notify_node_display_changed"):
 		editor.notify_node_display_changed(_current_node)

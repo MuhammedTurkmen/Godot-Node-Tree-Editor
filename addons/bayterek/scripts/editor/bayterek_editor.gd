@@ -808,22 +808,41 @@ func _create_rename_dialog() -> void:
 	add_child(rename_dialog)
 
 func _on_rename_applied(new_name: String, new_description: String) -> void:
+	print("[RENAME] _on_rename_applied called:")
+	print("  new_name='%s'" % new_name)
+	print("  new_description='%s'" % new_description)
+	print("  tree_view=", tree_view)
+	print("  selected_nodes.size()=", tree_view.selected_nodes.size() if tree_view else -1)
+
 	if not tree_view:
+		print("[RENAME] ABORT: tree_view is null")
 		return
 	if tree_view.selected_nodes.is_empty():
+		print("[RENAME] ABORT: no selected nodes")
 		return
 
 	var node: BayterekNodeButton = tree_view.selected_nodes[0]
+	print("  target node=", node)
+	if node:
+		print("  node_data=", node.node_data)
+		print("  node.prefab=", node.prefab)
+		if node.node_data:
+			print("  node_data.name BEFORE='%s'" % node.node_data.name)
+
 	if not is_instance_valid(node) or not node.node_data:
+		print("[RENAME] ABORT: node or node_data invalid")
 		return
 
 	if node.node_data.locked:
+		print("[RENAME] ABORT: node is locked")
 		BayterekToast.warning(tree_view, "Node is locked. Unlock it first.")
 		return
 
 	var old_name: String = node.node_data.name
 	var old_desc: String = node.node_data.description
 	var target_prefab: BayterekPrefab = node.prefab
+
+	print("  old_name='%s'" % old_name)
 
 	var do_callable := func():
 		_apply_node_rename(node, target_prefab, new_name, new_description)
@@ -833,32 +852,48 @@ func _on_rename_applied(new_name: String, new_description: String) -> void:
 	_commit_action("Rename Node", do_callable, undo_callable)
 
 func _apply_node_rename(node: BayterekNodeButton, prefab: BayterekPrefab, new_name: String, new_desc: String) -> void:
+	print("[RENAME] _apply_node_rename called:")
+	print("  node=", node)
+	print("  new_name='%s'" % new_name)
+	print("  prefab=", prefab)
+
 	if not is_instance_valid(node) or not node.node_data:
+		print("[RENAME] _apply ABORT: node invalid")
 		return
 
 	var display_name: String = new_name
 	if display_name.is_empty():
 		display_name = "Node %d" % node.id
 
-	if prefab:
-		prefab.set_node_name(display_name)
-		prefab.set_description(new_desc)
-	else:
-		node.node_data.name = display_name
-		node.node_data.description = new_desc
+	var old_node_data_name: String = node.node_data.name
+
+	# Rename the INSTANCE only — never touch the shared prefab.
+	node.node_data.name = display_name
+	node.node_data.description = new_desc
+
+	print("  node_data.name: '%s' -> '%s'" % [old_node_data_name, node.node_data.name])
 
 	if hierarchy:
 		hierarchy.refresh_node_display(node)
+		hierarchy.refresh_all()
+		print("  hierarchy refreshed")
 
 	if inspector and inspector._current_node == node:
 		inspector.inspect(node)
+		print("  inspector refreshed")
 
 	if node.has_method("refresh_visuals"):
 		node.refresh_visuals()
+		print("  node visuals refreshed")
 
 	set_dirty(true)
 
+	print("[RENAME] DONE: node_data.name='%s'" % node.node_data.name)
+
 func _open_rename_dialog() -> void:
+	print("[RENAME] _open_rename_dialog called")
+	print("  selected count=", tree_view.selected_nodes.size() if tree_view else -1)
+
 	if not tree_view or tree_view.selected_nodes.is_empty():
 		BayterekToast.info(tree_view, "Select a node first")
 		return
@@ -872,8 +907,10 @@ func _open_rename_dialog() -> void:
 		return
 
 	if not rename_dialog:
+		print("[RENAME] ABORT: rename_dialog is null")
 		return
 
+	print("  opening dialog with name='%s'" % node.node_data.name)
 	rename_dialog.open_for(node.node_data.name, node.node_data.description)
 
 # ============================================================
@@ -1359,13 +1396,11 @@ func _on_prefab_changed(_prefab: BayterekPrefab) -> void:
 	if prefabs_bar:
 		prefabs_bar.refresh()
 
+## Prefab name changed. Only refresh the prefab bar; do NOT overwrite
+## instance names.
 func _on_prefab_name_changed(prefab: BayterekPrefab) -> void:
-	var affected: Array = _get_nodes_of_prefab(prefab)
-	for node in affected:
-		node.node_data.name = prefab.node_name
-		node.node_data.external_id = prefab.id
-		if hierarchy:
-			hierarchy.refresh_node_display(node)
+	print("[PREFAB.name_changed] prefab='%s' name='%s'" % [prefab, prefab.node_name])
+	print_stack()
 	if prefabs_bar:
 		prefabs_bar.refresh()
 	set_dirty(true)
@@ -1388,9 +1423,7 @@ func _on_prefab_attribute_changed(prefab: BayterekPrefab, attribute_id: String, 
 	set_dirty(true)
 
 ## Prefab's default max_allocations changed. Do NOT override existing
-## instances — each node keeps its own per-instance value. The new
-## prefab default only applies to NEW nodes created from this prefab,
-## or when the user explicitly does "Reset to Prefab".
+## instances — each node keeps its own per-instance value.
 func _on_prefab_max_allocations_changed(prefab: BayterekPrefab) -> void:
 	if prefabs_bar:
 		prefabs_bar.refresh()
@@ -1410,6 +1443,7 @@ func _on_prefab_exported_values_changed(prefab: BayterekPrefab) -> void:
 # ============================================================
 
 func _on_prefab_card_rename(prefab: BayterekPrefab) -> void:
+	print("[PREFAB_CARD.rename] prefab='%s'" % prefab)
 	if not prefab:
 		return
 	_show_prefab_rename_dialog(prefab)
@@ -1801,7 +1835,6 @@ func _input(event: InputEvent) -> void:
 	if not _shortcuts:
 		return
 
-	# Ctrl+S must ALWAYS save, even when a LineEdit/TextEdit has focus.
 	if event is InputEventKey and event.pressed and not event.echo:
 		var ctrl: bool = event.ctrl_pressed or event.meta_pressed
 		if ctrl and event.keycode == KEY_S:
@@ -1809,8 +1842,6 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-	# Other shortcuts are suppressed while a text input has focus so the
-	# user can type Ctrl+C / Ctrl+V / Ctrl+A / Ctrl+D freely.
 	if _is_text_input_focused():
 		return
 
@@ -2721,8 +2752,6 @@ func _perform_save() -> void:
 # ATTRIBUTE ID CONFLICT DETECTION
 # ============================================================
 
-## Returns true if any attribute's id is empty OR its current id
-## does not match snake_case(name), OR the dict key is a temp key.
 func _has_attribute_conflicts() -> bool:
 	if not tree or tree.attributes.is_empty():
 		return false

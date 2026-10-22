@@ -38,6 +38,8 @@ var _value_count_input: SpinBox
 var _is_currency_check: CheckBox
 var _refund_differs_check: CheckBox
 var _operation_dropdown: OptionButton
+var _icon_panel: HBoxContainer
+var _icon_input: BayterekInspectorTextureInput
 
 ## Currently selected attribute's DICT KEY (not necessarily attr.id).
 var _current_attr_id: String = ""
@@ -146,7 +148,7 @@ func _build_ui() -> void:
 	effect_label.text = "Effect"
 	effect_label.custom_minimum_size = Vector2(60, 0)
 	effect_label.size_flags_vertical = 0
-	effect_label.tooltip_text = "Use # placeholder for values"
+	effect_label.tooltip_text = "Use {P}, {C}, {N} for previous/current/next level values.\nUse {C0}, {C1} for specific value slots."
 	effect_row.add_child(effect_label)
 	_effect_input = TextEdit.new()
 	_effect_input.custom_minimum_size = Vector2(0, 60)
@@ -209,6 +211,25 @@ func _build_ui() -> void:
 		_operation_dropdown.add_item(label, int(op))
 	_operation_dropdown.item_selected.connect(_on_operation_changed)
 	op_row.add_child(_operation_dropdown)
+
+	# Icon row — only visible for currency attributes.
+	_icon_panel = HBoxContainer.new()
+	_icon_panel.add_theme_constant_override("separation", 4)
+	_detail_panel.add_child(_icon_panel)
+
+	var icon_label := Label.new()
+	icon_label.text = "Icon"
+	icon_label.custom_minimum_size = Vector2(90, 0)
+	icon_label.tooltip_text = "Custom icon shown in the tooltip's currency row.\nLeave empty to use the default 💰 emoji."
+	icon_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	_icon_panel.add_child(icon_label)
+
+	_icon_input = BayterekInspectorTextureInput.new()
+	_icon_input.title = ""
+	_icon_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	_icon_input.texture_dropped.connect(_on_icon_changed)
+	_icon_input.cleared.connect(_on_icon_cleared)
+	_icon_panel.add_child(_icon_input)
 
 	# Value Count
 	var count_row := HBoxContainer.new()
@@ -372,6 +393,11 @@ func _load_detail(dict_key: String) -> void:
 			_operation_dropdown.select(idx)
 		_operation_dropdown.disabled = attr.is_currency
 
+	if _icon_panel:
+		_icon_panel.visible = attr.is_currency
+	if _icon_input and attr.is_currency:
+		_icon_input.set_texture(attr.icon)
+
 	_update_currency_ui_state(attr)
 	_updating_ui = false
 
@@ -385,6 +411,9 @@ func _update_currency_ui_state(attr: BayterekAttribute) -> void:
 
 	if _operation_dropdown:
 		_operation_dropdown.disabled = attr.is_currency
+
+	if _icon_panel:
+		_icon_panel.visible = attr.is_currency
 
 	if attr.is_currency:
 		var effective: int = attr.get_effective_value_count()
@@ -467,9 +496,10 @@ func _on_add_pressed() -> void:
 	var attr := BayterekAttribute.new()
 	attr.id = attr_id
 	attr.name = display_name
-	attr.effect = "Effect #"
+	attr.effect = "Effect {C}"
 	attr.value_count = 1
 	attr.operation = BayterekAttribute.Operation.ADD
+	attr.icon = null
 
 	editor.tree.attributes[attr_id] = attr
 
@@ -712,7 +742,6 @@ func _on_operation_changed(index: int) -> void:
 
 	attr.operation = new_op as BayterekAttribute.Operation
 
-	# Update the list row tooltip so the operation shows immediately.
 	if _id_to_item.has(_current_attr_id):
 		var item: TreeItem = _id_to_item[_current_attr_id]
 		if item:
@@ -721,6 +750,50 @@ func _on_operation_changed(index: int) -> void:
 			]
 			item.set_tooltip_text(0, tip)
 			item.set_tooltip_text(1, tip)
+
+	editor.set_dirty(true)
+	changed.emit()
+	attribute_changed.emit(_current_attr_id)
+
+func _on_icon_changed(path: String) -> void:
+	if _updating_ui or _current_attr_id.is_empty():
+		return
+	if not editor or not editor.tree:
+		return
+	var attr: BayterekAttribute = editor.tree.attributes.get(_current_attr_id, null)
+	if not attr:
+		return
+	if not attr.is_currency:
+		return
+	if path.is_empty():
+		return
+
+	var tex: Texture2D = load(path) as Texture2D
+	if not tex:
+		return
+
+	attr.icon = tex
+	if _icon_input:
+		_icon_input.set_texture(tex)
+
+	editor.set_dirty(true)
+	changed.emit()
+	attribute_changed.emit(_current_attr_id)
+
+func _on_icon_cleared() -> void:
+	if _updating_ui or _current_attr_id.is_empty():
+		return
+	if not editor or not editor.tree:
+		return
+	var attr: BayterekAttribute = editor.tree.attributes.get(_current_attr_id, null)
+	if not attr:
+		return
+	if not attr.is_currency:
+		return
+
+	attr.icon = null
+	if _icon_input:
+		_icon_input.set_texture(null)
 
 	editor.set_dirty(true)
 	changed.emit()

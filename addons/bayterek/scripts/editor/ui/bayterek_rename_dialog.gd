@@ -2,21 +2,6 @@
 class_name BayterekRenameDialog
 extends ConfirmationDialog
 ## Dialog for renaming + editing a node's description.
-##
-## Layout:
-##   ┌─────────────────────────────────┐
-##   │  Edit Node                      │
-##   ├─────────────────────────────────┤
-##   │  Name:      [...............]   │
-##   │                                 │
-##   │  Description:                   │
-##   │  ┌───────────────────────────┐  │
-##   │  │                           │  │
-##   │  │                           │  │
-##   │  └───────────────────────────┘  │
-##   │                                 │
-##   │              [Cancel] [Apply]   │
-##   └─────────────────────────────────┘
 
 signal applied(new_name: String, new_description: String)
 
@@ -79,29 +64,26 @@ func _build_ui() -> void:
 	# Tab navigation: name → description
 	_name_input.text_submitted.connect(func(_t: String): _description_input.grab_focus())
 
-## Opens the dialog with the given name and description prefilled.
-## The dialog is centered and the name field is focused + selected.
 func open_for(node_name: String, node_description: String) -> void:
+	print("[RENAME_DIALOG] open_for: name='%s'" % node_name)
 	_name_input.text = node_name
 	_description_input.text = node_description
 
 	popup_centered(Vector2i(440, 280))
 
-	# Focus name field and select all text so typing replaces it.
 	_name_input.call_deferred("grab_focus")
 	_name_input.call_deferred("select_all")
 
 func _on_confirmed() -> void:
 	var name_text: String = _name_input.text.strip_edges()
 	var desc_text: String = _description_input.text.strip_edges()
+	print("[RENAME_DIALOG] _on_confirmed: name='%s' desc='%s'" % [name_text, desc_text])
 	applied.emit(name_text, desc_text)
 
 func _on_canceled() -> void:
-	pass
+	print("[RENAME_DIALOG] _on_canceled")
 
 func _input(event: InputEvent) -> void:
-	# Escape cancels — ConfirmationDialog usually does this, but if
-	# focus is inside the TextEdit, Escape might be swallowed.
 	if not visible:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:

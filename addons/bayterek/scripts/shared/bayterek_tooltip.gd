@@ -5,6 +5,10 @@ extends PanelContainer
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
+const CURRENCY_MAX_PER_ROW := 3
+const CURRENCY_ICON_SIZE := Vector2(16, 16)
+const CURRENCY_FALLBACK_ICON := "💰"
+
 enum PositionMode {
 	NEAR_NODE,
 	FIXED_CORNER,
@@ -21,6 +25,8 @@ var _vbox: VBoxContainer
 var _header_label: RichTextLabel
 var _header_sep: HSeparator
 var _body_label: RichTextLabel
+var _currency_container: VBoxContainer
+var _currency_sep: HSeparator
 var _footer_sep: HSeparator
 var _footer_label: RichTextLabel
 
@@ -72,6 +78,20 @@ func _build_ui() -> void:
 	_body_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_vbox.add_child(_body_label)
 
+	# --- Currency container ---
+	# Uses real TextureRects (not RichTextLabel) so custom icons actually
+	# render instead of falling back to a colour swatch.
+	_currency_sep = HSeparator.new()
+	_currency_sep.name = "CurrencySep"
+	_vbox.add_child(_currency_sep)
+
+	_currency_container = VBoxContainer.new()
+	_currency_container.name = "CurrencyContainer"
+	_currency_container.add_theme_constant_override("separation", 2)
+	_currency_container.size_flags_horizontal = SIZE_EXPAND_FILL
+	_currency_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vbox.add_child(_currency_container)
+
 	_footer_sep = HSeparator.new()
 	_footer_sep.name = "FooterSep"
 	_vbox.add_child(_footer_sep)
@@ -122,15 +142,79 @@ func inspect(node: BayterekNodeButton) -> void:
 	body_label_set_text(sections.get("body", ""))
 	footer_label_set_text(sections.get("footer", ""))
 
+	_build_currency_row(node.get_currency_entries())
+
 	_header_sep.visible = not _body_label.text.is_empty() and not _header_label.text.is_empty()
-	_footer_sep.visible = not _footer_label.text.is_empty() and (not _body_label.text.is_empty() or not _header_label.text.is_empty())
+	_currency_sep.visible = _currency_container.get_child_count() > 0 and (
+		not _body_label.text.is_empty() or not _header_label.text.is_empty()
+	)
+	_footer_sep.visible = not _footer_label.text.is_empty() and (
+		not _body_label.text.is_empty()
+		or not _header_label.text.is_empty()
+		or _currency_container.get_child_count() > 0
+	)
 
 	reset_size()
 	visible = true
 	_update_position(node)
 
-## Wrappers — `RichTextLabel.text` in BBCode mode needs to be set this way
-## so a deferred re-layout happens before `reset_size()`.
+# ============================================================
+# CURRENCY ROW BUILDER
+# ============================================================
+
+func _build_currency_row(entries: Array) -> void:
+	# Clear previous
+	for child in _currency_container.get_children():
+		child.queue_free()
+
+	if entries.is_empty():
+		return
+
+	var current_row: HBoxContainer = null
+	var count_in_row: int = 0
+
+	for entry in entries:
+		if not entry is Dictionary:
+			continue
+
+		if current_row == null or count_in_row >= CURRENCY_MAX_PER_ROW:
+			current_row = HBoxContainer.new()
+			current_row.add_theme_constant_override("separation", 4)
+			current_row.alignment = BoxContainer.ALIGNMENT_CENTER
+			current_row.size_flags_horizontal = SIZE_EXPAND_FILL
+			current_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_currency_container.add_child(current_row)
+			count_in_row = 0
+
+		var icon: Texture2D = entry.get("icon", null)
+		var amount: int = int(entry.get("amount", 0))
+
+		# Icon — real TextureRect, falls back to emoji label if missing.
+		if icon != null:
+			var tex_rect := TextureRect.new()
+			tex_rect.texture = icon
+			tex_rect.custom_minimum_size = CURRENCY_ICON_SIZE
+			tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			current_row.add_child(tex_rect)
+		else:
+			var emoji := Label.new()
+			emoji.text = CURRENCY_FALLBACK_ICON
+			emoji.add_theme_font_size_override("font_size", 14)
+			emoji.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			current_row.add_child(emoji)
+
+		# Amount label
+		var amount_lbl := Label.new()
+		amount_lbl.text = str(amount)
+		amount_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+		amount_lbl.add_theme_font_size_override("font_size", 13)
+		amount_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		current_row.add_child(amount_lbl)
+
+		count_in_row += 1
+
 func header_label_set_text(t: String) -> void:
 	_header_label.text = t
 
@@ -148,6 +232,8 @@ func reset() -> void:
 		_body_label.text = ""
 	if _footer_label:
 		_footer_label.text = ""
+	for child in _currency_container.get_children():
+		child.queue_free()
 
 func update_position_for(node: BayterekNodeButton) -> void:
 	if not visible or not node:
@@ -201,16 +287,10 @@ func _update_position(node: BayterekNodeButton) -> void:
 		PositionMode.FIXED_CORNER:
 			_position_fixed_corner()
 
-## Places the tooltip near the node using the node's on-screen rect.
-##
-## The node's `size` is the visible bounds (largest layer), so we use
-## it directly to compute the node's screen edges. The tooltip is
-## placed OUTSIDE these edges.
 func _position_near_node(node: BayterekNodeButton) -> void:
 	if not node:
 		return
 
-	# Get the node's rect in SCREEN coordinates.
 	var node_rect: Rect2 = node.get_global_rect()
 	var tooltip_size: Vector2 = size
 
@@ -220,7 +300,6 @@ func _position_near_node(node: BayterekNodeButton) -> void:
 	var target_pos: Vector2
 
 	if has_h and has_v:
-		# Corner placement: choose side based on sign of offset.
 		if node_offset.x > 0:
 			target_pos.x = node_rect.position.x + node_rect.size.x + node_offset.x
 		else:
@@ -232,7 +311,6 @@ func _position_near_node(node: BayterekNodeButton) -> void:
 			target_pos.y = node_rect.position.y + node_offset.y - tooltip_size.y
 
 	elif has_h and not has_v:
-		# Horizontal-only: align to node vertical center, place OUTSIDE.
 		target_pos.y = node_rect.position.y + node_rect.size.y * 0.5 - tooltip_size.y * 0.5
 		if node_offset.x > 0:
 			target_pos.x = node_rect.position.x + node_rect.size.x + node_offset.x
@@ -240,7 +318,6 @@ func _position_near_node(node: BayterekNodeButton) -> void:
 			target_pos.x = node_rect.position.x + node_offset.x - tooltip_size.x
 
 	elif has_v and not has_h:
-		# Vertical-only: align to node horizontal center, place OUTSIDE.
 		target_pos.x = node_rect.position.x + node_rect.size.x * 0.5 - tooltip_size.x * 0.5
 		if node_offset.y > 0:
 			target_pos.y = node_rect.position.y + node_rect.size.y + node_offset.y
@@ -248,7 +325,6 @@ func _position_near_node(node: BayterekNodeButton) -> void:
 			target_pos.y = node_rect.position.y + node_offset.y - tooltip_size.y
 
 	else:
-		# No offset: default to the right of the node, vertically centered.
 		target_pos.y = node_rect.position.y + node_rect.size.y * 0.5 - tooltip_size.y * 0.5
 		target_pos.x = node_rect.position.x + node_rect.size.x + 20
 

@@ -13,6 +13,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_tree_data = tree_data
 	_ref_id_to_prefab.clear()
 
+	# 1) Register every prefab first, so we can resolve references below.
 	for prefab in _tree_data.prefabs:
 		if not prefab:
 			continue
@@ -21,6 +22,21 @@ func load_tree(tree_data: BayterekTree) -> void:
 		_ref_id_to_prefab[prefab.reference_id] = prefab
 		prefab_created.emit(prefab)
 
+	# 2) Bind nodes to their prefabs.
+	#
+	# IMPORTANT RUNTIME ORDERING:
+	#   In `_create_services`, `nodes_service.load_tree()` runs BEFORE
+	#   `prefabs_service.load_tree()`. That means each node's first
+	#   `refresh_visuals()` call happens with `node.prefab = null`, so
+	#   `apply_exported_overrides(design, null)` cannot read the
+	#   prefab's `exported_values` — every prefab-level override
+	#   (tint colors, transform tweaks, etc.) was silently ignored at
+	#   runtime, even though it worked in the editor (where the prefab
+	#   binding was already in place).
+	#
+	#   Fix: after binding `node.prefab`, call `rebuild_from_design()`
+	#   so `_design_applied` is reset and `refresh_visuals()` re-runs
+	#   the override application with the prefab now available.
 	if _tree_view and _tree_view.nodes_service:
 		for node in _tree_view.nodes_service.get_all_nodes():
 			if not node.node_data:
@@ -32,6 +48,8 @@ func load_tree(tree_data: BayterekTree) -> void:
 			if prefab:
 				node.prefab = prefab
 				prefab.add_node(node)
+				if node.has_method("rebuild_from_design"):
+					node.rebuild_from_design()
 
 func get_prefab_by_reference_id(reference_id: String) -> BayterekPrefab:
 	return _ref_id_to_prefab.get(reference_id, null)

@@ -34,7 +34,9 @@ value_count = 1
 script = ExtResource("1_6p5mu")
 id = "health"
 name = "health"
-effect = "Effect #"
+effect = "previous {P}
+current {C}
+next {N}"
 value_count = 1
 
 [sub_resource type="Resource" id="Resource_5lgyx"]
@@ -183,7 +185,7 @@ tint_configs = {
 "enabled": false
 },
 "normal": {
-"color": Color(0.8828125, 0.010345459, 0.010345459, 1),
+"color": Color(0.26112288, 1, 0.15625, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -218,15 +220,15 @@ reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
 id = 44
 name = "New Design"
 design_id = "new_design"
-position = Vector2(-80, 192)
+position = Vector2(-15.3845215, 262)
 line_data = {
 46: SubResource("Resource_ss5fq")
 }
 out_nodes = Array[int]([46])
 attributes = {
-"diamond": [[5], [5], [5]],
-"gold": [[15], [15], [15]],
-"health": [[5], [5], [5]]
+"diamond": [[5], [10], [15]],
+"gold": [[15], [35], [55]],
+"health": [[5], [15], [35]]
 }
 max_allocations = 3
 layers = Array[ExtResource("4_qlprm")]([SubResource("Resource_j5a67"), SubResource("Resource_nrko7"), SubResource("Resource_l2tvo")])
@@ -382,7 +384,7 @@ tint_configs = {
 "enabled": false
 },
 "normal": {
-"color": Color(0.8828125, 0.010345459, 0.010345459, 1),
+"color": Color(0.26112288, 1, 0.15625, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -581,7 +583,7 @@ tint_configs = {
 "enabled": false
 },
 "normal": {
-"color": Color(0.8828125, 0.010345459, 0.010345459, 1),
+"color": Color(0.26112288, 1, 0.15625, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -626,8 +628,8 @@ overridden_attributes = {
 [sub_resource type="Resource" id="Resource_bxwvi"]
 script = ExtResource("3_k1nh3")
 reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
-id = "new_design"
-node_name = "New Design"
+id = "yeni"
+node_name = "Yeni"
 design_id = "new_design"
 attributes = {
 "diamond": [[0]],
@@ -639,7 +641,7 @@ exported_fields = {
 }
 exported_values = {
 "layers.02216fb3-8823-4f1a-b353-5252c195f8aa.tint_configs.normal": {
-"color": Color(0.08691406, 0.6953125, 0, 1),
+"color": Color(0.26112288, 1, 0.15625, 1),
 "enabled": true
 }
 }
@@ -658,7 +660,7 @@ attributes = {
 "gold": SubResource("Resource_txiuo"),
 "health": SubResource("Resource_0rgdv")
 }
-hierarchy_split_offset = -423
+hierarchy_split_offset = -429
 default_purchase_mode = 1
 purchase_visual_mode = 2
 purchase_progress_direction = 1

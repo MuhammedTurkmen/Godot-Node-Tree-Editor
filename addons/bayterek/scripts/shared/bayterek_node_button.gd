@@ -11,6 +11,10 @@ const RENDER_MODE_PIXEL := 1
 const VISUAL_OFFSET_EMIT_THRESHOLD := 0.05
 const SPEED_IDLE_THRESHOLD := 0.02
 
+## Tooltip currency row: max N currencies per row, then wrap.
+const CURRENCY_MAX_PER_ROW := 3
+const CURRENCY_FALLBACK_ICON := "💰"
+
 signal node_hovered(node: BayterekNodeButton, is_hovered: bool)
 signal drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2)
 signal dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2)
@@ -76,18 +80,6 @@ var _active_states: Dictionary = {}
 var _design_applied: bool = false
 
 # --- Purchase progress (HOLD mode, NODE_PROGRESS visual) ---
-#
-# `_progress_active` is true while a hold is in flight.
-# `_progress_finished` is true once a hold has ended.
-# `_progress_cancelled` is true if the hold ended via release/cancel
-# (as opposed to completing successfully). It is reset to false at
-# the start of every new hold.
-#
-# Resting visibility of the progress layer:
-#   - INVISIBLE → VISIBLE (dir 0): hidden in idle, hidden after both
-#     completion AND cancellation.
-#   - VISIBLE → INVISIBLE (dir 1): visible in idle, hidden after
-#     completion, VISIBLE after cancellation (back to initial look).
 var _progress_active: bool = false
 var _progress_finished: bool = false
 var _progress_cancelled: bool = false
@@ -524,22 +516,7 @@ func _is_progress_layer(layer: BayterekTextureLayer) -> bool:
 		return false
 	return layer.layer_id == node_data.node_progress_layer_id
 
-
-## Returns whether the progress layer should currently be visible.
-##
-## States:
-##   1. Hold in flight                        → visible
-##   2. Idle (no hold yet):
-##        - dir 0 (INVISIBLE → VISIBLE)       → hidden
-##        - dir 1 (VISIBLE → INVISIBLE)       → visible
-##   3. Completed successfully:
-##        - both directions                   → hidden
-##   4. Cancelled:
-##        - dir 0                             → hidden
-##        - dir 1                             → visible (initial look)
 func _is_progress_layer_visible_now() -> bool:
-	# In the editor we never show the progress layer — it's a runtime-only
-	# visual. This keeps the editor canvas clean while designing.
 	if Engine.is_editor_hint():
 		return false
 
@@ -554,11 +531,7 @@ func _is_progress_layer_visible_now() -> bool:
 		return false
 
 	return tree_data.purchase_progress_direction == 1
-	
 
-## Applies a per-frame transform override to the given layer node if
-## it is the progress layer AND a hold is active. Otherwise, falls
-## back to the layer's own transform.
 func _render_layer_node(ln: BayterekLayerNode, base_xform: Transform2D) -> void:
 	if not ln or not is_instance_valid(ln):
 		return
@@ -581,7 +554,6 @@ func _render_layer_node(ln: BayterekLayerNode, base_xform: Transform2D) -> void:
 	ln.set_state(state_key)
 
 	if is_progress and _progress_active:
-		# Render with a temporary override — never mutate layer.transform.
 		var live_xform: BayterekLayerTransform = layer.transform.duplicate_transform()
 		var factor: float = _progress_t
 		if tree_data.purchase_progress_direction == 1:
@@ -667,22 +639,12 @@ func set_purchase_progress(t: float) -> void:
 	if node_data.node_progress_layer_id.is_empty():
 		return
 
-	# Starting a NEW hold resets the previous end-state flags.
 	_progress_active = true
 	_progress_finished = false
 	_progress_cancelled = false
 	_progress_t = clampf(t, 0.0, 1.0)
 	_update_layer_nodes()
 
-
-## Called when the hold ends.
-##
-## `completed` = true  → the hold ran to full duration and the node was
-##                       allocated.
-## `completed` = false → the hold was cancelled (released early).
-##
-## The resting visibility of the progress layer depends on both the
-## direction and this flag.
 func clear_purchase_progress(completed: bool = false) -> void:
 	_progress_active = false
 	_progress_finished = true
@@ -760,6 +722,13 @@ func _on_mouse_exited() -> void:
 # TOOLTIP
 # ============================================================
 
+## Builds the tooltip sections. Four parts:
+##   header   — node display name
+##   body     — prerequisite + non-currency attributes + description
+##   footer   — Level: X / Y
+##
+## Currency data is exposed separately via `get_currency_entries()` —
+## the tooltip renders real TextureRects for icons instead of BBCode.
 func format_tooltip_sections() -> Dictionary:
 	var header: String = ""
 	var body: String = ""
@@ -795,7 +764,174 @@ func format_tooltip_sections() -> Dictionary:
 	body = "\n\n".join(body_parts)
 	footer = _format_level_footer()
 
-	return {"header": header, "body": body, "footer": footer}
+	return {
+		"header": header,
+		"body": body,
+		"footer": footer,
+	}
+
+## Returns an Array of {icon: Texture2D, amount: int} dicts, one per
+## currency attribute the node defines. The tooltip renders each entry
+## as a TextureRect + Label inside an HBoxContainer.
+func get_currency_entries() -> Array:
+	if not node_data or not tree_data:
+		return []
+
+	var result: Array = []
+	for attr_id in node_data.attributes.keys():
+		if not tree_data.attributes.has(attr_id):
+			continue
+		var attr: BayterekAttribute = tree_data.attributes[attr_id]
+		if not attr or not attr.is_currency:
+			continue
+
+		var amount: int = node_data.get_currency_slot(
+			attr_id,
+			BayterekAttribute.SLOT_PURCHASE,
+			max(0, allocation_level - 1)
+		)
+		result.append({
+			"icon": attr.icon,
+			"amount": amount,
+		})
+	return result
+
+func format_tooltip() -> String:
+	var sections: Dictionary = format_tooltip_sections()
+	var parts: Array[String] = []
+	if not sections["header"].is_empty():
+		parts.append(sections["header"])
+	if not sections["body"].is_empty():
+		parts.append(sections["body"])
+	if not sections["footer"].is_empty():
+		parts.append(sections["footer"])
+	return "\n\n".join(parts)
+
+func _is_multiallocation() -> bool:
+	if not tree_data:
+		return false
+	return tree_data.multiallocation
+
+# ------------------------------------------------------------
+# ATTRIBUTES (non-currency only)
+# ------------------------------------------------------------
+
+func _format_attributes() -> String:
+	if not node_data or not tree_data:
+		return ""
+
+	var result: String = ""
+
+	for attr_id in node_data.attributes.keys():
+		if not tree_data.attributes.has(attr_id):
+			continue
+		var attribute: BayterekAttribute = tree_data.attributes[attr_id]
+		if attribute.is_currency:
+			continue   # rendered in the currency row
+		result += _format_single_attribute(attribute, attr_id)
+		result += "\n"
+
+	return result.strip_edges()
+
+
+func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> String:
+	if not attribute:
+		return ""
+
+	var previous_values: Array = _get_values_at_level(attr_id, allocation_level - 1)
+	var current_values: Array = _get_values_at_level(attr_id, allocation_level)
+	var next_values: Array = _get_values_at_level(attr_id, allocation_level + 1)
+
+	var formatted: String = _substitute_placeholders(
+		attribute.effect,
+		previous_values,
+		current_values,
+		next_values
+	)
+
+	if formatted.strip_edges().is_empty():
+		return ""
+
+	return "[color=#8a8aff]%s[/color]" % formatted
+
+
+func _get_values_at_level(attr_id: String, level: int) -> Array:
+	if not node_data or not node_data.attributes.has(attr_id):
+		return []
+
+	var raw = node_data.attributes[attr_id]
+	if not raw is Array:
+		return []
+
+	if raw.size() > 0 and raw[0] is Array:
+		var slot_count: int = raw[0].size()
+		if level <= 0 or level > raw.size():
+			var z: Array = []
+			for i in slot_count:
+				z.append(0)
+			return z
+		return raw[level - 1]
+
+	var slot_count2: int = raw.size()
+	if level == 1:
+		return raw
+	var z2: Array = []
+	for i in slot_count2:
+		z2.append(0)
+	return z2
+
+
+func _substitute_placeholders(
+	effect: String,
+	previous_values: Array,
+	current_values: Array,
+	next_values: Array
+) -> String:
+	if effect.is_empty():
+		return ""
+
+	var regex := RegEx.new()
+	regex.compile("\\{([PCN])(\\d*)\\}")
+
+	var matches: Array = regex.search_all(effect)
+
+	var replacements: Array = []
+	for m in matches:
+		var letter: String = m.get_string(1)
+		var index_str: String = m.get_string(2)
+		var slot: int = 0 if index_str.is_empty() else int(index_str)
+		replacements.append({
+			"start": m.get_start(),
+			"end": m.get_end(),
+			"letter": letter,
+			"slot": slot,
+		})
+
+	replacements.reverse()
+
+	var result: String = effect
+	for r in replacements:
+		var letter: String = r["letter"]
+		var slot: int = r["slot"]
+		var values: Array = []
+		match letter:
+			"P": values = previous_values
+			"C": values = current_values
+			"N": values = next_values
+
+		var value: int = 0
+		if slot >= 0 and slot < values.size():
+			value = int(values[slot])
+
+		var start: int = r["start"]
+		var end: int = r["end"]
+		result = result.substr(0, start) + str(value) + result.substr(end)
+
+	return result
+
+# ------------------------------------------------------------
+# LEVEL FOOTER
+# ------------------------------------------------------------
 
 func _format_level_footer() -> String:
 	if not node_data:
@@ -818,83 +954,3 @@ func _format_level_footer() -> String:
 		color = "#8ef58e"
 
 	return "[center][color=%s]Level: %d / %d[/color][/center]" % [color, current, maximum]
-
-func format_tooltip() -> String:
-	var sections: Dictionary = format_tooltip_sections()
-	var parts: Array[String] = []
-	if not sections["header"].is_empty():
-		parts.append(sections["header"])
-	if not sections["body"].is_empty():
-		parts.append(sections["body"])
-	if not sections["footer"].is_empty():
-		parts.append(sections["footer"])
-	return "\n\n".join(parts)
-
-func _is_multiallocation() -> bool:
-	if not tree_data:
-		return false
-	return tree_data.multiallocation
-
-func _format_attributes() -> String:
-	if not node_data or not tree_data:
-		return ""
-
-	var result: String = ""
-	var regex := RegEx.new()
-	regex.compile("#")
-
-	for attr_id in node_data.attributes.keys():
-		if not tree_data.attributes.has(attr_id):
-			continue
-		var attribute: BayterekAttribute = tree_data.attributes[attr_id]
-		result += _format_single_attribute(regex, attribute, attr_id)
-		result += "\n"
-
-	return result.strip_edges()
-
-func _format_single_attribute(regex: RegEx, attribute: BayterekAttribute, attr_id: String) -> String:
-	var formatted: String = ""
-
-	if _is_multiallocation():
-		if allocation_level > 0:
-			formatted = attribute.effect
-			var level_index: int = max(0, allocation_level - 1)
-			var raw = node_data.attributes[attr_id]
-			if raw is Array and level_index < raw.size():
-				var values = raw[level_index]
-				if values is Array:
-					for i in attribute.value_count:
-						if i < values.size():
-							formatted = regex.sub(formatted, str(values[i]))
-
-		if allocation_level < node_data.max_allocations:
-			var next_level: int = allocation_level
-			var next_text: String = attribute.effect
-			var raw2 = node_data.attributes[attr_id]
-			if raw2 is Array and next_level < raw2.size():
-				var next_values = raw2[next_level]
-				if next_values is Array:
-					for i in attribute.value_count:
-						if i < next_values.size():
-							next_text = regex.sub(next_text, str(next_values[i]))
-			formatted += "\n[color=orange]Next Level: %s[/color]" % next_text.strip_edges()
-
-		if allocation_level == 0:
-			var first_text: String = attribute.effect
-			var raw3 = node_data.attributes[attr_id]
-			if raw3 is Array and raw3.size() > 0:
-				var first_values = raw3[0]
-				if first_values is Array:
-					for i in attribute.value_count:
-						if i < first_values.size():
-							first_text = regex.sub(first_text, str(first_values[i]))
-			formatted = "[color=orange]Next Level: %s[/color]" % first_text.strip_edges()
-	else:
-		formatted = attribute.effect
-		var values = node_data.attributes[attr_id]
-		if values is Array:
-			for i in attribute.value_count:
-				if i < values.size() and not values[i] is Array:
-					formatted = regex.sub(formatted, str(values[i]))
-
-	return "[color=#8a8aff]%s[/color]" % formatted

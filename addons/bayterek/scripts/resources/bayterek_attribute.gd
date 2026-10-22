@@ -47,6 +47,12 @@ enum Operation {
 ## purchased. Only meaningful for non-currency attributes.
 @export_storage var operation: Operation = Operation.ADD
 
+## Optional custom icon shown in the tooltip's currency row.
+## Falls back to the built-in gold-pouch emoji when empty.
+## (Custom Texture2D rendering in RichTextLabel is not yet supported —
+## a future version will embed this via a generated atlas.)
+@export_storage var icon: Texture2D = null
+
 const SLOT_PURCHASE := 0
 const SLOT_REFUND := 1
 
