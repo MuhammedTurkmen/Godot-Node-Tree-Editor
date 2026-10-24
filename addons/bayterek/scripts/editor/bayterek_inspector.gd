@@ -24,6 +24,7 @@ var _root_check: CheckBox
 var _info_panel: VBoxContainer
 var _id_input: LineEdit
 var _name_input: LineEdit
+var _name_key_input: LineEdit
 var _description_input: TextEdit
 var _max_alloc_panel: HBoxContainer
 var _max_alloc_input: SpinBox
@@ -149,8 +150,12 @@ func _build_ui() -> void:
 	_content.add_child(_info_panel)
 
 	_id_input = _add_line_row(_info_panel, "ID", "Auto-generated ID", true)
-	_name_input = _add_line_row(_info_panel, "Name", "Node display name", false)
+	_name_input = _add_line_row(_info_panel, "Name", "Node display name (fallback)", false)
 	_name_input.text_changed.connect(_on_name_changed)
+
+	_name_key_input = _add_line_row(_info_panel, "Name Key", "Optional localization key for the node's display name.\nWhen set, the tooltip and hierarchy use the translated text.\nLeave empty to use the Name field above.", false)
+	_name_key_input.placeholder_text = "(optional) e.g. node_fireball_name"
+	_name_key_input.text_changed.connect(_on_name_key_changed)
 
 	# Design selector
 	_design_row = HBoxContainer.new()
@@ -525,6 +530,7 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	_id_input.text = node.node_data.external_id if not node.node_data.external_id.is_empty() else str(node.node_data.id)
 	_name_input.text = node.node_data.name
+	_name_key_input.text = node.node_data.name_key
 	_description_input.text = node.node_data.description
 	_root_check.button_pressed = node.node_data.is_root
 	_max_alloc_input.set_value_no_signal(node.node_data.max_allocations)
@@ -712,6 +718,7 @@ func inspect_prefab(prefab: BayterekPrefab) -> void:
 	_updating_ui = true
 	_id_input.text = prefab.reference_id if not prefab.reference_id.is_empty() else "(copy)"
 	_name_input.text = prefab.node_name
+	_name_key_input.text = ""
 	_description_input.text = prefab.description
 	_max_alloc_input.set_value_no_signal(prefab.max_allocations)
 	_updating_ui = false
@@ -765,9 +772,6 @@ func _on_name_changed(new_text: String) -> void:
 	if _updating_ui:
 		return
 
-	# PREFAB MODE (editing the prefab itself via the prefab bar):
-	# this SHOULD update the prefab's node_name, because we're
-	# explicitly editing the prefab — not an instance of it.
 	if _current_prefab:
 		_current_prefab.set_node_name(new_text)
 		changed.emit()
@@ -777,11 +781,27 @@ func _on_name_changed(new_text: String) -> void:
 	if not _current_node:
 		return
 
-	# NODE MODE: always edit the INSTANCE's name.
-	# Even when bound to a prefab, we only touch node_data.name —
-	# never the shared prefab. This keeps each instance's name
-	# independent while appearance stays shared.
+	# Rename the INSTANCE only — never touch the shared prefab.
 	_current_node.node_data.name = new_text
+
+	if editor and editor.has_method("notify_node_display_changed"):
+		editor.notify_node_display_changed(_current_node)
+
+	changed.emit()
+	_notify_editor_dirty()
+
+func _on_name_key_changed(new_text: String) -> void:
+	if _updating_ui:
+		return
+
+	if _current_prefab:
+		# Prefabs don't carry name_key — ignore.
+		return
+
+	if not _current_node:
+		return
+
+	_current_node.node_data.name_key = new_text.strip_edges()
 
 	if editor and editor.has_method("notify_node_display_changed"):
 		editor.notify_node_display_changed(_current_node)
@@ -821,8 +841,6 @@ func _on_max_alloc_changed(value: float) -> void:
 
 	var new_max: int = int(value)
 
-	# PREFAB MODE (editing the prefab itself via the prefab bar):
-	# update the prefab's default and reshape its attribute arrays.
 	if _current_prefab:
 		_current_prefab.set_max_allocations(new_max)
 		_reshape_prefab_attribute_arrays(_current_prefab, new_max)
@@ -835,8 +853,7 @@ func _on_max_alloc_changed(value: float) -> void:
 	if not _current_node:
 		return
 
-	# NODE MODE: always write to the instance. Never propagate to the
-	# prefab — each instance keeps its own value.
+	# NODE MODE: always write to the instance. Never propagate to the prefab.
 	_current_node.node_data.max_allocations = new_max
 
 	if editor and editor.tree and editor.tree.multiallocation:

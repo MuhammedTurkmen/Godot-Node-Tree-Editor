@@ -9,6 +9,9 @@ const CURRENCY_MAX_PER_ROW := 3
 const CURRENCY_ICON_SIZE := Vector2(16, 16)
 const CURRENCY_FALLBACK_ICON := "💰"
 
+## Localization keys used by the tooltip.
+const LOC_KEY_LEVEL_MAXED := "bayterek_node_level_maxed"
+
 enum PositionMode {
 	NEAR_NODE,
 	FIXED_CORNER,
@@ -109,6 +112,26 @@ func _build_ui() -> void:
 
 	_apply_alignments()
 
+## Localization helper — mirrors BayterekNodeButton._localize().
+##
+## Looks up `key` in GameLocalization and returns the translated text.
+## Falls back to `fallback` when the key is empty, the autoload is
+## missing, or the key resolves to an empty string.
+func _localize(key: String, fallback: String) -> String:
+	if key.is_empty():
+		return fallback
+	if not is_inside_tree():
+		return fallback
+
+	var loc = get_node_or_null("/root/GameLocalization")
+	if not loc or not loc.has_method("get_raw_text"):
+		return fallback
+
+	var translated: String = String(loc.call("get_raw_text", key))
+	if translated.is_empty():
+		return fallback
+	return translated
+
 func _apply_alignments() -> void:
 	_set_label_align(_header_label, _header_align)
 	_set_label_align(_body_label, _body_align)
@@ -142,7 +165,12 @@ func inspect(node: BayterekNodeButton) -> void:
 	body_label_set_text(sections.get("body", ""))
 	footer_label_set_text(sections.get("footer", ""))
 
-	_build_currency_row(node.get_currency_entries())
+	# Currency row: "MAXED" when the node is fully allocated,
+	# otherwise one entry per currency.
+	if node.is_maxed():
+		_build_maxed_row()
+	else:
+		_build_currency_row(node.get_currency_entries())
 
 	_header_sep.visible = not _body_label.text.is_empty() and not _header_label.text.is_empty()
 	_currency_sep.visible = _currency_container.get_child_count() > 0 and (
@@ -188,6 +216,7 @@ func _build_currency_row(entries: Array) -> void:
 
 		var icon: Texture2D = entry.get("icon", null)
 		var amount: int = int(entry.get("amount", 0))
+		var affordable: bool = bool(entry.get("affordable", true))
 
 		# Icon — real TextureRect, falls back to emoji label if missing.
 		if icon != null:
@@ -205,15 +234,39 @@ func _build_currency_row(entries: Array) -> void:
 			emoji.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			current_row.add_child(emoji)
 
-		# Amount label
+		# Amount label — green when affordable, red when not.
 		var amount_lbl := Label.new()
 		amount_lbl.text = str(amount)
-		amount_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+		amount_lbl.add_theme_color_override(
+			"font_color",
+			Color(0.56, 0.96, 0.56) if affordable else Color(1.0, 0.4, 0.4)
+		)
 		amount_lbl.add_theme_font_size_override("font_size", 13)
 		amount_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		current_row.add_child(amount_lbl)
 
 		count_in_row += 1
+
+## Renders a centred "MAXED" badge when the node is fully allocated.
+##
+## The badge text is localized via `bayterek_node_level_maxed`.
+## Falls back to "MAXED" when the key is missing.
+func _build_maxed_row() -> void:
+	for child in _currency_container.get_children():
+		child.queue_free()
+
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.size_flags_horizontal = SIZE_EXPAND_FILL
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_currency_container.add_child(row)
+
+	var lbl := Label.new()
+	lbl.text = _localize(LOC_KEY_LEVEL_MAXED, "MAXED")
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(lbl)
 
 func header_label_set_text(t: String) -> void:
 	_header_label.text = t

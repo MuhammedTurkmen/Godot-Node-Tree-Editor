@@ -6,8 +6,11 @@ extends Node
 ##
 ##   get_text(key, args)   → key lookup + {arg} format
 ##   translate(text, args) → text with {@key} + {arg} resolution
+##   get_raw_text(key)     → raw string, no formatting (for external
+##                           placeholder systems like Bayterek's
+##                           {P} / {C} / {N})
 ##
-## Inside both functions:
+## Inside both `get_text` and `translate`:
 ##   {name}  → args first, then key lookup
 ##   {@key}  → key lookup only
 
@@ -96,7 +99,7 @@ func set_language(locale: String) -> bool:
 	return true
 
 # ============================================================
-# GET_TEXT — key lookup
+# GET_TEXT — key lookup + format
 # ============================================================
 
 ## Returns the translation for `key`, formatted with args.
@@ -116,6 +119,15 @@ func get_text(key: String, args: Dictionary = {}) -> String:
 	if debug_missing_args:
 		return Format.format_visible(raw, args)
 	return Format.format(raw, args)
+
+## Returns the RAW translated text for a key, without applying any
+## `{arg}` or `{@key}` placeholder formatting. Use this when the
+## caller wants to run its own placeholder substitution on the result
+## (e.g. the Bayterek tooltip's `{P}` / `{C}` / `{N}` system).
+##
+## Returns "" if the key is missing.
+func get_raw_text(key: String) -> String:
+	return _lookup(key)
 
 func has_key(key: String) -> bool:
 	return not _lookup(key).is_empty()

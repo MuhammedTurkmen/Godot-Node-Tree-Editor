@@ -1,4 +1,8 @@
 {
+	"attr_health_regen": "+{N} HP per second",
+	"attr_max_health": "Grants {N} max health",
+	"bayterek_node_level": "Level",
+	"bayterek_node_level_maxed": "MAXED",
 	"broken_ref_example": "Refer to {@menu_play}",
 	"chain_1": "Start: {@chain_2}",
 	"chain_2": "Then: {@menu_play}",
@@ -12,6 +16,8 @@
 	"menu_options": "Options",
 	"menu_play": "Play",
 	"menu_quit": "Quit",
+	"node_health_regen": "Health Regenaration",
+	"node_max_health": "Max Health",
 	"opening": "Welcome to the game",
 	"placeholder_mismatch": "Hello {first}, you have {count} gold",
 	"start_hint": "Press {@menu_play} to start",

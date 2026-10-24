@@ -14,6 +14,12 @@ extends VBoxContainer
 ##     The list row + detail ID label turn red.
 ##   - On save, BayterekEditor's fixer assigns a proper _2, _3 suffix
 ##     and migrates all references.
+##
+## LOCALIZATION:
+##   Each attribute has an optional `effect_key` field. When set, the
+##   tooltip looks up the key in GameLocalization and uses the
+##   translated text as the base for `{P}` / `{C}` / `{N}` substitution.
+##   The `effect` field remains the fallback.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -34,6 +40,7 @@ var _detail_title: Label
 var _detail_id_label: Label
 var _name_input: LineEdit
 var _effect_input: TextEdit
+var _effect_key_input: LineEdit
 var _value_count_input: SpinBox
 var _is_currency_check: CheckBox
 var _refund_differs_check: CheckBox
@@ -141,6 +148,20 @@ func _build_ui() -> void:
 	_name_input.text_changed.connect(_on_name_changed)
 	name_row.add_child(_name_input)
 
+	# Effect Key (localization)
+	var effect_key_row := HBoxContainer.new()
+	_detail_panel.add_child(effect_key_row)
+	var effect_key_label := Label.new()
+	effect_key_label.text = "Effect Key"
+	effect_key_label.custom_minimum_size = Vector2(60, 0)
+	effect_key_label.tooltip_text = "Optional localization key.\nIf set, the tooltip looks up this key in GameLocalization and uses the translated text as the base for {P}/{C}/{N} substitution.\nLeave empty to use the Effect field below."
+	effect_key_row.add_child(effect_key_label)
+	_effect_key_input = LineEdit.new()
+	_effect_key_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	_effect_key_input.placeholder_text = "(optional) e.g. attr_max_health_effect"
+	_effect_key_input.text_changed.connect(_on_effect_key_changed)
+	effect_key_row.add_child(_effect_key_input)
+
 	# Effect
 	var effect_row := HBoxContainer.new()
 	_detail_panel.add_child(effect_row)
@@ -148,7 +169,7 @@ func _build_ui() -> void:
 	effect_label.text = "Effect"
 	effect_label.custom_minimum_size = Vector2(60, 0)
 	effect_label.size_flags_vertical = 0
-	effect_label.tooltip_text = "Use {P}, {C}, {N} for previous/current/next level values.\nUse {C0}, {C1} for specific value slots."
+	effect_label.tooltip_text = "Fallback text when no Effect Key is set.\nUse {P}, {C}, {N} for previous/current/next level values.\nUse {C0}, {C1} for specific value slots."
 	effect_row.add_child(effect_label)
 	_effect_input = TextEdit.new()
 	_effect_input.custom_minimum_size = Vector2(0, 60)
@@ -307,6 +328,8 @@ func _add_attr_item(dict_key: String, attr: BayterekAttribute) -> void:
 	var tip: String = "ID: %s" % attr.id
 	if not attr.is_currency:
 		tip += "\nOperation: %s" % BayterekAttribute.operation_label(attr.operation)
+	if not attr.effect_key.is_empty():
+		tip += "\nEffect Key: %s" % attr.effect_key
 	if conflict:
 		tip += "\n[!] Conflicts with another attribute — rename or save to auto-suffix."
 	item.set_tooltip_text(0, tip)
@@ -383,6 +406,7 @@ func _load_detail(dict_key: String) -> void:
 
 	_name_input.text = attr.name
 	_effect_input.text = attr.effect
+	_effect_key_input.text = attr.effect_key
 	_is_currency_check.button_pressed = attr.is_currency
 	_refund_differs_check.button_pressed = attr.refund_differs
 	_value_count_input.set_value_no_signal(attr.value_count)
@@ -497,6 +521,7 @@ func _on_add_pressed() -> void:
 	attr.id = attr_id
 	attr.name = display_name
 	attr.effect = "Effect {C}"
+	attr.effect_key = ""
 	attr.value_count = 1
 	attr.operation = BayterekAttribute.Operation.ADD
 	attr.icon = null
@@ -650,6 +675,8 @@ func _update_list_item(dict_key: String, attr: BayterekAttribute, conflict: bool
 	var tip: String = "ID: %s" % attr.id
 	if not attr.is_currency:
 		tip += "\nOperation: %s" % BayterekAttribute.operation_label(attr.operation)
+	if not attr.effect_key.is_empty():
+		tip += "\nEffect Key: %s" % attr.effect_key
 	if conflict:
 		tip += "\n[!] Conflicts with another attribute — rename or save to auto-suffix."
 	item.set_tooltip_text(0, tip)
@@ -664,6 +691,19 @@ func _on_effect_changed() -> void:
 	if not attr:
 		return
 	attr.effect = _effect_input.text
+	editor.set_dirty(true)
+	changed.emit()
+	attribute_changed.emit(_current_attr_id)
+
+func _on_effect_key_changed(new_text: String) -> void:
+	if _updating_ui or _current_attr_id.is_empty():
+		return
+	if not editor or not editor.tree:
+		return
+	var attr: BayterekAttribute = editor.tree.attributes.get(_current_attr_id, null)
+	if not attr:
+		return
+	attr.effect_key = new_text.strip_edges()
 	editor.set_dirty(true)
 	changed.emit()
 	attribute_changed.emit(_current_attr_id)

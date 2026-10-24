@@ -152,7 +152,6 @@ func _cleanup_empty_group_items() -> void:
 		if count == 0:
 			empty_group_ids.append(group_id)
 		else:
-			# Grup adını + sayıyı yeniden yaz.
 			var group: BayterekNodeGroup = editor.tree.get_group_by_id(group_id) if editor and editor.tree else null
 			if group:
 				item.set_text(0, "%s (%d)" % [group.name, count])
@@ -177,10 +176,7 @@ func _build_node_label(node: BayterekNodeButton) -> String:
 	if node.node_data.is_root:
 		prefix = "★  "
 
-	var display_name: String = node.node_data.name.strip_edges()
-	if display_name.is_empty():
-		display_name = "Node %d" % node.id
-
+	var display_name: String = node.get_display_name()
 	return "%s%s" % [prefix, display_name]
 
 func _apply_item_tooltip(item: TreeItem, node: BayterekNodeButton) -> void:

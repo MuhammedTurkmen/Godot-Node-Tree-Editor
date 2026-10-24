@@ -19,6 +19,12 @@ extends Resource
 ## Currency attributes IGNORE `operation` — their purchase/refund is
 ## handled by the wallet callbacks (wallet_spend / wallet_refund).
 ##
+## LOCALIZATION:
+##   `effect_key` is an optional localization key. When set, the tooltip
+##   looks up this key in GameLocalization and uses the translated text
+##   as the base for `{P}` / `{C}` / `{N}` substitution. `effect` is
+##   the fallback used when the key is missing or resolves to "".
+##
 ## ID RULE:
 ##   `id` is derived from `name` via snake_case. The editor updates it
 ##   as you type. If the derived id collides with another attribute,
@@ -42,6 +48,14 @@ enum Operation {
 @export_storage var name: String
 @export_storage var effect: String
 @export_storage var value_count: int = 0
+
+## Optional localization key. When set, the tooltip will look up this
+## key in GameLocalization and use the translated text as the base for
+## `{P}` / `{C}` / `{N}` placeholder substitution.
+##
+## `effect` remains the fallback (used when localization is unavailable
+## or the key resolves to an empty string).
+@export_storage var effect_key: String = ""
 
 ## How this attribute is applied to the total when a node is
 ## purchased. Only meaningful for non-currency attributes.

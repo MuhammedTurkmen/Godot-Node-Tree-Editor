@@ -34,6 +34,13 @@ var _active_states_cache_key: String = ""
 @export_storage var id: int = 0
 @export_storage var external_id: String = ""
 @export_storage var name: String = ""
+
+## Optional localization key for the node's display name.
+## When set, the tooltip / hierarchy / search will look up this key
+## in GameLocalization and use the translated text. `name` remains
+## the fallback used when the key is missing or resolves to "".
+@export_storage var name_key: String = ""
+
 @export_storage var description: String = ""
 
 @export_storage var design_id: String = ""

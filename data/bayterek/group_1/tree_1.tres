@@ -34,19 +34,15 @@ value_count = 1
 script = ExtResource("1_6p5mu")
 id = "health_regen"
 name = "health regen"
-effect = "previous {P}
-current {C}
-next {N}"
 value_count = 1
+effect_key = "attr_health_regen"
 
 [sub_resource type="Resource" id="Resource_0rgdv"]
 script = ExtResource("1_6p5mu")
 id = "max_health"
 name = "max health"
-effect = "previous {P}
-current {C}
-next {N}"
 value_count = 1
+effect_key = "attr_max_health"
 
 [sub_resource type="Resource" id="Resource_5lgyx"]
 script = ExtResource("7_j5a67")
@@ -100,7 +96,7 @@ tint_configs = {
 }
 }
 layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
-layer_name = "Texture 3"
+layer_name = "Background"
 transform = SubResource("Resource_5lgyx")
 
 [sub_resource type="Resource" id="Resource_wfhhu"]
@@ -123,22 +119,22 @@ tint_configs = {
 },
 "clicked": {
 "color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
+"enabled": true
 },
 "hover": {
 "color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "locked": {
 "color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "max_level": {
 "color": Color(1, 0.8784314, 0.4, 1),
 "enabled": false
 },
 "normal": {
-"color": Color(0.03125, 0.03125, 0.03125, 1),
+"color": Color(1, 0.11328125, 0.11328125, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -147,15 +143,15 @@ tint_configs = {
 },
 "preallocated": {
 "color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
+"enabled": true
 },
 "prerefund": {
 "color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
+"enabled": true
 }
 }
 layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
-layer_name = "Texture 2"
+layer_name = "Border"
 transform = SubResource("Resource_wfhhu")
 texture_filter_override = 2
 
@@ -211,7 +207,7 @@ tint_configs = {
 }
 }
 layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
-layer_name = "Texture 1"
+layer_name = "Icon"
 transform = SubResource("Resource_53451")
 texture_filter_override = 2
 
@@ -228,8 +224,9 @@ is_root = true
 reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
 id = 44
 name = "Max Health 1"
+name_key = "node_max_health"
 design_id = "new_design"
-position = Vector2(-15.3845215, 262)
+position = Vector2(32, 272)
 line_data = {
 46: SubResource("Resource_ss5fq")
 }
@@ -299,7 +296,7 @@ tint_configs = {
 }
 }
 layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
-layer_name = "Texture 3"
+layer_name = "Background"
 transform = SubResource("Resource_k0kgc")
 
 [sub_resource type="Resource" id="Resource_tmiro"]
@@ -322,22 +319,22 @@ tint_configs = {
 },
 "clicked": {
 "color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
+"enabled": true
 },
 "hover": {
 "color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "locked": {
 "color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "max_level": {
 "color": Color(1, 0.8784314, 0.4, 1),
 "enabled": false
 },
 "normal": {
-"color": Color(0.03125, 0.03125, 0.03125, 1),
+"color": Color(1, 0.11328125, 0.11328125, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -346,15 +343,15 @@ tint_configs = {
 },
 "preallocated": {
 "color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
+"enabled": true
 },
 "prerefund": {
 "color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
+"enabled": true
 }
 }
 layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
-layer_name = "Texture 2"
+layer_name = "Border"
 transform = SubResource("Resource_tmiro")
 texture_filter_override = 2
 
@@ -410,7 +407,7 @@ tint_configs = {
 }
 }
 layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
-layer_name = "Texture 1"
+layer_name = "Icon"
 transform = SubResource("Resource_67hed")
 texture_filter_override = 2
 
@@ -426,8 +423,9 @@ script = ExtResource("1_immpc")
 reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
 id = 46
 name = "Max Health 2"
+name_key = "node_max_health"
 design_id = "new_design"
-position = Vector2(-80, -32)
+position = Vector2(32, 96)
 line_data = {
 47: SubResource("Resource_botrw")
 }
@@ -498,7 +496,7 @@ tint_configs = {
 }
 }
 layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
-layer_name = "Texture 3"
+layer_name = "Background"
 transform = SubResource("Resource_bjop0")
 
 [sub_resource type="Resource" id="Resource_p8dnb"]
@@ -521,22 +519,22 @@ tint_configs = {
 },
 "clicked": {
 "color": Color(0.7019608, 0.5411765, 0, 1),
-"enabled": false
+"enabled": true
 },
 "hover": {
 "color": Color(1, 0.8509804, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "locked": {
 "color": Color(0.4, 0.4, 0.4, 1),
-"enabled": false
+"enabled": true
 },
 "max_level": {
 "color": Color(1, 0.8784314, 0.4, 1),
 "enabled": false
 },
 "normal": {
-"color": Color(0.03125, 0.03125, 0.03125, 1),
+"color": Color(1, 0.11328125, 0.11328125, 1),
 "enabled": true
 },
 "not_allocateable": {
@@ -545,15 +543,15 @@ tint_configs = {
 },
 "preallocated": {
 "color": Color(1, 0.6509804, 0.2509804, 1),
-"enabled": false
+"enabled": true
 },
 "prerefund": {
 "color": Color(1, 0.5019608, 0.5019608, 1),
-"enabled": false
+"enabled": true
 }
 }
 layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
-layer_name = "Texture 2"
+layer_name = "Border"
 transform = SubResource("Resource_p8dnb")
 texture_filter_override = 2
 
@@ -609,7 +607,7 @@ tint_configs = {
 }
 }
 layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
-layer_name = "Texture 1"
+layer_name = "Icon"
 transform = SubResource("Resource_44f6a")
 texture_filter_override = 2
 
@@ -618,8 +616,9 @@ script = ExtResource("1_immpc")
 reference_id = "104d5079-fb96-4ea0-8129-efc480cab2fc"
 id = 47
 name = "Health Regen"
+name_key = "node_health_regen"
 design_id = "new_design"
-position = Vector2(96, -224)
+position = Vector2(272, -128)
 in_nodes = Array[int]([46])
 attributes = {
 "diamond": [[15], [15], [15], [15], [15]],
@@ -662,6 +661,8 @@ id = "tree_1"
 name = "Tree 1"
 multiallocation = true
 hover_animations_enabled = false
+tooltip_header_align = 1
+tooltip_body_align = 1
 id_counter = 47
 nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_mklcx"), SubResource("Resource_safsq"), SubResource("Resource_uf3jb")])
 prefabs = Array[ExtResource("3_k1nh3")]([SubResource("Resource_bxwvi")])
@@ -671,7 +672,8 @@ attributes = {
 "health_regen": SubResource("Resource_wbej3"),
 "max_health": SubResource("Resource_0rgdv")
 }
-hierarchy_split_offset = -356
+hierarchy_split_offset = -566
+prefabs_bar_visible = false
 default_purchase_mode = 1
 purchase_visual_mode = 2
 purchase_progress_direction = 1

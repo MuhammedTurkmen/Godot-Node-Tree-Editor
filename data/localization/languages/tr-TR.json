@@ -1,4 +1,8 @@
 {
+	"attr_health_regen": "Saniyede +{N} HP",
+	"attr_max_health": "{N} maksimum can verir",
+	"bayterek_node_level": "Seviye",
+	"bayterek_node_level_maxed": "MAKSİMUM",
 	"broken_ref_example": "Bak {@this_key_does_not_exist}",
 	"chain_1": "Başlangıç: {@chain_2}",
 	"chain_2": "Sonra: {@menu_play}",
@@ -12,6 +16,8 @@
 	"menu_options": "Seçenekler",
 	"menu_play": "Oyna",
 	"menu_quit": "Çıkış",
+	"node_health_regen": "Can Yenilenmesi\t",
+	"node_max_health": "Maksimum Can",
 	"opening": "Oyuna hoş geldin",
 	"placeholder_mismatch": "Merhaba {first}, altının var",
 	"start_hint": "Başlamak için {@menu_play} tuşuna bas",
