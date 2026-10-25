@@ -16,6 +16,9 @@ var _state_label: Label = null
 ## Holds the toolbar HBox so we can add currency buttons after the tree loads.
 var _toolbar: HBoxContainer = null
 
+## Data object loaded from the tree's JSON mirror (null if unavailable).
+var _skill_tree_data: BayterekSkillTreeData = null
+
 func _ready() -> void:
 	print("========================================")
 	print("[READY] test_purchase.gd starting")
@@ -43,7 +46,18 @@ func _ready() -> void:
 		push_error("Tree not found: %s" % path)
 		return
 
-	# 3) Initialize the wallet with DEFAULT_CURRENCY for every currency attribute.
+	# 2b) If the tree has a JSON mirror, hydrate it from JSON. This is
+	#     the source of truth for attributes, nodes and initial state.
+	if loader.has_method("has_tree_json") and loader.has_method("load_tree_from_json"):
+		if loader.has_tree_json(_tree_data):
+			_skill_tree_data = loader.load_tree_from_json(_tree_data)
+			if _skill_tree_data:
+				print("[READY] Tree hydrated from JSON: ", loader.get_tree_json_path(_tree_data))
+				print("  currencies:    ", _skill_tree_data.currency_attributes.keys())
+				print("  skill attrs:   ", _skill_tree_data.skill_attributes.keys())
+				print("  wallet values: ", _skill_tree_data.wallet_defaults)
+
+	# 3) Initialize the wallet with JSON defaults (or fallback constant).
 	_initialize_wallet()
 
 	# 4) Build the tree view.
@@ -65,12 +79,21 @@ func _initialize_wallet() -> void:
 	_wallet.clear()
 	if not _tree_data:
 		return
+
+	# Prefer JSON-provided wallet defaults if available.
+	if _skill_tree_data and not _skill_tree_data.wallet_defaults.is_empty():
+		for attr_id in _skill_tree_data.wallet_defaults.keys():
+			_wallet[attr_id] = int(_skill_tree_data.wallet_defaults[attr_id])
+		print("[WALLET] from JSON defaults: ", _wallet)
+		return
+
+	# Fallback: constant default for every currency attribute.
 	for attr_id in _tree_data.attributes.keys():
 		var attr: BayterekAttribute = _tree_data.attributes[attr_id]
 		if not attr or not attr.is_currency:
 			continue
 		_wallet[attr_id] = DEFAULT_CURRENCY
-	print("[WALLET] initialized: ", _wallet)
+	print("[WALLET] fallback defaults: ", _wallet)
 
 # ============================================================
 # UI
@@ -107,6 +130,10 @@ func _build_ui() -> void:
 		if _tree_data:
 			print("[DUMP] attributes=", _tree_data.attributes.keys())
 			print("[DUMP] allocated=", _tree_data.tree_state.allocated_nodes if _tree_data.tree_state else [])
+		if _skill_tree_data:
+			print("[DUMP] currencies=", _skill_tree_data.currency_attributes.keys())
+			print("[DUMP] skill_attrs=", _skill_tree_data.skill_attributes.keys())
+			print("[DUMP] wallet_defaults=", _skill_tree_data.wallet_defaults)
 	)
 	_toolbar.add_child(dump_btn)
 
@@ -190,8 +217,8 @@ func _build_currency_buttons() -> void:
 
 		var btn := Button.new()
 		btn.name = "AddCurrency_%s" % attr_id
-		btn.text = "+%d %s" % [GIVE_AMOUNT, attr.name]
-		btn.tooltip_text = "Add %d %s to the wallet." % [GIVE_AMOUNT, attr.name]
+		btn.text = "+%d %s" % [GIVE_AMOUNT, attr.get_display_name()]
+		btn.tooltip_text = "Add %d %s to the wallet." % [GIVE_AMOUNT, attr.get_display_name()]
 		var captured_id: String = attr_id
 		btn.pressed.connect(func(): _add_currency(captured_id, GIVE_AMOUNT))
 		_toolbar.add_child(btn)
@@ -279,6 +306,21 @@ func _on_node_deallocated(node: BayterekNode) -> void:
 	_recompute()
 
 # ============================================================
+# CUMULATIVE COMPATIBILITY
+# ============================================================
+
+## Returns true if `cumulative` produces meaningful results for the
+## given operation. Only ADD and SUBTRACT support it:
+##   - ADD:      sums levels → bigger bonus
+##   - SUBTRACT: sums levels → bigger penalty
+##
+## SET / MULTIPLY / MIN / MAX fall back to absolute mode because
+## summing their per-level values would produce nonsensical totals.
+static func _is_cumulative_op(op: int) -> bool:
+	return op == int(BayterekAttribute.Operation.ADD) \
+		or op == int(BayterekAttribute.Operation.SUBTRACT)
+
+# ============================================================
 # ATTRIBUTE ACCUMULATION
 # ============================================================
 
@@ -297,17 +339,39 @@ func _recompute() -> void:
 		var level: int = 1
 		if _tree_data.tree_state and _tree_data.tree_state.allocation_level.has(node_data.id):
 			level = int(_tree_data.tree_state.allocation_level[node_data.id])
+
 		for attr_id in node_data.attributes.keys():
 			var attr: BayterekAttribute = _tree_data.attributes.get(attr_id, null)
 			if not attr or attr.is_currency:
 				continue
+
 			var raw = node_data.attributes[attr_id]
 			var values: Array = []
+
 			if raw is Array and raw.size() > 0 and raw[0] is Array:
-				var lvl: int = clampi(level - 1, 0, raw.size() - 1)
-				values = raw[lvl]
+				# Multi-allocation layout.
+				# Cumulative only makes sense for ADD and SUBTRACT —
+				# SET / MULTIPLY / MIN / MAX fall back to absolute.
+				var use_cumulative: bool = attr.cumulative and _is_cumulative_op(int(attr.operation))
+				if use_cumulative:
+					# CUMULATIVE: sum levels 1..level.
+					var slot_count: int = raw[0].size()
+					var cumulative: Array = []
+					for i in slot_count:
+						cumulative.append(0)
+					var lvl: int = clampi(level, 1, raw.size())
+					for l in lvl:
+						var lvl_vals: Array = raw[l]
+						for i in mini(slot_count, lvl_vals.size()):
+							cumulative[i] += int(lvl_vals[i])
+					values = cumulative
+				else:
+					# ABSOLUTE: only current level.
+					var lvl_idx: int = clampi(level - 1, 0, raw.size() - 1)
+					values = raw[lvl_idx]
 			elif raw is Array:
 				values = raw
+
 			if not contributions.has(attr_id):
 				contributions[attr_id] = []
 			var v: float = 0.0
@@ -372,7 +436,7 @@ func _refresh_hud() -> void:
 		var attr: BayterekAttribute = _tree_data.attributes[attr_id]
 		if not attr or not attr.is_currency:
 			continue
-		lines.append("  %s: %d" % [attr.name, int(_wallet.get(attr_id, 0))])
+		lines.append("  %s: %d" % [attr.get_display_name(), int(_wallet.get(attr_id, 0))])
 		any_currency = true
 	if not any_currency:
 		lines.append("  (no currencies)")
@@ -385,7 +449,7 @@ func _refresh_hud() -> void:
 		if not attr or attr.is_currency:
 			continue
 		var v: int = int(_granted.get(attr_id, 0))
-		lines.append("  %s: %d" % [attr.name, v])
+		lines.append("  %s: %d" % [attr.get_display_name(), v])
 		any = true
 	if not any:
 		lines.append("  (none)")

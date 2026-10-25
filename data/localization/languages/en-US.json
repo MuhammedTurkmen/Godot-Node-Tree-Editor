@@ -1,6 +1,6 @@
 {
-	"attr_health_regen": "+{N} HP per second",
-	"attr_max_health": "Grants {N} max health",
+	"attr_desc_health_regen": "+{N} HP per second",
+	"attr_desc_max_health": "Grants {N} max health",
 	"bayterek_node_level": "Level",
 	"bayterek_node_level_maxed": "MAXED",
 	"broken_ref_example": "Refer to {@menu_play}",

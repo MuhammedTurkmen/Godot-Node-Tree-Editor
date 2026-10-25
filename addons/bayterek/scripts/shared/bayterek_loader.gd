@@ -12,6 +12,13 @@ extends Node
 ## The screen registers itself via register_node_editor() on _ready()
 ## and unregisters on _exit_tree(). Only ONE screen can be active at a
 ## time; the most recent registration wins.
+##
+## SKILL TREE JSON API:
+##   The JSON file at `<tree_path>.json` is the SOURCE OF TRUTH for
+##   a tree's structure, attributes, node values and initial state.
+##   The .tres is a lightweight runtime mirror that Godot can load
+##   natively. The editor writes both; the runtime reads JSON first,
+##   then falls back to .tres if the JSON is missing.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -80,6 +87,149 @@ func has_design(design_id: String) -> bool:
 
 func reload_designs() -> void:
 	BayterekDesignService.reload()
+
+# ============================================================
+# SKILL TREE JSON API
+# ============================================================
+
+## Returns the conventional JSON path for a tree.
+## The JSON lives next to the .tres file, with the same basename.
+static func get_tree_json_path(tree: BayterekTree) -> String:
+	if not tree:
+		return ""
+	if tree.resource_path.is_empty():
+		return ""
+	return tree.resource_path.get_basename() + ".json"
+
+## Returns true if the tree has a JSON mirror on disk.
+static func has_tree_json(tree: BayterekTree) -> bool:
+	var path := get_tree_json_path(tree)
+	return not path.is_empty() and FileAccess.file_exists(path)
+
+## Loads the JSON for a tree and returns the in-memory data.
+## The `BayterekTree` resource is hydrated from the JSON — including
+## attribute dictionaries, nodes, connections, and initial allocation.
+##
+## SAFETY GUARD:
+##   If the tree appears to be "brand new" (no attributes, no nodes,
+##   no allocation state), we SKIP hydration. This prevents a freshly
+##   created tree from resurrecting stale data from a leftover JSON
+##   file (e.g. after deleting a tree but leaving its .json on disk).
+func load_tree_from_json(tree: BayterekTree) -> BayterekSkillTreeData:
+	if not tree:
+		return null
+	var path := get_tree_json_path(tree)
+	if path.is_empty():
+		push_error("BayterekLoader: tree has no resource_path; cannot locate JSON.")
+		return null
+	if not FileAccess.file_exists(path):
+		push_error("BayterekLoader: JSON not found: %s" % path)
+		return null
+
+	# Skip hydration if the tree is completely empty. This is the
+	# "newly created tree" case — we do NOT want to overwrite it with
+	# leftover JSON.
+	if _is_tree_empty(tree):
+		BayterekLogger.info("Skipping JSON hydration: tree '%s' is empty (new)." % tree.name, "loader")
+		return null
+
+	var raw := BayterekSkillTreeJson.load_file(path)
+	if raw.is_empty():
+		return null
+
+	var data := BayterekSkillTreeJson.dict_to_data(raw)
+	_apply_data_to_tree(tree, data)
+	return data
+
+## Serializes the current `BayterekTree` to its JSON file.
+func save_tree_to_json(tree: BayterekTree) -> Error:
+	if not tree:
+		return ERR_INVALID_PARAMETER
+	var path := get_tree_json_path(tree)
+	if path.is_empty():
+		return ERR_INVALID_PARAMETER
+
+	# Guard: don't write JSON for a tree whose .tres no longer exists
+	# on disk. This prevents resurrecting .json files for deleted trees.
+	if not tree.resource_path.is_empty() and not FileAccess.file_exists(tree.resource_path):
+		BayterekLogger.warn("Refusing to write JSON for missing .tres: %s" % tree.resource_path, "loader")
+		return ERR_FILE_NOT_FOUND
+
+	var data := _tree_to_data(tree)
+	var raw := BayterekSkillTreeJson.data_to_dict(data)
+	return BayterekSkillTreeJson.save_file(path, raw)
+
+## Convenience: load JSON if it exists, otherwise fall back to .tres.
+## Returns the data object when loaded from JSON, null otherwise.
+func ensure_tree_loaded(tree: BayterekTree) -> BayterekSkillTreeData:
+	if not tree:
+		return null
+	if has_tree_json(tree):
+		return load_tree_from_json(tree)
+	return null
+
+## Returns true if the tree has no attributes, no nodes, and no
+## allocation state — i.e. it looks freshly created.
+func _is_tree_empty(tree: BayterekTree) -> bool:
+	if not tree:
+		return true
+	if not tree.attributes.is_empty():
+		return false
+	if not tree.nodes.is_empty():
+		return false
+	if tree.tree_state:
+		if not tree.tree_state.allocated_nodes.is_empty():
+			return false
+		if not tree.tree_state.allocation_level.is_empty():
+			return false
+	return true
+
+# ============================================================
+# TREE <-> DATA
+# ============================================================
+
+func _apply_data_to_tree(tree: BayterekTree, data: BayterekSkillTreeData) -> void:
+	# Attributes: merge currencies + skills into tree.attributes.
+	# The split is preserved in `data`, but the tree still needs a
+	# single flat dictionary for the existing editor UI.
+	tree.attributes.clear()
+	for attr_id in data.currency_attributes.keys():
+		tree.attributes[attr_id] = data.currency_attributes[attr_id]
+	for attr_id in data.skill_attributes.keys():
+		tree.attributes[attr_id] = data.skill_attributes[attr_id]
+
+	# Nodes.
+	tree.nodes.clear()
+	for node in data.nodes:
+		tree.nodes.append(node)
+
+	# Initial allocation.
+	if not tree.tree_state:
+		tree.tree_state = BayterekTreeState.new()
+	tree.tree_state.allocated_nodes = data.initial_allocated.duplicate()
+	tree.tree_state.allocation_level = data.initial_levels.duplicate()
+
+func _tree_to_data(tree: BayterekTree) -> BayterekSkillTreeData:
+	var data := BayterekSkillTreeData.new()
+	data.tree_id = tree.id
+	data.tree_name = tree.name
+
+	for attr_id in tree.attributes.keys():
+		var attr: BayterekAttribute = tree.attributes[attr_id]
+		if not attr:
+			continue
+		if attr.is_currency:
+			data.currency_attributes[attr_id] = attr
+		else:
+			data.skill_attributes[attr_id] = attr
+
+	data.nodes = tree.nodes.duplicate()
+
+	if tree.tree_state:
+		data.initial_allocated = tree.tree_state.allocated_nodes.duplicate()
+		data.initial_levels = tree.tree_state.allocation_level.duplicate()
+
+	return data
 
 # ============================================================
 # NODE EDITOR REGISTRATION

@@ -1,0 +1,268 @@
+{
+  "allocated": {
+    "levels": {},
+    "nodes": []
+  },
+  "attributes": {
+    "skills": {
+      "health_regenaration": {
+        "cumulative": false,
+        "effect": "Effect {C}",
+        "effect_key": "attr_desc_health_regen",
+        "name": "health regenaration",
+        "name_key": "node_health_regen",
+        "operation": "add",
+        "value_count": 1
+      },
+      "max_health": {
+        "cumulative": false,
+        "effect": "Effect {C}",
+        "effect_key": "attr_desc_max_health",
+        "name": "max health",
+        "name_key": "node_max_health",
+        "operation": "add",
+        "value_count": 1
+      }
+    }
+  },
+  "currencies": {
+    "diamond": {
+      "effect": "Effect {C}",
+      "effect_key": "",
+      "name": "diamond",
+      "name_key": "",
+      "refund_differs": false
+    },
+    "gold": {
+      "effect": "Effect {C}",
+      "effect_key": "",
+      "name": "gold",
+      "name_key": "",
+      "refund_differs": false
+    }
+  },
+  "meta": {
+    "format": "bayterek-skill-tree",
+    "tree_id": "tree_1",
+    "tree_name": "Tree 1",
+    "version": 2
+  },
+  "nodes": [
+    {
+      "connections": {
+        "in": [],
+        "out": [
+          2
+        ]
+      },
+      "design_id": "new_design",
+      "group_id": "",
+      "id": 1,
+      "is_root": true,
+      "max_allocations": 5,
+      "name": "Max Health",
+      "name_key": "node_max_health",
+      "position": {
+        "x": -128.0,
+        "y": 176.0
+      },
+      "prerequisite": {
+        "count": 1,
+        "group_id": "",
+        "mode": "any"
+      },
+      "values": {
+        "diamond": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              10
+            ],
+            [
+              15
+            ],
+            [
+              20
+            ],
+            [
+              25
+            ]
+          ]
+        },
+        "gold": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              10
+            ],
+            [
+              15
+            ],
+            [
+              20
+            ],
+            [
+              25
+            ]
+          ]
+        },
+        "max_health": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              10
+            ],
+            [
+              15
+            ],
+            [
+              20
+            ],
+            [
+              25
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "connections": {
+        "in": [
+          1
+        ],
+        "out": [
+          3
+        ]
+      },
+      "design_id": "new_design",
+      "group_id": "",
+      "id": 2,
+      "is_root": false,
+      "max_allocations": 3,
+      "name": "Max Health",
+      "name_key": "node_max_health",
+      "position": {
+        "x": -128.0,
+        "y": -80.0
+      },
+      "prerequisite": {
+        "count": 1,
+        "group_id": "",
+        "mode": "any"
+      },
+      "values": {
+        "diamond": {
+          "levels": [
+            [
+              15
+            ],
+            [
+              35
+            ],
+            [
+              50
+            ]
+          ]
+        },
+        "gold": {
+          "levels": [
+            [
+              15
+            ],
+            [
+              35
+            ],
+            [
+              50
+            ]
+          ]
+        },
+        "max_health": {
+          "levels": [
+            [
+              15
+            ],
+            [
+              35
+            ],
+            [
+              50
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "connections": {
+        "in": [
+          2
+        ],
+        "out": []
+      },
+      "design_id": "new_design",
+      "group_id": "",
+      "id": 3,
+      "is_root": false,
+      "max_allocations": 3,
+      "name": "Health Regenaration",
+      "name_key": "node_health_regen",
+      "position": {
+        "x": 96.0,
+        "y": -304.0
+      },
+      "prerequisite": {
+        "count": 1,
+        "group_id": "",
+        "mode": "any"
+      },
+      "values": {
+        "diamond": {
+          "levels": [
+            [
+              35
+            ],
+            [
+              50
+            ],
+            [
+              75
+            ]
+          ]
+        },
+        "gold": {
+          "levels": [
+            [
+              35
+            ],
+            [
+              50
+            ],
+            [
+              35
+            ]
+          ]
+        },
+        "health_regenaration": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              10
+            ],
+            [
+              15
+            ]
+          ]
+        }
+      }
+    }
+  ],
+  "wallet": {}
+}

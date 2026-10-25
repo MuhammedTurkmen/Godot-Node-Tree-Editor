@@ -895,6 +895,21 @@ func _is_multiallocation() -> bool:
 	return tree_data.multiallocation
 
 # ------------------------------------------------------------
+# CUMULATIVE COMPATIBILITY
+# ------------------------------------------------------------
+
+## Returns true if `cumulative` produces meaningful results for the
+## given operation. Only ADD and SUBTRACT support it:
+##   - ADD:      sums levels → bigger bonus
+##   - SUBTRACT: sums levels → bigger penalty
+##
+## SET / MULTIPLY / MIN / MAX fall back to absolute mode because
+## summing their per-level values would produce nonsensical totals.
+static func _is_cumulative_op(op: BayterekAttribute.Operation) -> bool:
+	return op == BayterekAttribute.Operation.ADD \
+		or op == BayterekAttribute.Operation.SUBTRACT
+
+# ------------------------------------------------------------
 # ATTRIBUTES (non-currency only)
 # ------------------------------------------------------------
 
@@ -915,6 +930,7 @@ func _format_attributes() -> String:
 
 	return result.strip_edges()
 
+
 func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> String:
 	if not attribute:
 		return ""
@@ -922,28 +938,26 @@ func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> 
 	var previous_values: Array = _get_values_at_level(attr_id, allocation_level - 1)
 	var current_values: Array = _get_values_at_level(attr_id, allocation_level)
 
-	# {N} — "next" value.
-	#
-	# Rule:
-	#   - If we're NOT at max level  → use allocation_level + 1
-	#   - If we ARE at max level     → clamp to the current level
-	#     (i.e. "next" == current), so the tooltip keeps showing a
-	#     meaningful number instead of 0.
+	# {N} — "next" value. Clamp at max level so it never shows 0.
 	var next_level: int = allocation_level + 1
 	if _is_multiallocation():
 		var max_lvl: int = node_data.max_allocations if node_data else 0
 		if max_lvl > 0 and next_level > max_lvl:
 			next_level = max_lvl
 	else:
-		# Single-allocation: level is always 0 or 1, and there is no
-		# "next" beyond 1. Clamp so {N} mirrors the current value.
 		if next_level > 1:
 			next_level = 1
 
 	var next_values: Array = _get_values_at_level(attr_id, next_level)
 
-	# Prefer the localized text when a key is set; fall back to the
-	# design-time `effect` string otherwise.
+	# Cumulative mode: show running totals instead of raw per-level values.
+	# Only ADD and SUBTRACT support cumulative — other operations would
+	# produce nonsensical tooltips, so we silently fall back to absolute.
+	if attribute.cumulative and _is_multiallocation() and _is_cumulative_op(attribute.operation):
+		previous_values = _get_cumulative_values_at_level(attr_id, allocation_level - 1)
+		current_values  = _get_cumulative_values_at_level(attr_id, allocation_level)
+		next_values     = _get_cumulative_values_at_level(attr_id, next_level)
+
 	var raw_effect: String = _get_effect_text(attribute)
 
 	var formatted: String = _substitute_placeholders(
@@ -957,6 +971,7 @@ func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> 
 		return ""
 
 	return "[color=#8a8aff]%s[/color]" % formatted
+
 
 ## Returns the base text for the given attribute's effect, after
 ## running it through the localization system (if `effect_key` is set)
@@ -1013,6 +1028,36 @@ func _get_values_at_level(attr_id: String, level: int) -> Array:
 	return z2
 
 
+## Returns the CUMULATIVE sum of values from level 1 up to `level`.
+## For level <= 0, returns a zeroed array of the correct size.
+func _get_cumulative_values_at_level(attr_id: String, level: int) -> Array:
+	if not node_data or not node_data.attributes.has(attr_id):
+		return []
+
+	var raw = node_data.attributes[attr_id]
+	if not raw is Array or raw.size() == 0:
+		return []
+
+	# Single-allocation layout: no cumulative concept beyond level 1.
+	if not (raw[0] is Array):
+		return raw if level >= 1 else []
+
+	var slot_count: int = raw[0].size()
+	var result: Array = []
+	for i in slot_count:
+		result.append(0)
+
+	if level <= 0:
+		return result
+
+	var lvl: int = mini(level, raw.size())
+	for l in lvl:
+		var lvl_vals: Array = raw[l]
+		for i in mini(slot_count, lvl_vals.size()):
+			result[i] += int(lvl_vals[i])
+	return result
+
+
 func _substitute_placeholders(
 	effect: String,
 	previous_values: Array,
@@ -1022,10 +1067,9 @@ func _substitute_placeholders(
 	if effect.is_empty():
 		return ""
 
-	# CSV and some custom parsers leave "\n" as literal backslash + n
-	# instead of converting it to a real newline. RichTextLabel needs a
-	# REAL newline character to break the line — otherwise it renders
-	# the backslash and the "n" literally.
+	# Normalize: CSV and some custom parsers may leave a literal "\n"
+	# (backslash + n) instead of a real newline. RichTextLabel needs a
+	# REAL newline to break the line.
 	var normalized: String = effect.replace("\\n", "\n")
 
 	var regex := RegEx.new()

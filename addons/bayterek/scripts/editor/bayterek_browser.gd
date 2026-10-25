@@ -464,12 +464,20 @@ func _create_tree() -> void:
 	var tree_name := "Tree %d" % counter
 	var snake: String = Bayterek.to_snake_case(tree_name)
 	var tree_file := "%s/%s.tres" % [base_dir, snake]
+	var tree_json := "%s/%s.json" % [base_dir, snake]
 
-	while FileAccess.file_exists(tree_file):
+	# Also check the JSON mirror so we don't collide with a stale JSON.
+	while FileAccess.file_exists(tree_file) or FileAccess.file_exists(tree_json):
 		counter += 1
 		tree_name = "Tree %d" % counter
 		snake = Bayterek.to_snake_case(tree_name)
 		tree_file = "%s/%s.tres" % [base_dir, snake]
+		tree_json = "%s/%s.json" % [base_dir, snake]
+
+	# Explicitly ensure no stale JSON is lying around before we create
+	# a fresh, empty tree. This prevents "new tree inherits old data".
+	if FileAccess.file_exists(tree_json):
+		DirAccess.remove_absolute(tree_json)
 
 	var tree := BayterekTree.new()
 	tree.id = snake
@@ -713,6 +721,14 @@ func _rename_tree(item: TreeItem, meta: Dictionary, old_name: String, new_name: 
 
 	Bayterek.move_uid_sidecar(old_path, new_file)
 
+	# Also move the JSON mirror if it exists.
+	var old_json: String = old_path.get_basename() + ".json"
+	var new_json: String = new_file.get_basename() + ".json"
+	if FileAccess.file_exists(old_json):
+		if FileAccess.file_exists(new_json):
+			DirAccess.remove_absolute(new_json)
+		DirAccess.rename_absolute(old_json, new_json)
+
 	tree_res.name = new_name
 	tree_res.id = new_snake
 	tree_res.resource_path = new_file
@@ -865,6 +881,14 @@ func _tree_drop_data(at_position: Vector2, data: Variant) -> void:
 
 	Bayterek.move_uid_sidecar(old_path, new_path)
 
+	# Also move the JSON mirror if it exists.
+	var old_json: String = old_path.get_basename() + ".json"
+	var new_json: String = new_path.get_basename() + ".json"
+	if FileAccess.file_exists(old_json):
+		if FileAccess.file_exists(new_json):
+			DirAccess.remove_absolute(new_json)
+		DirAccess.rename_absolute(old_json, new_json)
+
 	# Update resource_path and re-save the tree at the new location
 	tree_res.resource_path = new_path
 	Bayterek.safe_save(tree_res, new_path)
@@ -994,12 +1018,18 @@ func _duplicate_tree_into_group(
 	var new_name: String = base_name
 	var snake: String = Bayterek.to_snake_case(new_name)
 	var new_file: String = "%s/%s.tres" % [target_dir, snake]
+	var new_json: String = "%s/%s.json" % [target_dir, snake]
 
-	while FileAccess.file_exists(new_file):
+	while FileAccess.file_exists(new_file) or FileAccess.file_exists(new_json):
 		counter += 1
 		new_name = "%s %d" % [base_name, counter]
 		snake = Bayterek.to_snake_case(new_name)
 		new_file = "%s/%s.tres" % [target_dir, snake]
+		new_json = "%s/%s.json" % [target_dir, snake]
+
+	# Ensure no stale JSON exists at the target path.
+	if FileAccess.file_exists(new_json):
+		DirAccess.remove_absolute(new_json)
 
 	var duplicate: BayterekTree = source_tree.duplicate(true) as BayterekTree
 	if not duplicate:
@@ -1014,9 +1044,10 @@ func _duplicate_tree_into_group(
 		BayterekLogger.error("Could not save duplicate tree (%d)" % save_err, "browser")
 		return
 
-	# NOTE: We deliberately do NOT copy the source .uid sidecar. Two files
-	# sharing a UID would corrupt the editor's resource cache. Godot will
-	# generate a fresh .uid on the next filesystem scan.
+	# NOTE: We deliberately do NOT copy the source .uid sidecar or the
+	# source .json mirror. Two files sharing a UID would corrupt the
+	# editor's resource cache, and a duplicated .json would carry over
+	# stale data. Godot will generate a fresh .uid on the next scan.
 
 	var saved_tree: BayterekTree = ResourceLoader.load(new_file, "BayterekTree", ResourceLoader.CACHE_MODE_IGNORE)
 	if saved_tree:
@@ -1035,11 +1066,66 @@ func _request_delete_group() -> void:
 	if meta.get("type", "") != "group":
 		return
 
-	_pending_delete = {"type": "group", "path": meta["path"], "name": selected.get_text(0)}
+	var group_name: String = selected.get_text(0)
+	var group_path: String = meta["path"]
+
+	# Find open trees in this group.
+	var open_paths: Array[String] = []
+	var registry: BayterekRegistry = Bayterek.get_editor_registry()
+	var group: BayterekGroup = registry.find_group_by_path(group_path) if registry else null
+	if group and main_screen:
+		for t: BayterekTree in group.trees:
+			if main_screen.has_open_tree(t.resource_path):
+				open_paths.append(t.resource_path)
+
+	# If any tree in the group is open, warn and ask to close them.
+	if not open_paths.is_empty():
+		var confirm := ConfirmationDialog.new()
+		confirm.title = "Close Open Trees?"
+		var count: int = open_paths.size()
+		confirm.dialog_text = (
+			"Group \"%s\" contains %d open tree%s in the editor.\n\n"
+			+ "Do you want to close %s and proceed with deletion?"
+		) % [
+			group_name,
+			count,
+			"s" if count > 1 else "",
+			"them" if count > 1 else "it"
+		]
+		confirm.ok_button_text = "Close All & Delete"
+		confirm.cancel_button_text = "Cancel"
+		confirm.unresizable = true
+
+		confirm.confirmed.connect(func() -> void:
+			confirm.queue_free()
+			# Close all open trees in the group first.
+			if main_screen and main_screen.has_method("close_tree"):
+				for p in open_paths:
+					main_screen.close_tree(p)
+			call_deferred("_open_delete_group_dialog", meta, group_name)
+		)
+		confirm.canceled.connect(func() -> void:
+			confirm.queue_free()
+		)
+		confirm.close_requested.connect(func() -> void:
+			confirm.queue_free()
+		)
+
+		add_child(confirm)
+		confirm.popup_centered(Vector2i(480, 200))
+		return
+
+	# No open trees — go straight to the delete dialog.
+	_open_delete_group_dialog(meta, group_name)
+
+
+func _open_delete_group_dialog(meta: Dictionary, group_name: String) -> void:
+	_pending_delete = {"type": "group", "path": meta["path"], "name": group_name}
 	_open_delete_dialog(
-		"Do you want to remove \"%s\" group?" % selected.get_text(0),
+		"Do you want to remove \"%s\" group?" % group_name,
 		"Delete tree files too"
 	)
+
 
 func _request_delete_tree() -> void:
 	var selected := _tree.get_selected()
@@ -1049,11 +1135,57 @@ func _request_delete_tree() -> void:
 	if meta.get("type", "") != "tree":
 		return
 
-	_pending_delete = {"type": "tree", "path": meta["path"], "name": selected.get_text(0), "group_path": meta.get("group_path", "")}
+	var tree_name: String = selected.get_text(0)
+	var tree_path: String = meta["path"]
+	var is_open: bool = main_screen != null and main_screen.has_open_tree(tree_path)
+
+	# If the tree is open, warn the user and ask to close it automatically.
+	if is_open:
+		var confirm := ConfirmationDialog.new()
+		confirm.title = "Close Open Tree?"
+		confirm.dialog_text = (
+			"\"%s\" is currently open in an editor tab.\n\n"
+			+ "Do you want to close it and proceed with deletion?"
+		) % tree_name
+		confirm.ok_button_text = "Close & Delete"
+		confirm.cancel_button_text = "Cancel"
+		confirm.unresizable = true
+
+		confirm.confirmed.connect(func() -> void:
+			confirm.queue_free()
+			# Close the tab first, then open the delete dialog.
+			if main_screen and main_screen.has_method("close_tree"):
+				main_screen.close_tree(tree_path)
+			# Defer the delete dialog so the tab close completes first.
+			call_deferred("_open_delete_tree_dialog", meta, tree_name)
+		)
+		confirm.canceled.connect(func() -> void:
+			confirm.queue_free()
+		)
+		confirm.close_requested.connect(func() -> void:
+			confirm.queue_free()
+		)
+
+		add_child(confirm)
+		confirm.popup_centered(Vector2i(440, 180))
+		return
+
+	# Tree is not open — go straight to the delete dialog.
+	_open_delete_tree_dialog(meta, tree_name)
+
+
+func _open_delete_tree_dialog(meta: Dictionary, tree_name: String) -> void:
+	_pending_delete = {
+		"type": "tree",
+		"path": meta["path"],
+		"name": tree_name,
+		"group_path": meta.get("group_path", "")
+	}
 	_open_delete_dialog(
-		"Do you want to remove \"%s\" tree?" % selected.get_text(0),
+		"Do you want to remove \"%s\" tree?" % tree_name,
 		"Delete tree file"
 	)
+
 
 func _open_delete_dialog(message: String, checkbox_text: String) -> void:
 	_delete_dialog = ConfirmationDialog.new()
@@ -1144,9 +1276,20 @@ func _do_delete_group(info: Dictionary, delete_files: bool) -> void:
 	if delete_files:
 		for tree: BayterekTree in group.trees:
 			if not tree.resource_path.is_empty():
+				# Delete .tres + .uid
 				Bayterek.delete_resource_with_sidecar(tree.resource_path)
+				# Also delete the JSON mirror so a future tree with the
+				# same name doesn't resurrect stale attributes.
+				var tree_json: String = tree.resource_path.get_basename() + ".json"
+				if FileAccess.file_exists(tree_json):
+					DirAccess.remove_absolute(tree_json)
 		if not group.resource_path.is_empty():
 			Bayterek.delete_resource_with_sidecar(group.resource_path)
+			# Also delete the group's JSON if any (not standard, but
+			# clean up just in case).
+			var group_json: String = group.resource_path.get_basename() + ".json"
+			if FileAccess.file_exists(group_json):
+				DirAccess.remove_absolute(group_json)
 
 func _do_delete_tree(info: Dictionary, delete_file: bool) -> void:
 	var registry: BayterekRegistry = Bayterek.get_editor_registry()
@@ -1169,6 +1312,11 @@ func _do_delete_tree(info: Dictionary, delete_file: bool) -> void:
 
 	if delete_file:
 		Bayterek.delete_resource_with_sidecar(info["path"])
+		# Also delete the JSON mirror so a future tree with the same
+		# name doesn't resurrect stale attributes.
+		var tree_json: String = info["path"].get_basename() + ".json"
+		if FileAccess.file_exists(tree_json):
+			DirAccess.remove_absolute(tree_json)
 
 # ============================================================
 # ARAMA / DOCS

@@ -205,6 +205,41 @@ func open_tree(path: String) -> void:
 	tab_container.current_tab = idx
 
 
+## Closes the editor tab for the given tree path, if it's open.
+## Returns true if a tab was actually closed.
+##
+## This is used by the browser's delete flow: if a tree is open and the
+## user confirms "Close & Delete", the browser calls this method to close
+## the tab BEFORE deleting the underlying files. This avoids Godot's
+## "Failed loading resource: ...json" errors caused by deleting files
+## that are still referenced by a live resource in the editor cache.
+func close_tree(path: String) -> bool:
+	if not _open_editors.has(path):
+		return false
+	var editor: BayterekEditor = _open_editors[path]
+	if not editor or not is_instance_valid(editor):
+		return false
+
+	# Unregister from the tracking dict BEFORE we call request_close(),
+	# so the editor's `closed` signal callback doesn't double-remove.
+	_open_editors.erase(path)
+
+	# request_close() emits `closed` → _on_editor_closed() cleans up
+	# the tab UI. Since we already erased the dict entry, the handler
+	# just skips the dict cleanup step and does the UI teardown.
+	editor.request_close()
+	return true
+
+
+## Returns true if the given tree path is currently open in a tab.
+func has_open_tree(path: String) -> bool:
+	return _open_editors.has(path)
+
+## Returns all open tree paths.
+func get_open_tree_paths() -> Array:
+	return _open_editors.keys()
+
+
 func _on_tab_close_pressed(tab_index: int) -> void:
 	if tab_index <= 1:
 		# Browser (0) and Node Editor (1) tabs are not closeable.
@@ -264,25 +299,39 @@ func _on_editor_closed(editor: BayterekEditor) -> void:
 	tree_closed.emit(editor)
 
 
-func _on_editor_dirty_changed(editor: BayterekEditor, dirty: bool) -> void:
-	var idx: int = tab_container.get_tab_idx_from_control(editor)
+# ============================================================
+# EDITOR DIRTY → TAB TITLE
+# ============================================================
+
+## Called when a tree editor's `dirty_changed` signal fires.
+##
+## IMPORTANT: The signal is declared as
+##     signal dirty_changed(editor: BayterekEditor, dirty: bool)
+## but we intentionally use UNTYPED parameters here.
+##
+## Godot 4.7 has a quirk: when a signal declares typed parameters and
+## the handler function declares typed parameters of the SAME type,
+## Godot sometimes fails to call the handler with "Error calling from
+## signal". Using untyped params in the handler avoids that ambiguity
+## while still giving us the values we need.
+func _on_editor_dirty_changed(p_editor, p_dirty) -> void:
+	if not tab_container:
+		return
+	if not is_instance_valid(p_editor):
+		return
+
+	var idx: int = tab_container.get_tab_idx_from_control(p_editor)
 	if idx < 0:
 		return
 
-	var title: String = editor.tree.name if editor.tree else editor.name
-	if dirty:
+	var title: String = "Untitled"
+	if p_editor.tree:
+		title = p_editor.tree.name
+	elif not p_editor.name.is_empty():
+		title = p_editor.name
+
+	if p_dirty:
 		title = title + " (*)"
 	tab_container.set_tab_title(idx, title)
 
-	dirty_changed.emit(editor, dirty)
-
-
-# ============================================================
-# RENAME SUPPORT
-# ============================================================
-
-func has_open_tree(path: String) -> bool:
-	return _open_editors.has(path)
-
-func get_open_tree_paths() -> Array:
-	return _open_editors.keys()
+	dirty_changed.emit(p_editor, p_dirty)

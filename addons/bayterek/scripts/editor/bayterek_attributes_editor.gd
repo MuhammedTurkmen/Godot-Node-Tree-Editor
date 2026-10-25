@@ -5,21 +5,23 @@ extends VBoxContainer
 ##
 ## List shows NAME (col 0) + ID (col 1) side by side.
 ##
-## ID RULES:
-##   - attr.id always mirrors snake_case(name), even when it conflicts.
-##   - If that id doesn't collide, tree.attributes[attr.id] = attr
-##     (canonical key) and node/prefab references are migrated.
-##   - If it DOES collide, the attribute is kept under a temporary
-##     unique key ("__conflict_<instance_id>") so the dict stays valid.
-##     The list row + detail ID label turn red.
-##   - On save, BayterekEditor's fixer assigns a proper _2, _3 suffix
-##     and migrates all references.
-##
 ## LOCALIZATION:
-##   Each attribute has an optional `effect_key` field. When set, the
-##   tooltip looks up the key in GameLocalization and uses the
-##   translated text as the base for `{P}` / `{C}` / `{N}` substitution.
-##   The `effect` field remains the fallback.
+##   Each attribute has two optional localization keys:
+##     - name_key   → display name
+##     - effect_key → effect text
+##   The editor exposes both. Empty keys fall back to `name` / `effect`.
+##
+## CUMULATIVE:
+##   Non-currency attributes can be marked as "cumulative". In
+##   cumulative mode, every allocation level's value is ADDED on top
+##   of the previous levels (both in the tooltip and at runtime).
+##
+##   Cumulative only makes sense for ADD and SUBTRACT operations:
+##     - ADD:      level 1..N values are summed → bigger bonus
+##     - SUBTRACT: level 1..N values are summed → bigger penalty
+##   For SET / MULTIPLY / MIN / MAX it produces nonsensical results,
+##   so the checkbox is automatically disabled and the flag is
+##   force-cleared whenever one of those operations is selected.
 
 const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 
@@ -39,11 +41,13 @@ var _detail_panel: VBoxContainer
 var _detail_title: Label
 var _detail_id_label: Label
 var _name_input: LineEdit
+var _name_key_input: LineEdit
 var _effect_input: TextEdit
 var _effect_key_input: LineEdit
 var _value_count_input: SpinBox
 var _is_currency_check: CheckBox
 var _refund_differs_check: CheckBox
+var _cumulative_check: CheckBox
 var _operation_dropdown: OptionButton
 var _icon_panel: HBoxContainer
 var _icon_input: BayterekInspectorTextureInput
@@ -62,6 +66,12 @@ const COLOR_NAME_IN_LIST := Color(0.95, 0.95, 0.95)
 
 const TEMP_KEY_PREFIX := "__conflict_"
 
+## Operations for which the "Cumulative" flag is meaningful.
+const CUMULATIVE_ALLOWED_OPS := [
+	BayterekAttribute.Operation.ADD,
+	BayterekAttribute.Operation.SUBTRACT,
+]
+
 func _ready() -> void:
 	size_flags_horizontal = SIZE_EXPAND_FILL
 	size_flags_vertical = SIZE_EXPAND_FILL
@@ -70,6 +80,23 @@ func _ready() -> void:
 func init() -> void:
 	_build_ui()
 	_refresh()
+
+# ============================================================
+# HELPERS — cumulative compatibility
+# ============================================================
+
+## Returns true if `cumulative` is meaningful for the given operation.
+static func is_cumulative_supported(op: BayterekAttribute.Operation) -> bool:
+	return op in CUMULATIVE_ALLOWED_OPS
+
+## Returns true if cumulative is meaningful for the given attribute
+## (i.e. it's a non-currency attribute using ADD or SUBTRACT).
+static func is_cumulative_available(attr: BayterekAttribute) -> bool:
+	if not attr:
+		return false
+	if attr.is_currency:
+		return false
+	return is_cumulative_supported(attr.operation)
 
 func _build_ui() -> void:
 	var top := HBoxContainer.new()
@@ -148,6 +175,20 @@ func _build_ui() -> void:
 	_name_input.text_changed.connect(_on_name_changed)
 	name_row.add_child(_name_input)
 
+	# Name Key (localization)
+	var name_key_row := HBoxContainer.new()
+	_detail_panel.add_child(name_key_row)
+	var name_key_label := Label.new()
+	name_key_label.text = "Name Key"
+	name_key_label.custom_minimum_size = Vector2(60, 0)
+	name_key_label.tooltip_text = "Optional localization key for the attribute's display name.\nLeave empty to use the Name field."
+	name_key_row.add_child(name_key_label)
+	_name_key_input = LineEdit.new()
+	_name_key_input.size_flags_horizontal = SIZE_EXPAND_FILL
+	_name_key_input.placeholder_text = "(optional) e.g. attr_max_health_name"
+	_name_key_input.text_changed.connect(_on_name_key_changed)
+	name_key_row.add_child(_name_key_input)
+
 	# Effect Key (localization)
 	var effect_key_row := HBoxContainer.new()
 	_detail_panel.add_child(effect_key_row)
@@ -212,6 +253,24 @@ func _build_ui() -> void:
 	_refund_differs_check.size_flags_horizontal = SIZE_EXPAND_FILL
 	_refund_differs_check.toggled.connect(_on_refund_differs_toggled)
 	refund_row.add_child(_refund_differs_check)
+
+	# Cumulative (non-currency, ADD/SUBTRACT only)
+	var cumulative_row := HBoxContainer.new()
+	cumulative_row.add_theme_constant_override("separation", 4)
+	_detail_panel.add_child(cumulative_row)
+
+	var cumulative_label := Label.new()
+	cumulative_row.add_child(cumulative_label)
+	cumulative_label.text = "Cumulative"
+	cumulative_label.custom_minimum_size = Vector2(90, 0)
+	cumulative_label.tooltip_text = "If ON, every allocation level's value is ADDED on top of the previous ones.\nTooltip's {C}/{N} show the running total instead of the raw per-level value.\n\nOnly meaningful for ADD and SUBTRACT operations. It is automatically disabled for SET / MULTIPLY / MIN / MAX."
+	cumulative_label.mouse_filter = Control.MOUSE_FILTER_PASS
+
+	_cumulative_check = CheckBox.new()
+	_cumulative_check.text = "On"
+	_cumulative_check.size_flags_horizontal = SIZE_EXPAND_FILL
+	_cumulative_check.toggled.connect(_on_cumulative_toggled)
+	cumulative_row.add_child(_cumulative_check)
 
 	# Operation (non-currency only)
 	var op_row := HBoxContainer.new()
@@ -315,7 +374,10 @@ func _add_attr_item(dict_key: String, attr: BayterekAttribute) -> void:
 	var item := _root_item.create_child()
 
 	var prefix: String = "💰 " if attr.is_currency else ""
-	item.set_text(0, "%s%s" % [prefix, attr.name])
+	# Use the localized display name in the list (name_key if set,
+	# otherwise fall back to `name`).
+	var display: String = attr.get_display_name()
+	item.set_text(0, "%s%s" % [prefix, display])
 	item.set_text(1, attr.id)
 
 	var conflict: bool = _attribute_has_conflict(attr)
@@ -326,8 +388,12 @@ func _add_attr_item(dict_key: String, attr: BayterekAttribute) -> void:
 	item.set_custom_color(1, id_color)
 
 	var tip: String = "ID: %s" % attr.id
+	if not attr.name_key.is_empty():
+		tip += "\nName Key: %s" % attr.name_key
 	if not attr.is_currency:
 		tip += "\nOperation: %s" % BayterekAttribute.operation_label(attr.operation)
+	if is_cumulative_available(attr) and attr.cumulative:
+		tip += "\nMode: Cumulative (levels stack)"
 	if not attr.effect_key.is_empty():
 		tip += "\nEffect Key: %s" % attr.effect_key
 	if conflict:
@@ -405,10 +471,12 @@ func _load_detail(dict_key: String) -> void:
 		_detail_id_label.tooltip_text = ""
 
 	_name_input.text = attr.name
+	_name_key_input.text = attr.name_key
 	_effect_input.text = attr.effect
 	_effect_key_input.text = attr.effect_key
 	_is_currency_check.button_pressed = attr.is_currency
 	_refund_differs_check.button_pressed = attr.refund_differs
+	_cumulative_check.button_pressed = attr.cumulative
 	_value_count_input.set_value_no_signal(attr.value_count)
 
 	if _operation_dropdown:
@@ -432,6 +500,17 @@ func _update_currency_ui_state(attr: BayterekAttribute) -> void:
 		return
 
 	_refund_differs_check.disabled = not attr.is_currency
+
+	# Cumulative only makes sense for non-currency ADD/SUBTRACT.
+	if _cumulative_check:
+		var available: bool = is_cumulative_available(attr)
+		_cumulative_check.disabled = not available
+		if not available and attr.cumulative:
+			# Force-clear: the selected operation doesn't support
+			# cumulative mode. This keeps the data consistent and
+			# avoids nonsensical runtime results.
+			attr.cumulative = false
+			_cumulative_check.button_pressed = false
 
 	if _operation_dropdown:
 		_operation_dropdown.disabled = attr.is_currency
@@ -520,10 +599,12 @@ func _on_add_pressed() -> void:
 	var attr := BayterekAttribute.new()
 	attr.id = attr_id
 	attr.name = display_name
+	attr.name_key = ""
 	attr.effect = "Effect {C}"
 	attr.effect_key = ""
 	attr.value_count = 1
 	attr.operation = BayterekAttribute.Operation.ADD
+	attr.cumulative = false
 	attr.icon = null
 
 	editor.tree.attributes[attr_id] = attr
@@ -664,7 +745,7 @@ func _update_list_item(dict_key: String, attr: BayterekAttribute, conflict: bool
 		return
 
 	var prefix: String = "💰 " if attr.is_currency else ""
-	item.set_text(0, "%s%s" % [prefix, attr.name])
+	item.set_text(0, "%s%s" % [prefix, attr.get_display_name()])
 	item.set_text(1, attr.id)
 
 	var name_color: Color = COLOR_CONFLICT if conflict else COLOR_NAME_IN_LIST
@@ -673,14 +754,31 @@ func _update_list_item(dict_key: String, attr: BayterekAttribute, conflict: bool
 	item.set_custom_color(1, id_color)
 
 	var tip: String = "ID: %s" % attr.id
+	if not attr.name_key.is_empty():
+		tip += "\nName Key: %s" % attr.name_key
 	if not attr.is_currency:
 		tip += "\nOperation: %s" % BayterekAttribute.operation_label(attr.operation)
+	if is_cumulative_available(attr) and attr.cumulative:
+		tip += "\nMode: Cumulative (levels stack)"
 	if not attr.effect_key.is_empty():
 		tip += "\nEffect Key: %s" % attr.effect_key
 	if conflict:
 		tip += "\n[!] Conflicts with another attribute — rename or save to auto-suffix."
 	item.set_tooltip_text(0, tip)
 	item.set_tooltip_text(1, tip)
+
+func _on_name_key_changed(new_text: String) -> void:
+	if _updating_ui or _current_attr_id.is_empty():
+		return
+	if not editor or not editor.tree:
+		return
+	var attr: BayterekAttribute = editor.tree.attributes.get(_current_attr_id, null)
+	if not attr:
+		return
+	attr.name_key = new_text.strip_edges()
+	editor.set_dirty(true)
+	changed.emit()
+	attribute_changed.emit(_current_attr_id)
 
 func _on_effect_changed() -> void:
 	if _updating_ui or _current_attr_id.is_empty():
@@ -725,7 +823,7 @@ func _on_is_currency_toggled(pressed: bool) -> void:
 		var item: TreeItem = _id_to_item[_current_attr_id]
 		if item:
 			var prefix: String = "💰 " if attr.is_currency else ""
-			item.set_text(0, "%s%s" % [prefix, attr.name])
+			item.set_text(0, "%s%s" % [prefix, attr.get_display_name()])
 
 	editor.set_dirty(true)
 	changed.emit()
@@ -745,6 +843,28 @@ func _on_refund_differs_toggled(pressed: bool) -> void:
 	attr.refund_differs = pressed
 	attr.sync_value_count()
 	_update_currency_ui_state(attr)
+
+	editor.set_dirty(true)
+	changed.emit()
+	attribute_changed.emit(_current_attr_id)
+
+func _on_cumulative_toggled(pressed: bool) -> void:
+	if _updating_ui or _current_attr_id.is_empty():
+		return
+	if not editor or not editor.tree:
+		return
+	var attr: BayterekAttribute = editor.tree.attributes.get(_current_attr_id, null)
+	if not attr:
+		return
+	if not is_cumulative_available(attr):
+		if _cumulative_check:
+			_cumulative_check.button_pressed = false
+		return
+
+	attr.cumulative = pressed
+
+	if _id_to_item.has(_current_attr_id):
+		_update_list_item(_current_attr_id, attr, _attribute_has_conflict(attr))
 
 	editor.set_dirty(true)
 	changed.emit()
@@ -782,14 +902,15 @@ func _on_operation_changed(index: int) -> void:
 
 	attr.operation = new_op as BayterekAttribute.Operation
 
+	if not is_cumulative_available(attr) and attr.cumulative:
+		attr.cumulative = false
+		if _cumulative_check:
+			_cumulative_check.button_pressed = false
+
+	_update_currency_ui_state(attr)
+
 	if _id_to_item.has(_current_attr_id):
-		var item: TreeItem = _id_to_item[_current_attr_id]
-		if item:
-			var tip: String = "ID: %s\nOperation: %s" % [
-				attr.id, BayterekAttribute.operation_label(attr.operation)
-			]
-			item.set_tooltip_text(0, tip)
-			item.set_tooltip_text(1, tip)
+		_update_list_item(_current_attr_id, attr, _attribute_has_conflict(attr))
 
 	editor.set_dirty(true)
 	changed.emit()

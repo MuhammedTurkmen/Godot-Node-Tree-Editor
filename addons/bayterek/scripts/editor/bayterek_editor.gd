@@ -127,6 +127,21 @@ func load_tree(path: String) -> void:
 		BayterekLogger.error("Tree load failed: %s" % path, "editor")
 		return
 
+	# If a JSON mirror exists for this tree, hydrate the tree from it
+	# BEFORE we build any UI. The JSON is the source of truth; the
+	# .tres is only a lightweight fallback.
+	#
+	# SAFETY: We skip hydration if the tree is empty. This prevents a
+	# freshly created tree from resurrecting stale attributes from a
+	# leftover .json file (e.g. after deleting a tree but leaving its
+	# .json on disk).
+	var loader = get_node_or_null("/root/BayterekLoader")
+	if loader and loader.has_method("has_tree_json") and loader.has_method("load_tree_from_json"):
+		if loader.has_tree_json(tree) and not _is_tree_empty(tree):
+			var data = loader.load_tree_from_json(tree)
+			if data:
+				BayterekLogger.info("Tree hydrated from JSON: %s" % loader.get_tree_json_path(tree), "editor")
+
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
 
@@ -452,6 +467,10 @@ func _build_ui() -> void:
 	file_btn.text = "File"
 	var file_popup: PopupMenu = file_btn.get_popup()
 	file_popup.add_item("Save", 0)
+	file_popup.add_separator()
+	file_popup.add_item("Import from JSON...", 2)
+	file_popup.add_item("Export to JSON...", 3)
+	file_popup.add_separator()
 	file_popup.add_item("Close", 1)
 	file_popup.id_pressed.connect(_on_file_menu_pressed)
 	menu_bar.add_child(file_btn)
@@ -1396,8 +1415,6 @@ func _on_prefab_changed(_prefab: BayterekPrefab) -> void:
 	if prefabs_bar:
 		prefabs_bar.refresh()
 
-## Prefab name changed. Only refresh the prefab bar; do NOT overwrite
-## instance names.
 func _on_prefab_name_changed(prefab: BayterekPrefab) -> void:
 	print("[PREFAB.name_changed] prefab='%s' name='%s'" % [prefab, prefab.node_name])
 	print_stack()
@@ -1422,8 +1439,6 @@ func _on_prefab_attribute_changed(prefab: BayterekPrefab, attribute_id: String, 
 			inspector.refresh_attributes()
 	set_dirty(true)
 
-## Prefab's default max_allocations changed. Do NOT override existing
-## instances — each node keeps its own per-instance value.
 func _on_prefab_max_allocations_changed(prefab: BayterekPrefab) -> void:
 	if prefabs_bar:
 		prefabs_bar.refresh()
@@ -1443,7 +1458,6 @@ func _on_prefab_exported_values_changed(prefab: BayterekPrefab) -> void:
 # ============================================================
 
 func _on_prefab_card_rename(prefab: BayterekPrefab) -> void:
-	print("[PREFAB_CARD.rename] prefab='%s'" % prefab)
 	if not prefab:
 		return
 	_show_prefab_rename_dialog(prefab)
@@ -2646,6 +2660,8 @@ func _on_file_menu_pressed(id: int) -> void:
 	match id:
 		0: save_tree()
 		1: request_close()
+		2: _import_tree_from_json()
+		3: _export_tree_to_json()
 
 func _on_edit_menu_pressed(id: int) -> void:
 	match id:
@@ -2732,6 +2748,17 @@ func _show_no_root_save_dialog() -> void:
 	dialog.popup_centered(Vector2i(400, 180))
 
 func _perform_save() -> void:
+	if not tree:
+		return
+
+	# Guard: if the .tres file has been deleted externally, refuse to
+	# recreate it. This prevents a deleted tree from being resurrected.
+	if not tree_path.is_empty() and not FileAccess.file_exists(tree_path):
+		BayterekLogger.warn("Refusing to save deleted tree: %s" % tree_path, "editor")
+		if tree_view:
+			BayterekToast.error(tree_view, "Tree file was deleted. Cannot save.")
+		return
+
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
 	tree.tree_state.version = tree.version
@@ -2742,11 +2769,237 @@ func _perform_save() -> void:
 		if tree_view:
 			BayterekToast.error(tree_view, "Save failed (err %d)" % err)
 		return
+
+	# Also write the JSON mirror so runtime and external tools have a
+	# stable, human-editable source of truth.
+	var loader = get_node_or_null("/root/BayterekLoader")
+	if loader and loader.has_method("save_tree_to_json"):
+		var json_err: Error = loader.save_tree_to_json(tree)
+		if json_err != OK:
+			BayterekLogger.warn("JSON mirror save failed (%d)" % json_err, "editor")
+		else:
+			var json_path: String = loader.get_tree_json_path(tree)
+			BayterekLogger.info("JSON mirror saved: %s" % json_path, "editor")
+
 	_last_save_time = Time.get_ticks_msec()
 	set_dirty(false)
 	if tree_view:
 		BayterekToast.success(tree_view, "Tree saved")
 	BayterekLogger.info("Tree saved: %s" % tree_path, "editor")
+
+# ============================================================
+# JSON IMPORT / EXPORT
+# ============================================================
+
+## Opens a file dialog to pick a JSON file, then loads it into the
+## current tree. The .tres is updated in-memory and saved to disk;
+## the UI is fully rebuilt from the imported data.
+##
+## Flow:
+##   1. User picks a .json file
+##   2. We parse it via BayterekSkillTreeJson
+##   3. Apply the data to the current tree
+##   4. Save the .tres so the editor cache stays consistent
+##   5. Reopen the tree (rebuilds UI)
+func _import_tree_from_json() -> void:
+	if not tree:
+		return
+
+	var file_dialog := FileDialog.new()
+	file_dialog.title = "Import Tree from JSON"
+	file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	file_dialog.access = FileDialog.ACCESS_RESOURCES
+	file_dialog.filters = PackedStringArray(["*.json ; JSON Files"])
+	file_dialog.use_native_dialog = false
+	file_dialog.unresizable = false
+	file_dialog.size = Vector2i(720, 480)
+
+	var default_path: String = ""
+	var loader = get_node_or_null("/root/BayterekLoader")
+	if loader and loader.has_method("get_tree_json_path"):
+		default_path = loader.get_tree_json_path(tree)
+
+	if not default_path.is_empty():
+		file_dialog.current_path = default_path
+
+	file_dialog.file_selected.connect(func(path: String) -> void:
+		_do_import_from_json(path)
+		file_dialog.queue_free()
+	)
+	file_dialog.canceled.connect(func() -> void:
+		file_dialog.queue_free()
+	)
+
+	add_child(file_dialog)
+	file_dialog.popup_centered()
+
+func _do_import_from_json(path: String) -> void:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		BayterekToast.error(tree_view, "JSON file not found: %s" % path)
+		return
+
+	if not tree:
+		return
+
+	# Confirm overwrite — this replaces the current tree's data.
+	var confirm := ConfirmationDialog.new()
+	confirm.title = "Import from JSON"
+	confirm.dialog_text = (
+		"This will REPLACE the current tree's data with the contents of:\n\n"
+		+ path
+		+ "\n\nThe current in-editor state will be lost. Continue?"
+	)
+	confirm.ok_button_text = "Import"
+	confirm.cancel_button_text = "Cancel"
+	confirm.unresizable = true
+
+	confirm.confirmed.connect(func() -> void:
+		confirm.queue_free()
+		_perform_json_import(path)
+	)
+	confirm.canceled.connect(func() -> void:
+		confirm.queue_free()
+	)
+	confirm.close_requested.connect(func() -> void:
+		confirm.queue_free()
+	)
+
+	add_child(confirm)
+	confirm.popup_centered(Vector2i(520, 240))
+
+func _perform_json_import(path: String) -> void:
+	var raw: Dictionary = BayterekSkillTreeJson.load_file(path)
+	if raw.is_empty():
+		BayterekToast.error(tree_view, "Failed to parse JSON: %s" % path)
+		BayterekLogger.error("JSON import failed: %s" % path, "editor")
+		return
+
+	var data: BayterekSkillTreeData = BayterekSkillTreeJson.dict_to_data(raw)
+	if not data:
+		BayterekToast.error(tree_view, "JSON data could not be converted.")
+		return
+
+	# --- Apply attributes (currencies + skills) to the tree ---
+	tree.attributes.clear()
+	for attr_id in data.currency_attributes.keys():
+		tree.attributes[attr_id] = data.currency_attributes[attr_id]
+	for attr_id in data.skill_attributes.keys():
+		tree.attributes[attr_id] = data.skill_attributes[attr_id]
+
+	# --- Apply nodes ---
+	tree.nodes.clear()
+	for node in data.nodes:
+		tree.nodes.append(node)
+
+	# --- Apply initial allocation ---
+	if not tree.tree_state:
+		tree.tree_state = BayterekTreeState.new()
+	tree.tree_state.allocated_nodes = data.initial_allocated.duplicate()
+	tree.tree_state.allocation_level = data.initial_levels.duplicate()
+
+	# --- Persist to .tres so the editor cache stays consistent ---
+	var save_err: Error = Bayterek.safe_save(tree, tree_path)
+	if save_err != OK:
+		BayterekLogger.warn("Post-import .tres save failed (%d)" % save_err, "editor")
+
+	# --- Reopen the tree so the UI rebuilds from the new data ---
+	BayterekLogger.info("Imported from JSON: %s (%d currencies, %d skills, %d nodes)" % [
+		path,
+		data.currency_attributes.size(),
+		data.skill_attributes.size(),
+		data.nodes.size()
+	], "editor")
+
+	BayterekToast.success(tree_view, "Imported from JSON: %d attrs, %d nodes" % [
+		tree.attributes.size(), tree.nodes.size()
+	])
+
+	request_close()
+	call_deferred("_reopen_tree_after_import", tree_path)
+
+func _reopen_tree_after_import(path: String) -> void:
+	var main_screen := _find_main_screen()
+	if main_screen and main_screen.has_method("open_tree"):
+		main_screen.open_tree(path)
+
+## Opens a "save as" dialog to export the current tree to a JSON file.
+## Does NOT modify the .tres — this is a pure export.
+func _export_tree_to_json() -> void:
+	if not tree:
+		return
+
+	var file_dialog := FileDialog.new()
+	file_dialog.title = "Export Tree to JSON"
+	file_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	file_dialog.access = FileDialog.ACCESS_RESOURCES
+	file_dialog.filters = PackedStringArray(["*.json ; JSON Files"])
+	file_dialog.use_native_dialog = false
+	file_dialog.unresizable = false
+	file_dialog.size = Vector2i(720, 480)
+
+	var default_path: String = ""
+	var loader = get_node_or_null("/root/BayterekLoader")
+	if loader and loader.has_method("get_tree_json_path"):
+		default_path = loader.get_tree_json_path(tree)
+
+	if not default_path.is_empty():
+		file_dialog.current_path = default_path
+
+	file_dialog.file_selected.connect(func(path: String) -> void:
+		_do_export_to_json(path)
+		file_dialog.queue_free()
+	)
+	file_dialog.canceled.connect(func() -> void:
+		file_dialog.queue_free()
+	)
+
+	add_child(file_dialog)
+	file_dialog.popup_centered()
+
+func _do_export_to_json(path: String) -> void:
+	if path.is_empty():
+		return
+	if not tree:
+		return
+
+	if not path.ends_with(".json"):
+		path += ".json"
+
+	var data := _build_data_from_tree(tree)
+	var raw := BayterekSkillTreeJson.data_to_dict(data)
+	var err: Error = BayterekSkillTreeJson.save_file(path, raw)
+
+	if err != OK:
+		BayterekToast.error(tree_view, "Export failed (err %d)" % err)
+		BayterekLogger.error("JSON export failed: %s (err=%d)" % [path, err], "editor")
+		return
+
+	BayterekToast.success(tree_view, "Exported to JSON: %s" % path.get_file())
+	BayterekLogger.info("Exported to JSON: %s" % path, "editor")
+
+## Builds a `BayterekSkillTreeData` snapshot from the current tree
+## without touching the loader. Used by export.
+func _build_data_from_tree(t: BayterekTree) -> BayterekSkillTreeData:
+	var data := BayterekSkillTreeData.new()
+	data.tree_id = t.id
+	data.tree_name = t.name
+
+	for attr_id in t.attributes.keys():
+		var attr: BayterekAttribute = t.attributes[attr_id]
+		if not attr:
+			continue
+		if attr.is_currency:
+			data.currency_attributes[attr_id] = attr
+		else:
+			data.skill_attributes[attr_id] = attr
+
+	data.nodes = t.nodes.duplicate()
+
+	if t.tree_state:
+		data.initial_allocated = t.tree_state.allocated_nodes.duplicate()
+		data.initial_levels = t.tree_state.allocation_level.duplicate()
+
+	return data
 
 # ============================================================
 # ATTRIBUTE ID CONFLICT DETECTION
@@ -2918,6 +3171,22 @@ func _on_tree_view_changed() -> void:
 
 func request_close() -> void:
 	closed.emit()
+
+## Returns true if the tree has no attributes, no nodes, and no
+## allocation state — i.e. it looks freshly created.
+func _is_tree_empty(t: BayterekTree) -> bool:
+	if not t:
+		return true
+	if not t.attributes.is_empty():
+		return false
+	if not t.nodes.is_empty():
+		return false
+	if t.tree_state:
+		if not t.tree_state.allocated_nodes.is_empty():
+			return false
+		if not t.tree_state.allocation_level.is_empty():
+			return false
+	return true
 
 # ============================================================
 # DUPLICATE NODES

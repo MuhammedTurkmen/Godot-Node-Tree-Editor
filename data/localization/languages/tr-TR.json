@@ -1,6 +1,6 @@
 {
-	"attr_health_regen": "Saniyede +{N} HP",
-	"attr_max_health": "{N} maksimum can verir",
+	"attr_desc_health_regen": "Saniyede +{N} HP",
+	"attr_desc_max_health": "{N} maksimum can verir",
 	"bayterek_node_level": "Seviye",
 	"bayterek_node_level_maxed": "MAKSİMUM",
 	"broken_ref_example": "Bak {@this_key_does_not_exist}",
