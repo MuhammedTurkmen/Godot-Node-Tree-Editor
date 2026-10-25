@@ -9,8 +9,19 @@ const CURRENCY_MAX_PER_ROW := 3
 const CURRENCY_ICON_SIZE := Vector2(16, 16)
 const CURRENCY_FALLBACK_ICON := "💰"
 
-## Localization keys used by the tooltip.
 const LOC_KEY_LEVEL_MAXED := "bayterek_node_level_maxed"
+
+## Base font size for the currency amount label. Scaled by the tree's
+## `font_size_scale` at render time.
+const CURRENCY_BASE_FONT_SIZE := 13
+
+## Base font size for the "MAXED" badge. Scaled by the tree's
+## `font_size_scale` at render time.
+const MAXED_BASE_FONT_SIZE := 14
+
+## Tolerance before we consider the tooltip "grown beyond expectation".
+## Values smaller than this are ignored to avoid layout jitter.
+const HEIGHT_TOLERANCE := 3.0
 
 enum PositionMode {
 	NEAR_NODE,
@@ -37,10 +48,17 @@ var _header_align: int = 0
 var _body_align: int = 0
 var _footer_align: int = 1
 
+## The node currently being inspected. Used to re-position after a
+## deferred height correction.
+var _current_node: BayterekNodeButton = null
+
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_ui()
+	# _process only runs while the tooltip is visible, so we don't waste
+	# CPU cycles checking an invisible panel every frame.
+	set_process(false)
 
 func _build_ui() -> void:
 	if _vbox:
@@ -82,8 +100,6 @@ func _build_ui() -> void:
 	_vbox.add_child(_body_label)
 
 	# --- Currency container ---
-	# Uses real TextureRects (not RichTextLabel) so custom icons actually
-	# render instead of falling back to a colour swatch.
 	_currency_sep = HSeparator.new()
 	_currency_sep.name = "CurrencySep"
 	_vbox.add_child(_currency_sep)
@@ -112,11 +128,9 @@ func _build_ui() -> void:
 
 	_apply_alignments()
 
+	_apply_texture_filter()
+
 ## Localization helper — mirrors BayterekNodeButton._localize().
-##
-## Looks up `key` in GameLocalization and returns the translated text.
-## Falls back to `fallback` when the key is empty, the autoload is
-## missing, or the key resolves to an empty string.
 func _localize(key: String, fallback: String) -> String:
 	if key.is_empty():
 		return fallback
@@ -146,6 +160,114 @@ func _set_label_align(label: RichTextLabel, align: int) -> void:
 		_: label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 
 # ============================================================
+# HEIGHT CORRECTION (fix for "tooltip keeps growing")
+# ============================================================
+#
+# RichTextLabel with `fit_content = true` has a quirk: when the text
+# changes, its internal layout gets recomputed on the NEXT frame, so
+# the parent PanelContainer's height lags behind. If the panel's
+# height was already larger than the new content requires, it never
+# shrinks back — the tooltip appears to grow every time you hover.
+#
+# `_process()` below compares the panel's actual height against the
+# height it SHOULD have (computed from the visible children). If the
+# actual exceeds the expected by more than HEIGHT_TOLERANCE, we force
+# a `reset_size()` and re-position.
+
+func _process(_delta: float) -> void:
+	if not visible or not _vbox:
+		return
+
+	var expected: float = _compute_expected_height()
+	var actual: float = size.y
+
+	# Only correct when the tooltip has grown noticeably beyond what
+	# the content needs. Small fluctuations are ignored.
+	if actual <= expected + HEIGHT_TOLERANCE:
+		return
+
+	# Force the labels to recompute their layout.
+	_header_label.reset_size()
+	_body_label.reset_size()
+	_footer_label.reset_size()
+
+	# Force the panel itself to shrink.
+	reset_size()
+
+	# Re-position, since the panel's bounds changed.
+	if _current_node and is_instance_valid(_current_node):
+		_update_position(_current_node)
+
+## Computes the exact height the tooltip should have, based on its
+## visible children + the panel's own content margins.
+func _compute_expected_height() -> float:
+	if not _vbox:
+		return 0.0
+
+	var sep: float = float(_vbox.get_theme_constant("separation"))
+	var total: float = 0.0
+	var count: int = 0
+
+	for child in _vbox.get_children():
+		if not child is Control:
+			continue
+		var c: Control = child
+		if not c.visible:
+			continue
+
+		var child_h: float = 0.0
+		if c is RichTextLabel:
+			var rtl: RichTextLabel = c
+			# get_content_height() returns the actual rendered height
+			# of the text, which is more accurate than get_combined_minimum_size()
+			# for fit_content labels.
+			child_h = maxf(rtl.get_content_height(), rtl.get_combined_minimum_size().y)
+		else:
+			child_h = c.get_combined_minimum_size().y
+
+		total += child_h
+		count += 1
+
+	if count > 1:
+		total += sep * float(count - 1)
+
+	# Add the panel's own content margins (top + bottom).
+	var panel_style: StyleBox = get_theme_stylebox("panel")
+	if panel_style:
+		total += panel_style.get_margin(SIDE_TOP)
+		total += panel_style.get_margin(SIDE_BOTTOM)
+
+	return total
+
+# ============================================================
+# PIXEL ART MODE
+# ============================================================
+
+func _apply_texture_filter() -> void:
+	var pixel_mode: bool = false
+	if tree_view and tree_view._tree_data:
+		pixel_mode = tree_view._tree_data.pixel_art_mode
+
+	var filter_mode: int = (
+		CanvasItem.TEXTURE_FILTER_NEAREST if pixel_mode
+		else CanvasItem.TEXTURE_FILTER_LINEAR
+	)
+
+	var labels: Array = [_header_label, _body_label, _footer_label]
+	for lbl in labels:
+		if is_instance_valid(lbl):
+			lbl.texture_filter = filter_mode
+
+	for child in _currency_container.get_children():
+		_apply_filter_recursive(child, filter_mode)
+
+func _apply_filter_recursive(node: Node, filter_mode: int) -> void:
+	if node is CanvasItem:
+		(node as CanvasItem).texture_filter = filter_mode
+	for child in node.get_children():
+		_apply_filter_recursive(child, filter_mode)
+
+# ============================================================
 # PUBLIC API
 # ============================================================
 
@@ -153,6 +275,11 @@ func inspect(node: BayterekNodeButton) -> void:
 	if not node or not node.node_data:
 		reset()
 		return
+
+	_current_node = node
+
+	# Re-apply filter in case the tree's pixel_art_mode changed.
+	_apply_texture_filter()
 
 	if node.tree_data:
 		_header_align = node.tree_data.tooltip_header_align
@@ -165,8 +292,11 @@ func inspect(node: BayterekNodeButton) -> void:
 	body_label_set_text(sections.get("body", ""))
 	footer_label_set_text(sections.get("footer", ""))
 
-	# Currency row: "MAXED" when the node is fully allocated,
-	# otherwise one entry per currency.
+	# Force layout recalculation on every label.
+	_header_label.reset_size()
+	_body_label.reset_size()
+	_footer_label.reset_size()
+
 	if node.is_maxed():
 		_build_maxed_row()
 	else:
@@ -184,6 +314,7 @@ func inspect(node: BayterekNodeButton) -> void:
 
 	reset_size()
 	visible = true
+	set_process(true)
 	_update_position(node)
 
 # ============================================================
@@ -191,12 +322,33 @@ func inspect(node: BayterekNodeButton) -> void:
 # ============================================================
 
 func _build_currency_row(entries: Array) -> void:
-	# Clear previous
 	for child in _currency_container.get_children():
 		child.queue_free()
 
 	if entries.is_empty():
 		return
+
+	var icon_scale: float = 1.0
+	if tree_view and tree_view._tree_data:
+		icon_scale = tree_view._tree_data.currency_icon_scale
+	if icon_scale <= 0.0:
+		icon_scale = 1.0
+
+	var font_scale: float = 1.0
+	if tree_view and tree_view._tree_data:
+		font_scale = tree_view._tree_data.font_size_scale
+	if font_scale <= 0.0:
+		font_scale = 1.0
+
+	var currency_font_size: int = max(6, int(round(float(CURRENCY_BASE_FONT_SIZE) * font_scale)))
+
+	var pixel_mode: bool = false
+	if tree_view and tree_view._tree_data:
+		pixel_mode = tree_view._tree_data.pixel_art_mode
+	var icon_filter: int = (
+		CanvasItem.TEXTURE_FILTER_NEAREST if pixel_mode
+		else CanvasItem.TEXTURE_FILTER_LINEAR
+	)
 
 	var current_row: HBoxContainer = null
 	var count_in_row: int = 0
@@ -207,7 +359,7 @@ func _build_currency_row(entries: Array) -> void:
 
 		if current_row == null or count_in_row >= CURRENCY_MAX_PER_ROW:
 			current_row = HBoxContainer.new()
-			current_row.add_theme_constant_override("separation", 4)
+			current_row.add_theme_constant_override("separation", 1)
 			current_row.alignment = BoxContainer.ALIGNMENT_CENTER
 			current_row.size_flags_horizontal = SIZE_EXPAND_FILL
 			current_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -218,39 +370,43 @@ func _build_currency_row(entries: Array) -> void:
 		var amount: int = int(entry.get("amount", 0))
 		var affordable: bool = bool(entry.get("affordable", true))
 
-		# Icon — real TextureRect, falls back to emoji label if missing.
 		if icon != null:
 			var tex_rect := TextureRect.new()
 			tex_rect.texture = icon
-			tex_rect.custom_minimum_size = CURRENCY_ICON_SIZE
+			tex_rect.custom_minimum_size = CURRENCY_ICON_SIZE * icon_scale
 			tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			tex_rect.texture_filter = icon_filter
 			current_row.add_child(tex_rect)
 		else:
 			var emoji := Label.new()
 			emoji.text = CURRENCY_FALLBACK_ICON
-			emoji.add_theme_font_size_override("font_size", 14)
+			emoji.add_theme_font_size_override("font_size", currency_font_size)
 			emoji.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			emoji.texture_filter = icon_filter
 			current_row.add_child(emoji)
 
-		# Amount label — green when affordable, red when not.
 		var amount_lbl := Label.new()
 		amount_lbl.text = str(amount)
-		amount_lbl.add_theme_color_override(
-			"font_color",
-			Color(0.56, 0.96, 0.56) if affordable else Color(1.0, 0.4, 0.4)
-		)
-		amount_lbl.add_theme_font_size_override("font_size", 13)
+
+		var text_color: Color
+		if amount < 0:
+			text_color = Color(0.5, 1.0, 0.5)
+		elif amount == 0:
+			text_color = Color(0.7, 0.7, 0.7)
+		else:
+			text_color = Color(0.56, 0.96, 0.56) if affordable else Color(1.0, 0.4, 0.4)
+
+		amount_lbl.add_theme_color_override("font_color", text_color)
+		amount_lbl.add_theme_font_size_override("font_size", currency_font_size)
 		amount_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		amount_lbl.texture_filter = icon_filter
 		current_row.add_child(amount_lbl)
 
 		count_in_row += 1
 
 ## Renders a centred "MAXED" badge when the node is fully allocated.
-##
-## The badge text is localized via `bayterek_node_level_maxed`.
-## Falls back to "MAXED" when the key is missing.
 func _build_maxed_row() -> void:
 	for child in _currency_container.get_children():
 		child.queue_free()
@@ -261,30 +417,60 @@ func _build_maxed_row() -> void:
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_currency_container.add_child(row)
 
+	var pixel_mode: bool = false
+	if tree_view and tree_view._tree_data:
+		pixel_mode = tree_view._tree_data.pixel_art_mode
+
+	var font_scale: float = 1.0
+	if tree_view and tree_view._tree_data:
+		font_scale = tree_view._tree_data.font_size_scale
+	if font_scale <= 0.0:
+		font_scale = 1.0
+
+	var maxed_font_size: int = max(6, int(round(float(MAXED_BASE_FONT_SIZE) * font_scale)))
+
 	var lbl := Label.new()
 	lbl.text = _localize(LOC_KEY_LEVEL_MAXED, "MAXED")
 	lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
-	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_font_size_override("font_size", maxed_font_size)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.texture_filter = (
+		CanvasItem.TEXTURE_FILTER_NEAREST if pixel_mode
+		else CanvasItem.TEXTURE_FILTER_LINEAR
+	)
 	row.add_child(lbl)
 
 func header_label_set_text(t: String) -> void:
+	if not _header_label:
+		return
 	_header_label.text = t
+	_header_label.reset_size()
 
 func body_label_set_text(t: String) -> void:
+	if not _body_label:
+		return
 	_body_label.text = t
+	_body_label.reset_size()
 
 func footer_label_set_text(t: String) -> void:
+	if not _footer_label:
+		return
 	_footer_label.text = t
+	_footer_label.reset_size()
 
 func reset() -> void:
 	visible = false
+	set_process(false)
+	_current_node = null
 	if _header_label:
 		_header_label.text = ""
+		_header_label.reset_size()
 	if _body_label:
 		_body_label.text = ""
+		_body_label.reset_size()
 	if _footer_label:
 		_footer_label.text = ""
+		_footer_label.reset_size()
 	for child in _currency_container.get_children():
 		child.queue_free()
 

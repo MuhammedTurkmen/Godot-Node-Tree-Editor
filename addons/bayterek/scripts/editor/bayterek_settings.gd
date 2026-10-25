@@ -101,6 +101,16 @@ var _purchase_pitch_max_input: SpinBox
 var _purchase_success_sound_input: AudioStreamInput
 var _purchase_cancel_sound_input: AudioStreamInput
 
+# ============================================================
+# NEW: Currency Icon / Font / Pixel Art / Level Placement
+# ============================================================
+
+var _currency_icon_scale_input: SpinBox
+var _font_family_dropdown: OptionButton
+var _font_size_scale_input: SpinBox
+var _pixel_art_mode_check: CheckBox
+var _level_in_header_check: CheckBox
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	_build_ui()
@@ -573,6 +583,73 @@ func _build_ui() -> void:
 	)
 	_tooltip_footer_align_dropdown.item_selected.connect(_on_tooltip_footer_align_changed)
 
+	# --- Level placement ---
+	_level_in_header_check = _make_check_row(
+		_content,
+		"Level in Header",
+		"When ON, the \"Level: X / Y\" text moves below the node name (header).\nWhen OFF, it stays in the footer."
+	)
+	_level_in_header_check.button_pressed = false
+	_level_in_header_check.toggled.connect(_on_level_in_header_changed)
+
+	# ============================================================
+	# CURRENCY ICON
+	# ============================================================
+	_add_separator(_content)
+	_add_section_label(_content, "Currency Icon")
+
+	_currency_icon_scale_input = _make_float_row(
+		_content,
+		"Icon Scale",
+		"Multiplier for currency icons in the tooltip. 1.0 = native size."
+	)
+	_currency_icon_scale_input.min_value = 0.1
+	_currency_icon_scale_input.max_value = 8.0
+	_currency_icon_scale_input.step = 0.05
+	_currency_icon_scale_input.value = 1.0
+	_currency_icon_scale_input.allow_greater = true
+	_currency_icon_scale_input.value_changed.connect(_on_currency_icon_scale_changed)
+
+	# ============================================================
+	# FONT SYSTEM (tooltip only)
+	# ============================================================
+	_add_separator(_content)
+	_add_section_label(_content, "Tooltip — Font")
+
+	_font_family_dropdown = _make_dropdown_row(
+		_content,
+		"Font Family",
+		"Override the tooltip's font. Leave on 'Default' to use the editor theme.",
+		["Default", "Monospace", "Serif", "Sans-Serif"]
+	)
+	_font_family_dropdown.item_selected.connect(_on_font_family_changed)
+
+	_font_size_scale_input = _make_float_row(
+		_content,
+		"Font Size Scale",
+		"Multiplier for all text sizes in the tooltip. 1.0 = default."
+	)
+	_font_size_scale_input.min_value = 0.5
+	_font_size_scale_input.max_value = 3.0
+	_font_size_scale_input.step = 0.05
+	_font_size_scale_input.value = 1.0
+	_font_size_scale_input.allow_greater = true
+	_font_size_scale_input.value_changed.connect(_on_font_size_scale_changed)
+
+	# ============================================================
+	# PIXEL ART (tooltip only)
+	# ============================================================
+	_add_separator(_content)
+	_add_section_label(_content, "Tooltip — Pixel Art")
+
+	_pixel_art_mode_check = _make_check_row(
+		_content,
+		"Pixel Art Mode",
+		"When ON, the tooltip uses crisp pixel rendering:\n- All tooltip icons use NEAREST filtering\n- All tooltip text uses NEAREST filtering\n\nDoes NOT affect node or connection rendering."
+	)
+	_pixel_art_mode_check.button_pressed = false
+	_pixel_art_mode_check.toggled.connect(_on_pixel_art_mode_changed)
+
 # ============================================================
 # SIGNAL CONNECTIONS
 # ============================================================
@@ -686,6 +763,28 @@ func load_tree(tree_data: BayterekTree) -> void:
 		_purchase_success_sound_input.set_stream(tree_data.purchase_success_sound)
 	if _purchase_cancel_sound_input:
 		_purchase_cancel_sound_input.set_stream(tree_data.purchase_cancel_sound)
+
+	# --- Currency Icon Scale ---
+	if _currency_icon_scale_input:
+		_currency_icon_scale_input.set_value_no_signal(tree_data.currency_icon_scale)
+
+	# --- Font ---
+	if _font_family_dropdown:
+		match tree_data.font_family:
+			"monospace": _font_family_dropdown.select(1)
+			"serif":     _font_family_dropdown.select(2)
+			"sans":      _font_family_dropdown.select(3)
+			_:           _font_family_dropdown.select(0)
+	if _font_size_scale_input:
+		_font_size_scale_input.set_value_no_signal(tree_data.font_size_scale)
+
+	# --- Pixel Art ---
+	if _pixel_art_mode_check:
+		_pixel_art_mode_check.button_pressed = tree_data.pixel_art_mode
+
+	# --- Level Placement ---
+	if _level_in_header_check:
+		_level_in_header_check.button_pressed = tree_data.level_in_header
 
 	_updating_ui = false
 
@@ -1209,6 +1308,93 @@ func _on_purchase_cancel_sound_changed(stream: AudioStream) -> void:
 		return
 	editor.tree.purchase_cancel_sound = stream
 	purchase_settings_changed.emit()
+	changed.emit()
+	_notify_dirty()
+
+# ============================================================
+# CURRENCY ICON SCALE
+# ============================================================
+
+func _on_currency_icon_scale_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.currency_icon_scale = value
+
+	if editor.tree_view and editor.tree_view.has_method("refresh_tooltip_content"):
+		editor.tree_view.refresh_tooltip_content()
+
+	changed.emit()
+	_notify_dirty()
+
+# ============================================================
+# FONT SYSTEM
+# ============================================================
+
+func _on_font_family_changed(index: int) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	var family: String = ""
+	match index:
+		1: family = "monospace"
+		2: family = "serif"
+		3: family = "sans"
+		_: family = ""
+	editor.tree.font_family = family
+
+	if editor.tree_view and editor.tree_view.has_method("_apply_font_overrides"):
+		editor.tree_view._apply_font_overrides()
+
+	if editor.tree_view and editor.tree_view.has_method("refresh_tooltip_content"):
+		editor.tree_view.refresh_tooltip_content()
+
+	changed.emit()
+	_notify_dirty()
+
+func _on_font_size_scale_changed(value: float) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.font_size_scale = value
+
+	if editor.tree_view and editor.tree_view.has_method("_apply_font_overrides"):
+		editor.tree_view._apply_font_overrides()
+
+	if editor.tree_view and editor.tree_view.has_method("refresh_tooltip_content"):
+		editor.tree_view.refresh_tooltip_content()
+
+	changed.emit()
+	_notify_dirty()
+
+# ============================================================
+# PIXEL ART MODE (tooltip only)
+# ============================================================
+
+func _on_pixel_art_mode_changed(pressed: bool) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.pixel_art_mode = pressed
+
+	if editor.tree_view and editor.tree_view._tooltip:
+		if editor.tree_view._tooltip.has_method("_apply_texture_filter"):
+			editor.tree_view._tooltip._apply_texture_filter()
+
+	if editor.tree_view and editor.tree_view.has_method("refresh_tooltip_content"):
+		editor.tree_view.refresh_tooltip_content()
+
+	changed.emit()
+	_notify_dirty()
+
+# ============================================================
+# LEVEL IN HEADER
+# ============================================================
+
+func _on_level_in_header_changed(pressed: bool) -> void:
+	if _updating_ui or not editor or not editor.tree:
+		return
+	editor.tree.level_in_header = pressed
+
+	if editor.tree_view and editor.tree_view.has_method("refresh_tooltip_content"):
+		editor.tree_view.refresh_tooltip_content()
+
 	changed.emit()
 	_notify_dirty()
 

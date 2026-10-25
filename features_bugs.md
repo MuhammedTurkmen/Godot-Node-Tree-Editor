@@ -3,6 +3,7 @@
 ## EASY
 [] validator'a yeni uyarı ve hata mesajları eklenecek 
 [] node'daki absolute katmanlarda node skew'dan etkilensin 
+[] attribtue name key description içinde kullanılabilsin {p}{c}{n} gibi
 
 ## MEDIUM
 
@@ -15,9 +16,6 @@
 ## MEDIUM
 
 ## HARD
-[] araç bilgisi (tooltip)
-	[] açıklama formatlanabilir olacak içinde attribute kullanabilicez 
-	[] lokalizasyonla bağla
 
 # Release
 

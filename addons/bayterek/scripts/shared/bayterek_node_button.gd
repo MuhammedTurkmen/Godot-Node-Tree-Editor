@@ -11,11 +11,9 @@ const RENDER_MODE_PIXEL := 1
 const VISUAL_OFFSET_EMIT_THRESHOLD := 0.05
 const SPEED_IDLE_THRESHOLD := 0.02
 
-## Tooltip currency row: max N currencies per row, then wrap.
 const CURRENCY_MAX_PER_ROW := 3
 const CURRENCY_FALLBACK_ICON := "💰"
 
-## Localization keys used by the tooltip.
 const LOC_KEY_LEVEL := "bayterek_node_level"
 const LOC_KEY_LEVEL_MAXED := "bayterek_node_level_maxed"
 
@@ -694,10 +692,21 @@ func _gui_input(event: InputEvent) -> void:
 				else:
 					pressed.emit()
 				accept_event()
-		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			var global_pos: Vector2 = get_global_transform() * event.position
-			right_clicked.emit(self, global_pos)
-			accept_event()
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				# Do NOT accept the event — let it bubble to the tree
+				# view so the camera can start a right-drag pan.
+				# The right_clicked signal is emitted on RELEASE below,
+				# after the camera has had a chance to see the drag.
+				pass
+			else:
+				# On release, emit the signal. The tree view will
+				# filter it out if a drag happened.
+				var global_pos: Vector2 = get_global_transform() * event.position
+				right_clicked.emit(self, global_pos)
+				# NOTE: no accept_event() here either — the tree view
+				# needs to see this release to open the generic
+				# context menu when no node was hit.
 
 	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		if not _is_dragging:
@@ -726,13 +735,6 @@ func _on_mouse_exited() -> void:
 # TOOLTIP
 # ============================================================
 
-## Builds the tooltip sections. Three parts:
-##   header   — node display name (localized when name_key is set)
-##   body     — prerequisite + non-currency attributes + description
-##   footer   — Level: X / Y
-##
-## Currency data is exposed separately via `get_currency_entries()` —
-## the tooltip renders real TextureRects for icons instead of BBCode.
 func format_tooltip_sections() -> Dictionary:
 	var header: String = ""
 	var body: String = ""
@@ -742,6 +744,12 @@ func format_tooltip_sections() -> Dictionary:
 		return {"header": "", "body": "", "footer": ""}
 
 	header = "[b][color=#f9e6ca]%s[/color][/b]" % get_display_name()
+
+	var level_text: String = _format_level_text()
+	var level_in_header: bool = tree_data != null and tree_data.level_in_header
+
+	if level_in_header and not level_text.is_empty():
+		header += "\n" + level_text
 
 	var body_parts: Array[String] = []
 
@@ -763,7 +771,9 @@ func format_tooltip_sections() -> Dictionary:
 		body_parts.append("[color=orange]%s[/color]" % node_data.description)
 
 	body = "\n\n".join(body_parts)
-	footer = _format_level_footer()
+
+	if not level_in_header:
+		footer = level_text
 
 	return {
 		"header": header,
@@ -771,12 +781,6 @@ func format_tooltip_sections() -> Dictionary:
 		"footer": footer,
 	}
 
-## Returns the localized display name for this node.
-##
-## Priority:
-##   1. GameLocalization.get_raw_text(name_key) — if name_key is set
-##   2. node_data.name                         — user-authored fallback
-##   3. "Node <id>"                            — last-resort default
 func get_display_name() -> String:
 	if not node_data:
 		return "Node ?"
@@ -793,13 +797,6 @@ func get_display_name() -> String:
 		fallback = "Node %d" % id
 	return fallback
 
-## Localization helper — mirrors the name_key / effect_key lookup.
-##
-## Looks up `key` in GameLocalization and returns the translated text.
-## Falls back to `fallback` when:
-##   - the key is empty
-##   - GameLocalization autoload is missing
-##   - the key resolves to an empty string
 func _localize(key: String, fallback: String) -> String:
 	if key.is_empty():
 		return fallback
@@ -815,8 +812,6 @@ func _localize(key: String, fallback: String) -> String:
 		return fallback
 	return translated
 
-## Returns true if the node is at its maximum allocation level.
-## Used by the tooltip to show "MAXED" instead of currency costs.
 func is_maxed() -> bool:
 	if not node_data:
 		return false
@@ -826,11 +821,6 @@ func is_maxed() -> bool:
 		return false
 	return allocation_level >= node_data.max_allocations
 
-## Returns an Array of {icon: Texture2D, amount: int, affordable: bool}
-## dicts, one per currency attribute the node defines.
-##
-## Returns an empty array when the node is at MAX level — the tooltip
-## then renders "MAXED" instead of currency costs.
 func get_currency_entries() -> Array:
 	if not node_data or not tree_data:
 		return []
@@ -859,8 +849,6 @@ func get_currency_entries() -> Array:
 	return result
 
 
-## Returns true if the wallet currently has enough of `attr_id` to
-## pay for `amount`. Used only for the tooltip's text colour.
 func _is_currency_affordable(attr_id: String, amount: int) -> bool:
 	if amount <= 0:
 		return true
@@ -894,24 +882,9 @@ func _is_multiallocation() -> bool:
 		return false
 	return tree_data.multiallocation
 
-# ------------------------------------------------------------
-# CUMULATIVE COMPATIBILITY
-# ------------------------------------------------------------
-
-## Returns true if `cumulative` produces meaningful results for the
-## given operation. Only ADD and SUBTRACT support it:
-##   - ADD:      sums levels → bigger bonus
-##   - SUBTRACT: sums levels → bigger penalty
-##
-## SET / MULTIPLY / MIN / MAX fall back to absolute mode because
-## summing their per-level values would produce nonsensical totals.
 static func _is_cumulative_op(op: BayterekAttribute.Operation) -> bool:
 	return op == BayterekAttribute.Operation.ADD \
 		or op == BayterekAttribute.Operation.SUBTRACT
-
-# ------------------------------------------------------------
-# ATTRIBUTES (non-currency only)
-# ------------------------------------------------------------
 
 func _format_attributes() -> String:
 	if not node_data or not tree_data:
@@ -938,7 +911,6 @@ func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> 
 	var previous_values: Array = _get_values_at_level(attr_id, allocation_level - 1)
 	var current_values: Array = _get_values_at_level(attr_id, allocation_level)
 
-	# {N} — "next" value. Clamp at max level so it never shows 0.
 	var next_level: int = allocation_level + 1
 	if _is_multiallocation():
 		var max_lvl: int = node_data.max_allocations if node_data else 0
@@ -950,9 +922,6 @@ func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> 
 
 	var next_values: Array = _get_values_at_level(attr_id, next_level)
 
-	# Cumulative mode: show running totals instead of raw per-level values.
-	# Only ADD and SUBTRACT support cumulative — other operations would
-	# produce nonsensical tooltips, so we silently fall back to absolute.
 	if attribute.cumulative and _is_multiallocation() and _is_cumulative_op(attribute.operation):
 		previous_values = _get_cumulative_values_at_level(attr_id, allocation_level - 1)
 		current_values  = _get_cumulative_values_at_level(attr_id, allocation_level)
@@ -973,13 +942,6 @@ func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> 
 	return "[color=#8a8aff]%s[/color]" % formatted
 
 
-## Returns the base text for the given attribute's effect, after
-## running it through the localization system (if `effect_key` is set)
-## but BEFORE `{P}` / `{C}` / `{N}` placeholder substitution.
-##
-## Priority:
-##   1. GameLocalization.get_raw_text(effect_key) — if key set + found
-##   2. attribute.effect                        — design-time fallback
 func _get_effect_text(attribute: BayterekAttribute) -> String:
 	if not attribute:
 		return ""
@@ -996,7 +958,6 @@ func _get_effect_text(attribute: BayterekAttribute) -> String:
 
 	var translated: String = String(loc.call("get_raw_text", attribute.effect_key))
 	if translated.is_empty():
-		# Key not found — fall back to the design-time effect.
 		return attribute.effect
 
 	return translated
@@ -1028,8 +989,6 @@ func _get_values_at_level(attr_id: String, level: int) -> Array:
 	return z2
 
 
-## Returns the CUMULATIVE sum of values from level 1 up to `level`.
-## For level <= 0, returns a zeroed array of the correct size.
 func _get_cumulative_values_at_level(attr_id: String, level: int) -> Array:
 	if not node_data or not node_data.attributes.has(attr_id):
 		return []
@@ -1038,7 +997,6 @@ func _get_cumulative_values_at_level(attr_id: String, level: int) -> Array:
 	if not raw is Array or raw.size() == 0:
 		return []
 
-	# Single-allocation layout: no cumulative concept beyond level 1.
 	if not (raw[0] is Array):
 		return raw if level >= 1 else []
 
@@ -1067,9 +1025,6 @@ func _substitute_placeholders(
 	if effect.is_empty():
 		return ""
 
-	# Normalize: CSV and some custom parsers may leave a literal "\n"
-	# (backslash + n) instead of a real newline. RichTextLabel needs a
-	# REAL newline to break the line.
 	var normalized: String = effect.replace("\\n", "\n")
 
 	var regex := RegEx.new()
@@ -1112,17 +1067,21 @@ func _substitute_placeholders(
 	return result
 
 # ------------------------------------------------------------
-# LEVEL FOOTER
+# LEVEL TEXT
 # ------------------------------------------------------------
 
-## Builds the "Level: X / Y" footer.
+## Builds the "Level: X / Y" text.
 ##
-## The word "Level" is localized via the `bayterek_node_level` key.
-## If GameLocalization is unavailable or the key is missing, the
-## English fallback "Level" is used — so the tooltip keeps working
-## in the editor and in projects that don't use the localization
-## system.
-func _format_level_footer() -> String:
+## This is a plain colored BBCode line. Its PLACEMENT (header vs
+## footer) is decided by `format_tooltip_sections()` based on the
+## tree's `level_in_header` setting.
+##
+## NOTE: we intentionally do NOT wrap this in [center] BBCode.
+## RichTextLabel's horizontal_alignment (set by _set_label_align)
+## already centers the text, and [center] adds extra vertical space
+## in some Godot versions, causing the footer to grow taller when
+## the text length changes (e.g. after allocation).
+func _format_level_text() -> String:
 	if not node_data:
 		return ""
 
@@ -1142,10 +1101,8 @@ func _format_level_footer() -> String:
 	elif current > 0:
 		color = "#8ef58e"
 
-	# Localize the "Level" word. Add `bayterek_node_level` to your
-	# localization registry (e.g. "Level" / "Seviye").
 	var level_word: String = _localize(LOC_KEY_LEVEL, "Level")
 
-	return "[center][color=%s]%s: %d / %d[/color][/center]" % [
+	return "[color=%s]%s: %d / %d[/color]" % [
 		color, level_word, current, maximum
 	]

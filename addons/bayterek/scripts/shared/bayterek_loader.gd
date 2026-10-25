@@ -2,16 +2,7 @@
 extends Node
 ## Autoload: BayterekLoader. Registry + design API.
 ##
-## Also acts as a global keyboard hook for undo/redo. The Godot editor
-## reserves Ctrl+Z / Ctrl+Y for its own undo system and consumes them
-## before any child Control's _shortcut_input() handler runs. By
-## intercepting at the Autoload level — which sits ABOVE the editor's
-## shortcut dispatcher in the input stack — we can guarantee that our
-## undo fires first when a Node Editor screen is active.
-##
-## The screen registers itself via register_node_editor() on _ready()
-## and unregisters on _exit_tree(). Only ONE screen can be active at a
-## time; the most recent registration wins.
+## Also acts as a global keyboard hook for undo/redo.
 ##
 ## SKILL TREE JSON API:
 ##   The JSON file at `<tree_path>.json` is the SOURCE OF TRUTH for
@@ -25,15 +16,12 @@ const Bayterek = preload("res://addons/bayterek/scripts/shared/bayterek.gd")
 var _registry: BayterekRegistry
 
 ## Weak reference to the currently-active Node Editor screen (if any).
-## We use a plain `Node` type here to avoid a hard class dependency, and
-## guard every access with is_instance_valid().
 var _active_node_editor: Node = null
 
 func _init() -> void:
 	_load_registry()
 
 func _ready() -> void:
-	# Ensure we receive keyboard input even when no other node has focus.
 	set_process_input(true)
 	set_process_unhandled_key_input(true)
 
@@ -92,8 +80,6 @@ func reload_designs() -> void:
 # SKILL TREE JSON API
 # ============================================================
 
-## Returns the conventional JSON path for a tree.
-## The JSON lives next to the .tres file, with the same basename.
 static func get_tree_json_path(tree: BayterekTree) -> String:
 	if not tree:
 		return ""
@@ -101,20 +87,10 @@ static func get_tree_json_path(tree: BayterekTree) -> String:
 		return ""
 	return tree.resource_path.get_basename() + ".json"
 
-## Returns true if the tree has a JSON mirror on disk.
 static func has_tree_json(tree: BayterekTree) -> bool:
 	var path := get_tree_json_path(tree)
 	return not path.is_empty() and FileAccess.file_exists(path)
 
-## Loads the JSON for a tree and returns the in-memory data.
-## The `BayterekTree` resource is hydrated from the JSON — including
-## attribute dictionaries, nodes, connections, and initial allocation.
-##
-## SAFETY GUARD:
-##   If the tree appears to be "brand new" (no attributes, no nodes,
-##   no allocation state), we SKIP hydration. This prevents a freshly
-##   created tree from resurrecting stale data from a leftover JSON
-##   file (e.g. after deleting a tree but leaving its .json on disk).
 func load_tree_from_json(tree: BayterekTree) -> BayterekSkillTreeData:
 	if not tree:
 		return null
@@ -141,7 +117,6 @@ func load_tree_from_json(tree: BayterekTree) -> BayterekSkillTreeData:
 	_apply_data_to_tree(tree, data)
 	return data
 
-## Serializes the current `BayterekTree` to its JSON file.
 func save_tree_to_json(tree: BayterekTree) -> Error:
 	if not tree:
 		return ERR_INVALID_PARAMETER
@@ -159,8 +134,6 @@ func save_tree_to_json(tree: BayterekTree) -> Error:
 	var raw := BayterekSkillTreeJson.data_to_dict(data)
 	return BayterekSkillTreeJson.save_file(path, raw)
 
-## Convenience: load JSON if it exists, otherwise fall back to .tres.
-## Returns the data object when loaded from JSON, null otherwise.
 func ensure_tree_loaded(tree: BayterekTree) -> BayterekSkillTreeData:
 	if not tree:
 		return null
@@ -168,8 +141,6 @@ func ensure_tree_loaded(tree: BayterekTree) -> BayterekSkillTreeData:
 		return load_tree_from_json(tree)
 	return null
 
-## Returns true if the tree has no attributes, no nodes, and no
-## allocation state — i.e. it looks freshly created.
 func _is_tree_empty(tree: BayterekTree) -> bool:
 	if not tree:
 		return true
@@ -203,6 +174,11 @@ func _apply_data_to_tree(tree: BayterekTree, data: BayterekSkillTreeData) -> voi
 	for node in data.nodes:
 		tree.nodes.append(node)
 
+	# Sanitize currency values (clamp negative → 0).
+	for node in tree.nodes:
+		if node:
+			node.sanitize_currency_values(tree)
+
 	# Initial allocation.
 	if not tree.tree_state:
 		tree.tree_state = BayterekTreeState.new()
@@ -235,15 +211,9 @@ func _tree_to_data(tree: BayterekTree) -> BayterekSkillTreeData:
 # NODE EDITOR REGISTRATION
 # ============================================================
 
-## Called by a BayterekNodeEditorScreen when it becomes the active
-## screen. Only one screen can be active at a time — the most recent
-## caller wins.
 func register_node_editor(editor: Node) -> void:
 	_active_node_editor = editor
 
-## Called by a BayterekNodeEditorScreen when it's torn down or loses
-## focus. Only clears the reference if it still points at `editor` —
-## this prevents a stale teardown from clearing a newer registration.
 func unregister_node_editor(editor: Node) -> void:
 	if _active_node_editor == editor:
 		_active_node_editor = null
@@ -252,15 +222,6 @@ func unregister_node_editor(editor: Node) -> void:
 # GLOBAL INPUT HOOK (undo / redo)
 # ============================================================
 
-## Intercept Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z at the Autoload level.
-##
-## Autoloads are children of the root Window and get their _input()
-## called BEFORE the Godot editor's own global shortcut handling — so
-## this is the earliest safe place to steal the keystroke.
-##
-## We only consume the event if the active screen actually performed an
-## undo/redo. If its stack was empty (or no screen is registered, or a
-## text field has focus) we let the event fall through to the editor.
 func _input(event: InputEvent) -> void:
 	if not _active_node_editor:
 		return

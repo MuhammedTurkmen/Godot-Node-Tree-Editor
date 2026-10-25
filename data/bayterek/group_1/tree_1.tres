@@ -1,46 +1,19 @@
-[gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://cg3x0n3depd8c"]
+[gd_resource type="Resource" script_class="BayterekTree" format=3 uid="uid://cgt7fuj0gnifp"]
 
 [ext_resource type="Script" uid="uid://coud0luk3tb2i" path="res://addons/bayterek/scripts/resources/bayterek_node.gd" id="1_immpc"]
 [ext_resource type="Script" uid="uid://hqjiiihenipg" path="res://addons/bayterek/scripts/resources/bayterek_attribute.gd" id="1_qlprm"]
 [ext_resource type="Script" uid="uid://de6ng2pbq3gss" path="res://addons/bayterek/scripts/resources/bayterek_node_group.gd" id="2_3oq2p"]
 [ext_resource type="Script" uid="uid://c0c2iqu2v4mjr" path="res://addons/bayterek/scripts/resources/bayterek_prefab.gd" id="3_k1nh3"]
-[ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="3_royti"]
+[ext_resource type="Script" uid="uid://da1jlrej7pvlc" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd" id="4_6p5mu"]
 [ext_resource type="Script" uid="uid://c7f580sw7db7" path="res://addons/bayterek/scripts/resources/bayterek_tree.gd" id="4_ak1rv"]
-[ext_resource type="Texture2D" uid="uid://fumij183xeqq" path="res://assets/square.png" id="4_qlprm"]
-[ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="5_6p5mu"]
-[ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="6_5lgyx"]
-[ext_resource type="Texture2D" uid="uid://bad5qhdfe60r3" path="res://assets/big_border.png" id="7_j5a67"]
-[ext_resource type="Texture2D" uid="uid://c1atrbecaesx" path="res://assets/Icon.png" id="8_wfhhu"]
-[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="9_nrko7"]
-[ext_resource type="AudioStream" uid="uid://c54qd30dnbq0b" path="res://assets/Hit7.wav" id="12_6p5mu"]
+[ext_resource type="Texture2D" uid="uid://fumij183xeqq" path="res://assets/square.png" id="5_5lgyx"]
+[ext_resource type="Script" uid="uid://71dxuqynj7xr" path="res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd" id="6_j5a67"]
+[ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="7_wfhhu"]
+[ext_resource type="Texture2D" uid="uid://bad5qhdfe60r3" path="res://assets/big_border.png" id="8_nrko7"]
+[ext_resource type="Texture2D" uid="uid://c1atrbecaesx" path="res://assets/Icon.png" id="9_53451"]
+[ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="10_l2tvo"]
 
-[sub_resource type="Resource" id="Resource_6p5mu"]
-script = ExtResource("1_qlprm")
-id = "max_health"
-name = "max health"
-name_key = "node_max_health"
-effect = "Effect {C}"
-value_count = 1
-effect_key = "attr_desc_max_health"
-
-[sub_resource type="Resource" id="Resource_5lgyx"]
-script = ExtResource("1_qlprm")
-id = "health_regenaration"
-name = "health regenaration"
-name_key = "node_health_regen"
-effect = "Effect {C}"
-value_count = 1
-effect_key = "attr_desc_health_regen"
-
-[sub_resource type="Resource" id="Resource_j5a67"]
-script = ExtResource("1_qlprm")
-is_currency = true
-id = "gold"
-name = "gold"
-effect = "Effect {C}"
-value_count = 1
-
-[sub_resource type="Resource" id="Resource_wfhhu"]
+[sub_resource type="Resource" id="Resource_qlprm"]
 script = ExtResource("1_qlprm")
 is_currency = true
 id = "diamond"
@@ -48,16 +21,42 @@ name = "diamond"
 effect = "Effect {C}"
 value_count = 1
 
-[sub_resource type="Resource" id="Resource_53451"]
-script = ExtResource("6_5lgyx")
+[sub_resource type="Resource" id="Resource_6p5mu"]
+script = ExtResource("1_qlprm")
+is_currency = true
+id = "gold"
+name = "gold"
+effect = "Effect {C}"
+value_count = 1
+
+[sub_resource type="Resource" id="Resource_5lgyx"]
+script = ExtResource("1_qlprm")
+id = "health_regen"
+name = "health regen"
+name_key = "node_health_regen"
+effect = "Effect {C}"
+value_count = 1
+effect_key = "attr_desc_health_regen"
+
+[sub_resource type="Resource" id="Resource_j5a67"]
+script = ExtResource("1_qlprm")
+cumulative = true
+id = "max_health"
+name = "max health"
+name_key = "node_max_health"
+value_count = 1
+effect_key = "attr_desc_max_health"
+
+[sub_resource type="Resource" id="Resource_wfhhu"]
+script = ExtResource("7_wfhhu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_l2tvo"]
-script = ExtResource("5_6p5mu")
+[sub_resource type="Resource" id="Resource_nrko7"]
+script = ExtResource("6_j5a67")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("4_qlprm")
+"texture": ExtResource("5_5lgyx")
 }
 }
 tint_enabled = true
@@ -101,18 +100,18 @@ tint_configs = {
 }
 layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
 layer_name = "Background"
-transform = SubResource("Resource_53451")
+transform = SubResource("Resource_wfhhu")
 
-[sub_resource type="Resource" id="Resource_k0kgc"]
-script = ExtResource("6_5lgyx")
+[sub_resource type="Resource" id="Resource_53451"]
+script = ExtResource("7_wfhhu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_x2q8f"]
-script = ExtResource("5_6p5mu")
+[sub_resource type="Resource" id="Resource_l2tvo"]
+script = ExtResource("6_j5a67")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("7_j5a67")
+"texture": ExtResource("8_nrko7")
 }
 }
 tint_enabled = true
@@ -156,19 +155,19 @@ tint_configs = {
 }
 layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
 layer_name = "Border"
-transform = SubResource("Resource_k0kgc")
+transform = SubResource("Resource_53451")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_tmiro"]
-script = ExtResource("6_5lgyx")
+[sub_resource type="Resource" id="Resource_k0kgc"]
+script = ExtResource("7_wfhhu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_3cysg"]
-script = ExtResource("5_6p5mu")
+[sub_resource type="Resource" id="Resource_x2q8f"]
+script = ExtResource("6_j5a67")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("8_wfhhu")
+"texture": ExtResource("9_53451")
 }
 }
 tint_enabled = true
@@ -212,46 +211,45 @@ tint_configs = {
 }
 layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
 layer_name = "Icon"
-transform = SubResource("Resource_tmiro")
+transform = SubResource("Resource_k0kgc")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_mklcx"]
-script = ExtResource("9_nrko7")
+[sub_resource type="Resource" id="Resource_tmiro"]
+script = ExtResource("10_l2tvo")
 start_offset = 8.0
 end_offset = 12.0
 texture_mode = 1
 wiggle_phase_offset = 2.590989424538091
 
-[sub_resource type="Resource" id="Resource_safsq"]
+[sub_resource type="Resource" id="Resource_3cysg"]
 script = ExtResource("1_immpc")
 is_root = true
 id = 1
 name = "Max Health"
 name_key = "node_max_health"
 design_id = "new_design"
-position = Vector2(-128, 176)
+position = Vector2(-96, 128)
 line_data = {
-2: SubResource("Resource_mklcx")
+2: SubResource("Resource_tmiro")
 }
 out_nodes = Array[int]([2])
 attributes = {
-"diamond": [[5], [10], [15], [20], [25]],
-"gold": [[5], [10], [15], [20], [25]],
-"max_health": [[5], [10], [15], [20], [25]]
+"gold": [[5], [10], [25]],
+"max_health": [[5], [15], [35]]
 }
-max_allocations = 5
-layers = Array[ExtResource("3_royti")]([SubResource("Resource_l2tvo"), SubResource("Resource_x2q8f"), SubResource("Resource_3cysg")])
+max_allocations = 3
+layers = Array[ExtResource("4_6p5mu")]([SubResource("Resource_nrko7"), SubResource("Resource_l2tvo"), SubResource("Resource_x2q8f")])
 
-[sub_resource type="Resource" id="Resource_ss5fq"]
-script = ExtResource("6_5lgyx")
+[sub_resource type="Resource" id="Resource_mklcx"]
+script = ExtResource("7_wfhhu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_botrw"]
-script = ExtResource("5_6p5mu")
+[sub_resource type="Resource" id="Resource_safsq"]
+script = ExtResource("6_j5a67")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("4_qlprm")
+"texture": ExtResource("5_5lgyx")
 }
 }
 tint_enabled = true
@@ -295,18 +293,18 @@ tint_configs = {
 }
 layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
 layer_name = "Background"
-transform = SubResource("Resource_ss5fq")
+transform = SubResource("Resource_mklcx")
 
-[sub_resource type="Resource" id="Resource_67hed"]
-script = ExtResource("6_5lgyx")
+[sub_resource type="Resource" id="Resource_ss5fq"]
+script = ExtResource("7_wfhhu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_vn7yg"]
-script = ExtResource("5_6p5mu")
+[sub_resource type="Resource" id="Resource_botrw"]
+script = ExtResource("6_j5a67")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("7_j5a67")
+"texture": ExtResource("8_nrko7")
 }
 }
 tint_enabled = true
@@ -350,19 +348,19 @@ tint_configs = {
 }
 layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
 layer_name = "Border"
-transform = SubResource("Resource_67hed")
+transform = SubResource("Resource_ss5fq")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_bjop0"]
-script = ExtResource("6_5lgyx")
+[sub_resource type="Resource" id="Resource_67hed"]
+script = ExtResource("7_wfhhu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_pvlmy"]
-script = ExtResource("5_6p5mu")
+[sub_resource type="Resource" id="Resource_vn7yg"]
+script = ExtResource("6_j5a67")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("8_wfhhu")
+"texture": ExtResource("9_53451")
 }
 }
 tint_enabled = true
@@ -406,46 +404,46 @@ tint_configs = {
 }
 layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
 layer_name = "Icon"
-transform = SubResource("Resource_bjop0")
+transform = SubResource("Resource_67hed")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_bxwvi"]
-script = ExtResource("9_nrko7")
+[sub_resource type="Resource" id="Resource_bjop0"]
+script = ExtResource("10_l2tvo")
 start_offset = 8.0
 end_offset = 12.0
 texture_mode = 1
 wiggle_phase_offset = 1.558045111495597
 
-[sub_resource type="Resource" id="Resource_p8dnb"]
+[sub_resource type="Resource" id="Resource_pvlmy"]
 script = ExtResource("1_immpc")
 id = 2
 name = "Max Health"
 name_key = "node_max_health"
 design_id = "new_design"
-position = Vector2(-128, -80)
+position = Vector2(-96, -128)
 line_data = {
-3: SubResource("Resource_bxwvi")
+3: SubResource("Resource_bjop0")
 }
 out_nodes = Array[int]([3])
 in_nodes = Array[int]([1])
 attributes = {
-"diamond": [[15], [35], [50]],
-"gold": [[15], [35], [50]],
-"max_health": [[15], [35], [50]]
+"diamond": [[5], [15], [35]],
+"gold": [[5], [15], [35]],
+"max_health": [[15], [35], [55]]
 }
 max_allocations = 3
-layers = Array[ExtResource("3_royti")]([SubResource("Resource_botrw"), SubResource("Resource_vn7yg"), SubResource("Resource_pvlmy")])
+layers = Array[ExtResource("4_6p5mu")]([SubResource("Resource_safsq"), SubResource("Resource_botrw"), SubResource("Resource_vn7yg")])
 
-[sub_resource type="Resource" id="Resource_451aj"]
-script = ExtResource("6_5lgyx")
+[sub_resource type="Resource" id="Resource_bxwvi"]
+script = ExtResource("7_wfhhu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_uf3jb"]
-script = ExtResource("5_6p5mu")
+[sub_resource type="Resource" id="Resource_p8dnb"]
+script = ExtResource("6_j5a67")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("4_qlprm")
+"texture": ExtResource("5_5lgyx")
 }
 }
 tint_enabled = true
@@ -489,18 +487,18 @@ tint_configs = {
 }
 layer_id = "5bff83a1-8ade-46a7-84d5-82fad42a9831"
 layer_name = "Background"
-transform = SubResource("Resource_451aj")
+transform = SubResource("Resource_bxwvi")
 
-[sub_resource type="Resource" id="Resource_0rgdv"]
-script = ExtResource("6_5lgyx")
+[sub_resource type="Resource" id="Resource_451aj"]
+script = ExtResource("7_wfhhu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_44f6a"]
-script = ExtResource("5_6p5mu")
+[sub_resource type="Resource" id="Resource_uf3jb"]
+script = ExtResource("6_j5a67")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("7_j5a67")
+"texture": ExtResource("8_nrko7")
 }
 }
 tint_enabled = true
@@ -544,19 +542,19 @@ tint_configs = {
 }
 layer_id = "99242ccf-6890-480d-a7c8-8399ec4a0551"
 layer_name = "Border"
-transform = SubResource("Resource_0rgdv")
+transform = SubResource("Resource_451aj")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_x43e0"]
-script = ExtResource("6_5lgyx")
+[sub_resource type="Resource" id="Resource_0rgdv"]
+script = ExtResource("7_wfhhu")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_wbej3"]
-script = ExtResource("5_6p5mu")
+[sub_resource type="Resource" id="Resource_44f6a"]
+script = ExtResource("6_j5a67")
 icon_configs = {
 "normal": {
 "enabled": true,
-"texture": ExtResource("8_wfhhu")
+"texture": ExtResource("9_53451")
 }
 }
 tint_enabled = true
@@ -600,42 +598,39 @@ tint_configs = {
 }
 layer_id = "02216fb3-8823-4f1a-b353-5252c195f8aa"
 layer_name = "Icon"
-transform = SubResource("Resource_x43e0")
+transform = SubResource("Resource_0rgdv")
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_y8nen"]
+[sub_resource type="Resource" id="Resource_x43e0"]
 script = ExtResource("1_immpc")
 id = 3
-name = "Health Regenaration"
+name = "Health Regen"
 name_key = "node_health_regen"
 design_id = "new_design"
-position = Vector2(96, -304)
+position = Vector2(112, -336)
 in_nodes = Array[int]([2])
 attributes = {
-"diamond": [[35], [50], [75]],
-"gold": [[35], [50], [35]],
-"health_regenaration": [[5], [10], [15]]
+"diamond": [[5], [10], [15], [20]],
+"gold": [[5], [10], [15], [5]],
+"health_regen": [[5], [8], [12], [15]]
 }
-max_allocations = 3
-layers = Array[ExtResource("3_royti")]([SubResource("Resource_uf3jb"), SubResource("Resource_44f6a"), SubResource("Resource_wbej3")])
+max_allocations = 4
+layers = Array[ExtResource("4_6p5mu")]([SubResource("Resource_p8dnb"), SubResource("Resource_uf3jb"), SubResource("Resource_44f6a")])
 
 [resource]
 script = ExtResource("4_ak1rv")
 id = "tree_1"
 name = "Tree 1"
-multiallocation = true
-hover_animations_enabled = false
-tooltip_header_align = 1
-tooltip_body_align = 1
 id_counter = 3
-nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_safsq"), SubResource("Resource_p8dnb"), SubResource("Resource_y8nen")])
+nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_3cysg"), SubResource("Resource_pvlmy"), SubResource("Resource_x43e0")])
 attributes = {
-"diamond": SubResource("Resource_wfhhu"),
-"gold": SubResource("Resource_j5a67"),
-"health_regenaration": SubResource("Resource_5lgyx"),
-"max_health": SubResource("Resource_6p5mu")
+"diamond": SubResource("Resource_qlprm"),
+"gold": SubResource("Resource_6p5mu"),
+"health_regen": SubResource("Resource_5lgyx"),
+"max_health": SubResource("Resource_j5a67")
 }
-hierarchy_split_offset = -516
+hierarchy_split_offset = -420
 prefabs_bar_visible = false
-default_purchase_mode = 1
-purchase_hold_sound = ExtResource("12_6p5mu")
+font_family = "sans"
+pixel_art_mode = true
+level_in_header = true

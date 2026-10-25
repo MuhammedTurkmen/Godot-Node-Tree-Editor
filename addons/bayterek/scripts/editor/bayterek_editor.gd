@@ -623,7 +623,6 @@ func _create_tree_view() -> void:
 			if prefab and not prefab.reference_id.is_empty():
 				_on_prefab_created(prefab)
 
-	tree_view.gui_input.connect(_on_tree_view_input)
 	tree_view.undo_redo_provider = self
 	tree_view.changed.connect(_on_tree_view_changed)
 	tree_view.selection_changed.connect(_on_selection_changed)
@@ -632,6 +631,7 @@ func _create_tree_view() -> void:
 	tree_view.design_dropped.connect(_on_design_dropped_from_canvas)
 	tree_view.node_right_clicked.connect(_on_node_right_clicked)
 	tree_view.line_clicked_for_delete.connect(_on_line_clicked_for_delete)
+	tree_view.canvas_right_clicked.connect(_on_canvas_right_clicked)
 
 	tree_view.set_tooltip_near_node_right()
 
@@ -827,41 +827,23 @@ func _create_rename_dialog() -> void:
 	add_child(rename_dialog)
 
 func _on_rename_applied(new_name: String, new_description: String) -> void:
-	print("[RENAME] _on_rename_applied called:")
-	print("  new_name='%s'" % new_name)
-	print("  new_description='%s'" % new_description)
-	print("  tree_view=", tree_view)
-	print("  selected_nodes.size()=", tree_view.selected_nodes.size() if tree_view else -1)
-
 	if not tree_view:
-		print("[RENAME] ABORT: tree_view is null")
 		return
 	if tree_view.selected_nodes.is_empty():
-		print("[RENAME] ABORT: no selected nodes")
 		return
 
 	var node: BayterekNodeButton = tree_view.selected_nodes[0]
-	print("  target node=", node)
-	if node:
-		print("  node_data=", node.node_data)
-		print("  node.prefab=", node.prefab)
-		if node.node_data:
-			print("  node_data.name BEFORE='%s'" % node.node_data.name)
 
 	if not is_instance_valid(node) or not node.node_data:
-		print("[RENAME] ABORT: node or node_data invalid")
 		return
 
 	if node.node_data.locked:
-		print("[RENAME] ABORT: node is locked")
 		BayterekToast.warning(tree_view, "Node is locked. Unlock it first.")
 		return
 
 	var old_name: String = node.node_data.name
 	var old_desc: String = node.node_data.description
 	var target_prefab: BayterekPrefab = node.prefab
-
-	print("  old_name='%s'" % old_name)
 
 	var do_callable := func():
 		_apply_node_rename(node, target_prefab, new_name, new_description)
@@ -871,48 +853,30 @@ func _on_rename_applied(new_name: String, new_description: String) -> void:
 	_commit_action("Rename Node", do_callable, undo_callable)
 
 func _apply_node_rename(node: BayterekNodeButton, prefab: BayterekPrefab, new_name: String, new_desc: String) -> void:
-	print("[RENAME] _apply_node_rename called:")
-	print("  node=", node)
-	print("  new_name='%s'" % new_name)
-	print("  prefab=", prefab)
-
 	if not is_instance_valid(node) or not node.node_data:
-		print("[RENAME] _apply ABORT: node invalid")
 		return
 
 	var display_name: String = new_name
 	if display_name.is_empty():
 		display_name = "Node %d" % node.id
 
-	var old_node_data_name: String = node.node_data.name
-
 	# Rename the INSTANCE only — never touch the shared prefab.
 	node.node_data.name = display_name
 	node.node_data.description = new_desc
 
-	print("  node_data.name: '%s' -> '%s'" % [old_node_data_name, node.node_data.name])
-
 	if hierarchy:
 		hierarchy.refresh_node_display(node)
 		hierarchy.refresh_all()
-		print("  hierarchy refreshed")
 
 	if inspector and inspector._current_node == node:
 		inspector.inspect(node)
-		print("  inspector refreshed")
 
 	if node.has_method("refresh_visuals"):
 		node.refresh_visuals()
-		print("  node visuals refreshed")
 
 	set_dirty(true)
 
-	print("[RENAME] DONE: node_data.name='%s'" % node.node_data.name)
-
 func _open_rename_dialog() -> void:
-	print("[RENAME] _open_rename_dialog called")
-	print("  selected count=", tree_view.selected_nodes.size() if tree_view else -1)
-
 	if not tree_view or tree_view.selected_nodes.is_empty():
 		BayterekToast.info(tree_view, "Select a node first")
 		return
@@ -926,10 +890,8 @@ func _open_rename_dialog() -> void:
 		return
 
 	if not rename_dialog:
-		print("[RENAME] ABORT: rename_dialog is null")
 		return
 
-	print("  opening dialog with name='%s'" % node.node_data.name)
 	rename_dialog.open_for(node.node_data.name, node.node_data.description)
 
 # ============================================================
@@ -1416,8 +1378,6 @@ func _on_prefab_changed(_prefab: BayterekPrefab) -> void:
 		prefabs_bar.refresh()
 
 func _on_prefab_name_changed(prefab: BayterekPrefab) -> void:
-	print("[PREFAB.name_changed] prefab='%s' name='%s'" % [prefab, prefab.node_name])
-	print_stack()
 	if prefabs_bar:
 		prefabs_bar.refresh()
 	set_dirty(true)
@@ -1607,7 +1567,7 @@ func _on_new_node_from_context(design_id: String, tree_pos: Vector2) -> void:
 	undo_redo.commit_action()
 
 # ============================================================
-# INPUT
+# RIGHT CLICK HANDLERS
 # ============================================================
 
 func _on_node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
@@ -1621,14 +1581,11 @@ func _on_node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> vo
 	_last_click_pos = tree_view.screen_to_tree(screen_pos)
 	context_menu.open_at(screen_pos, _last_click_pos)
 
-func _on_tree_view_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			if not context_menu:
-				return
-			var global_pos: Vector2 = tree_view.get_global_transform() * event.position
-			_last_click_pos = tree_view.screen_to_tree(event.position)
-			context_menu.open_at(global_pos, _last_click_pos)
+func _on_canvas_right_clicked(global_pos: Vector2, tree_pos: Vector2) -> void:
+	if not context_menu:
+		return
+	_last_click_pos = tree_pos
+	context_menu.open_at(global_pos, tree_pos)
 
 # ============================================================
 # NODE CREATION (design-based)
@@ -2702,9 +2659,6 @@ func save_tree() -> void:
 	if not tree:
 		return
 
-	for k in tree.attributes.keys():
-		var a: BayterekAttribute = tree.attributes[k]
-
 	var conflict_check: bool = _has_attribute_conflicts()
 
 	if not _tree_has_root():
@@ -2791,16 +2745,6 @@ func _perform_save() -> void:
 # JSON IMPORT / EXPORT
 # ============================================================
 
-## Opens a file dialog to pick a JSON file, then loads it into the
-## current tree. The .tres is updated in-memory and saved to disk;
-## the UI is fully rebuilt from the imported data.
-##
-## Flow:
-##   1. User picks a .json file
-##   2. We parse it via BayterekSkillTreeJson
-##   3. Apply the data to the current tree
-##   4. Save the .tres so the editor cache stays consistent
-##   5. Reopen the tree (rebuilds UI)
 func _import_tree_from_json() -> void:
 	if not tree:
 		return
@@ -2841,7 +2785,6 @@ func _do_import_from_json(path: String) -> void:
 	if not tree:
 		return
 
-	# Confirm overwrite — this replaces the current tree's data.
 	var confirm := ConfirmationDialog.new()
 	confirm.title = "Import from JSON"
 	confirm.dialog_text = (
@@ -2922,8 +2865,6 @@ func _reopen_tree_after_import(path: String) -> void:
 	if main_screen and main_screen.has_method("open_tree"):
 		main_screen.open_tree(path)
 
-## Opens a "save as" dialog to export the current tree to a JSON file.
-## Does NOT modify the .tres — this is a pure export.
 func _export_tree_to_json() -> void:
 	if not tree:
 		return
@@ -2977,8 +2918,6 @@ func _do_export_to_json(path: String) -> void:
 	BayterekToast.success(tree_view, "Exported to JSON: %s" % path.get_file())
 	BayterekLogger.info("Exported to JSON: %s" % path, "editor")
 
-## Builds a `BayterekSkillTreeData` snapshot from the current tree
-## without touching the loader. Used by export.
 func _build_data_from_tree(t: BayterekTree) -> BayterekSkillTreeData:
 	var data := BayterekSkillTreeData.new()
 	data.tree_id = t.id
@@ -3172,8 +3111,6 @@ func _on_tree_view_changed() -> void:
 func request_close() -> void:
 	closed.emit()
 
-## Returns true if the tree has no attributes, no nodes, and no
-## allocation state — i.e. it looks freshly created.
 func _is_tree_empty(t: BayterekTree) -> bool:
 	if not t:
 		return true

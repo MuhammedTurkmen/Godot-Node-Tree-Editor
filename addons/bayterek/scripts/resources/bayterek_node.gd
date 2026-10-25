@@ -228,9 +228,6 @@ func _apply_override_to_layer(field_path: String, value: Variant) -> void:
 		current[last_seg] = value
 
 	# Auto-enable the tint/icon when a per-state config is written.
-	# Without this, exporting `tint_configs.<state>` alone leaves
-	# `tint_enabled` at its default (false), and `get_tint_for_state()`
-	# returns WHITE for every state — the exact "white color" bug.
 	if segments.size() >= 1:
 		var first_seg: String = String(segments[0])
 		if layer is BayterekTextureLayer:
@@ -315,9 +312,6 @@ func clear_layers() -> void:
 	layers.clear()
 	clear_render_cache()
 
-## Copies layers from another source, regenerating layer ids.
-## Use this for node→node duplication where the copies must be
-## independent of the source.
 func copy_layers_from(source_layers: Array) -> void:
 	layers.clear()
 	for layer in source_layers:
@@ -329,17 +323,6 @@ func copy_layers_from(source_layers: Array) -> void:
 			layers.append(dup)
 	clear_render_cache()
 
-## Copies layers from a DESIGN, PRESERVING layer ids.
-##
-## Why this exists separately from `copy_layers_from`:
-##   - Export paths (e.g. `layers.<layer_id>.tint_configs.normal`)
-##     reference the DESIGN's layer ids.
-##   - When a node copies layers from a design, the copies MUST keep
-##     those same ids, otherwise `apply_exported_overrides` cannot
-##     resolve `get_layer_by_id(design_layer_id)` and silently drops
-##     every override.
-##   - For node→node duplication we still want fresh ids, so
-##     `copy_layers_from` is kept as-is for that case.
 func copy_layers_from_design(design_layers: Array) -> void:
 	layers.clear()
 	for layer in design_layers:
@@ -559,14 +542,6 @@ func resolve_active_states(runtime_flags: Dictionary) -> Dictionary:
 # CURRENCY / COST HELPERS
 # ============================================================
 
-## Returns the value stored in `slot` for the given currency
-## attribute, at the given allocation level.
-##
-## `level` = -1 → use slot 0 (the first level). The runtime allocation
-## level is owned by `BayterekNodeButton` / `BayterekAllocationService`;
-## this resource only stores the raw data.
-##
-## Returns 0 if the attribute or slot is missing.
 func get_currency_slot(attr_id: String, slot: int, level: int = -1) -> int:
 	if not attributes.has(attr_id):
 		return 0
@@ -594,6 +569,48 @@ func get_currency_slot(attr_id: String, slot: int, level: int = -1) -> int:
 		return 0
 	return int(raw[slot])
 
-## Returns true if this node defines the given currency attribute.
 func has_currency_attribute(attr_id: String) -> bool:
 	return attributes.has(attr_id)
+
+# ============================================================
+# SANITIZE
+# ============================================================
+
+## Ensures all currency attribute values on this node are >= 0.
+##
+## Currency attributes represent purchase costs, which are always
+## non-negative. If a value is somehow negative (e.g. from a manually
+## edited JSON file or an old corrupted save), we clamp it to 0.
+##
+## `tree` is used to look up which attributes are currencies. If null,
+## no sanitization is performed.
+func sanitize_currency_values(tree: BayterekTree) -> void:
+	if not tree:
+		return
+
+	for attr_id in attributes.keys():
+		var attr: BayterekAttribute = tree.attributes.get(attr_id, null)
+		if not attr or not attr.is_currency:
+			continue
+
+		var raw = attributes[attr_id]
+		if not raw is Array:
+			continue
+
+		# Multi-allocation: [[slot0, slot1], [slot0, slot1], ...]
+		if raw.size() > 0 and raw[0] is Array:
+			for level_arr in raw:
+				if not level_arr is Array:
+					continue
+				for i in level_arr.size():
+					var v = level_arr[i]
+					if typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT:
+						if v < 0:
+							level_arr[i] = 0
+		# Single-allocation: [slot0, slot1]
+		else:
+			for i in raw.size():
+				var v = raw[i]
+				if typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT:
+					if v < 0:
+						raw[i] = 0

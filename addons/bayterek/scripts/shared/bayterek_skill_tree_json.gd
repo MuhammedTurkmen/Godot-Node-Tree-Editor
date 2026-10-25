@@ -72,6 +72,9 @@ static func save_file(path: String, data: Dictionary) -> Error:
 ##
 ## Supports BOTH the old schema (v1: attributes.wallet) and the new
 ## schema (v2: currencies + wallet).
+##
+## Currency values are CLAMPED to >= 0. If a manually edited JSON
+## contains negative values, they are silently converted to 0.
 static func dict_to_data(raw: Dictionary) -> BayterekSkillTreeData:
 	var data := BayterekSkillTreeData.new()
 
@@ -82,8 +85,6 @@ static func dict_to_data(raw: Dictionary) -> BayterekSkillTreeData:
 	var format_version: int = int(meta.get("version", 1))
 
 	# --- Currencies ---
-	# v2: top-level "currencies" key
-	# v1: attributes.wallet (fallback for old files)
 	var currencies_raw: Dictionary = {}
 	if raw.has("currencies"):
 		currencies_raw = raw.get("currencies", {})
@@ -109,8 +110,6 @@ static func dict_to_data(raw: Dictionary) -> BayterekSkillTreeData:
 				data.connections.append({"from": node.id, "to": out_id})
 
 	# --- Wallet values ---
-	# v2: top-level "wallet" key
-	# v1: defaults.wallet (fallback for old files)
 	if raw.has("wallet"):
 		data.wallet_defaults = _to_int_dict(raw.get("wallet", {}))
 	else:
@@ -121,6 +120,39 @@ static func dict_to_data(raw: Dictionary) -> BayterekSkillTreeData:
 	var alloc: Dictionary = raw.get("allocated", {})
 	data.initial_allocated = _to_int_array(alloc.get("nodes", []))
 	data.initial_levels = _to_int_dict(alloc.get("levels", {}))
+
+	# --- Sanitize: clamp negative currency values to 0 ---
+	# We check each node's attributes against the currency list.
+	for node in data.nodes:
+		if not node:
+			continue
+		for attr_id in node.attributes.keys():
+			var attr: BayterekAttribute = null
+			if data.currency_attributes.has(attr_id):
+				attr = data.currency_attributes[attr_id]
+			elif data.skill_attributes.has(attr_id):
+				attr = data.skill_attributes[attr_id]
+
+			if not attr or not attr.is_currency:
+				continue
+
+			var raw_vals = node.attributes[attr_id]
+			if not raw_vals is Array:
+				continue
+
+			if raw_vals.size() > 0 and raw_vals[0] is Array:
+				for lvl in raw_vals:
+					if not lvl is Array:
+						continue
+					for i in lvl.size():
+						if typeof(lvl[i]) == TYPE_INT or typeof(lvl[i]) == TYPE_FLOAT:
+							if lvl[i] < 0:
+								lvl[i] = 0
+			else:
+				for i in raw_vals.size():
+					if typeof(raw_vals[i]) == TYPE_INT or typeof(raw_vals[i]) == TYPE_FLOAT:
+						if raw_vals[i] < 0:
+							raw_vals[i] = 0
 
 	return data
 

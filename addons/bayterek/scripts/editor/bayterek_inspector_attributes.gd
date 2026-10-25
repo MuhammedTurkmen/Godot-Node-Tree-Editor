@@ -18,6 +18,11 @@ extends VBoxContainer
 ##   - ONE column (purchase) when refund_differs = false
 ##   - TWO columns (purchase, refund) when refund_differs = true
 ##
+## CURRENCY CLAMP:
+##   Currency values are always >= 0. If a negative value is somehow
+##   entered (via JSON import, programmatic set, or a bug), it is
+##   clamped to 0 and the SpinBox display is re-synced.
+##
 ## Owned by BayterekTreeEditorInspector.
 
 signal changed
@@ -282,9 +287,13 @@ func _build_single_spin_row(
 
 	var spin := SpinBox.new()
 	spin.size_flags_horizontal = SIZE_EXPAND_FILL
+	# Currency values are always >= 0. The SpinBox itself prevents the
+	# user from typing a negative number. Additional clamping happens
+	# in _on_attr_value_changed() to catch programmatic sets.
 	spin.min_value = 0
 	spin.max_value = 999999999
 	spin.allow_greater = true
+	spin.allow_lesser = false
 	spin.rounded = true
 	spin.step = 1
 
@@ -401,11 +410,33 @@ func _on_attr_toggled(pressed: bool, attr_id: String) -> void:
 	if multi:
 		refresh.call_deferred()
 
+## Handles a value change from a SpinBox.
+##
+## For CURRENCY attributes, negative values are clamped to 0 and the
+## SpinBox display is re-synced. This is a defense-in-depth measure:
+## the SpinBox itself has min_value = 0, but a programmatic set
+## (e.g. JSON import) could still push a negative value through.
 func _on_attr_value_changed(value: float, attr_id: String, index: int, level: int) -> void:
 	if _updating_ui or not inspector._current_node:
 		return
 	if not inspector._current_node.node_data.attributes.has(attr_id):
 		return
+
+	# Currency values are always >= 0.
+	var attr: BayterekAttribute = null
+	if inspector.editor and inspector.editor.tree:
+		attr = inspector.editor.tree.attributes.get(attr_id, null)
+
+	if attr and attr.is_currency and value < 0.0:
+		_updating_ui = true
+		var inputs_dict: Dictionary = _attr_value_inputs.get(attr_id, {})
+		var level_inputs: Array = inputs_dict.get(level, [])
+		if index >= 0 and index < level_inputs.size():
+			var spin: SpinBox = level_inputs[index]
+			if is_instance_valid(spin):
+				spin.set_value_no_signal(0)
+		_updating_ui = false
+		value = 0.0
 
 	var v: Variant = value
 	if typeof(value) == TYPE_FLOAT and value == floor(value):

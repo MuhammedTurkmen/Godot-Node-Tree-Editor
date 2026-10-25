@@ -2,8 +2,21 @@
 class_name BayterekCamera
 extends RefCounted
 ## Pan + zoom camera.
+##
+## CONTROLS:
+##   - Right mouse button + drag → pan
+##   - Right mouse button (no drag) → context menu (handled by the tree view)
+##   - Mouse wheel → zoom
+##
+## NOTE: Middle-mouse pan is intentionally NOT supported anymore.
+## Only right-drag pans the camera.
 
 signal zoom_changed(zoom: float, previous_zoom: float)
+
+## Right-click drag threshold: if the user releases without moving more
+## than this many pixels, it's treated as a click (context menu) instead
+## of a pan.
+const RIGHT_CLICK_DRAG_THRESHOLD := 4.0
 
 const MIN_ZOOM := 0.4
 const MAX_ZOOM := 3.0
@@ -15,6 +28,11 @@ var _zoom: float = 1.0
 
 var _dragging: bool = false
 var _last_mouse_pos: Vector2 = Vector2.ZERO
+
+# --- Right-click pan state ---
+var _right_button_down: bool = false
+var _right_drag_start: Vector2 = Vector2.ZERO
+var _right_drag_accumulated: float = 0.0
 
 func set_viewport(viewport: Control) -> void:
 	_viewport = viewport
@@ -53,18 +71,69 @@ func input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			set_zoom(_zoom + ZOOM_STEP)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			set_zoom(_zoom - ZOOM_STEP)
-		elif event.button_index == MOUSE_BUTTON_MIDDLE:
-			_dragging = event.pressed
-			if _dragging:
+		_handle_mouse_button(event)
+	elif event is InputEventMouseMotion:
+		_handle_mouse_motion(event)
+
+func _handle_mouse_button(event: InputEventMouseButton) -> void:
+	match event.button_index:
+		MOUSE_BUTTON_WHEEL_UP:
+			if event.pressed:
+				set_zoom(_zoom + ZOOM_STEP)
+
+		MOUSE_BUTTON_WHEEL_DOWN:
+			if event.pressed:
+				set_zoom(_zoom - ZOOM_STEP)
+
+		MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				# Start tracking a potential right-drag.
+				_right_button_down = true
+				_right_drag_start = event.position
+				_right_drag_accumulated = 0.0
+			else:
+				# Release: end drag if it was a drag.
+				if _dragging:
+					_dragging = false
+				_right_button_down = false
+				_right_drag_accumulated = 0.0
+
+func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
+	# --- Right-button drag ---
+	if _right_button_down:
+		# First, check if the accumulated movement exceeds the threshold.
+		# If so, we transition from "click pending" to "dragging".
+		if not _dragging:
+			var moved: float = event.position.distance_to(_right_drag_start)
+			_right_drag_accumulated = moved
+			if moved > RIGHT_CLICK_DRAG_THRESHOLD:
+				_dragging = true
 				_last_mouse_pos = event.position
-	elif event is InputEventMouseMotion and _dragging:
+			return
+
+		# Already dragging — apply pan delta.
 		var delta: Vector2 = event.position - _last_mouse_pos
 		_last_mouse_pos = event.position
 		_pan(delta)
+
+# ============================================================
+# PUBLIC QUERY
+# ============================================================
+
+## Returns true if a right-drag is currently active (i.e. the user
+## pressed the right mouse button and moved past the threshold).
+func is_right_drag_active() -> bool:
+	return _right_button_down and _dragging
+
+## Returns true if a right-click gesture just happened (pressed and
+## released without exceeding the drag threshold).
+func was_right_click_only() -> bool:
+	return _right_button_down and not _dragging
+
+## Returns true if the right mouse button is currently held down
+## (regardless of whether it's been dragging).
+func is_right_button_down() -> bool:
+	return _right_button_down
 
 # ============================================================
 # ZOOM / PAN

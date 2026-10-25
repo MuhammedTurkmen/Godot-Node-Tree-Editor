@@ -11,6 +11,7 @@ signal prefab_dropped(prefab: BayterekPrefab, at_tree_position: Vector2)
 signal design_dropped(design: BayterekNodeDesign, at_tree_position: Vector2)
 signal changed
 signal node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2)
+signal canvas_right_clicked(global_pos: Vector2, tree_pos: Vector2)
 
 signal tree_version_mismatch(tree: BayterekTree, saved_version: int)
 signal node_allocated(node: BayterekNode)
@@ -76,6 +77,24 @@ var _purchase_bar_fill: ColorRect = null
 var _purchase_loop_handle = null
 var _purchase_hold_node: BayterekNodeButton = null
 
+# --- Right-click tracking (for context menu) ---
+var _right_click_node: BayterekNodeButton = null
+var _right_click_screen_pos: Vector2 = Vector2.ZERO
+
+# ============================================================
+# FONT BASE SIZES (tooltip)
+# ============================================================
+
+## Base font sizes used by the tooltip BEFORE scaling.
+##
+## These are the canonical sizes that `font_size_scale` multiplies.
+## Storing them here means we ALWAYS compute `base * scale` from
+## scratch, instead of accidentally compounding the scale on every
+## refresh (which caused the "font sizes keep growing" bug).
+const TOOLTIP_BASE_FONT_SIZE := 14
+const TOOLTIP_BASE_HEADER_FONT_SIZE := 16
+const TOOLTIP_BASE_FOOTER_FONT_SIZE := 13
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	clip_contents = true
@@ -99,6 +118,7 @@ func load_tree(tree_data: BayterekTree) -> void:
 	_create_services()
 	_create_selection_box()
 	_create_purchase_bar()
+	_apply_font_overrides()
 
 	_group_frame_dragging = null
 
@@ -314,11 +334,59 @@ func _gui_input(event: InputEvent) -> void:
 	if _handle_group_frame_input(event):
 		return
 
+	# --- Camera input (handles right-drag pan) ---
 	if camera:
 		camera.input(event)
 
 	if selection_box:
 		selection_box.handle_input(event)
+
+	# --- Right-click handling ---
+	# On PRESS: remember the node and position so we can decide later
+	# whether it was a click (context menu) or a drag (pan).
+	# On RELEASE: only fire the context menu if the camera says it was
+	# a click (no drag threshold exceeded).
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				var hit_node: BayterekNodeButton = _find_node_under_screen_pos(event.position)
+				_right_click_node = hit_node
+				_right_click_screen_pos = event.position
+			else:
+				# Release: check if it was a click (no drag).
+				if camera and camera.was_right_click_only():
+					var screen_pos: Vector2 = event.position
+					var node_hit: BayterekNodeButton = _right_click_node
+
+					if node_hit and is_instance_valid(node_hit):
+						# Node right-click.
+						var global_pos: Vector2 = get_global_transform() * screen_pos
+						node_right_clicked.emit(node_hit, global_pos)
+					else:
+						# Canvas right-click.
+						var global_pos2: Vector2 = get_global_transform() * screen_pos
+						var tree_pos: Vector2 = screen_to_tree(screen_pos)
+						canvas_right_clicked.emit(global_pos2, tree_pos)
+
+				_right_click_node = null
+				_right_click_screen_pos = Vector2.ZERO
+
+
+## Finds the topmost node under a given screen position.
+func _find_node_under_screen_pos(screen_pos: Vector2) -> BayterekNodeButton:
+	if not nodes_service:
+		return null
+	var mc_pos: Vector2 = screen_to_mc_local(screen_pos)
+	var nodes: Array = nodes_service.get_all_nodes()
+	# Iterate in reverse so the topmost (last added) node wins.
+	for i in range(nodes.size() - 1, -1, -1):
+		var node: BayterekNodeButton = nodes[i]
+		if not is_instance_valid(node) or not node.is_visible_in_tree():
+			continue
+		var local_rect := Rect2(node.position, node.size)
+		if local_rect.has_point(mc_pos):
+			return node
+	return null
 
 
 func _try_delete_line_at(screen_pos: Vector2) -> bool:
@@ -785,13 +853,6 @@ func _on_purchase_hold_completed(node: BayterekNodeButton) -> void:
 		audio.play_sfx(_tree_data.purchase_success_sound, -6.0)
 
 
-## Cleans up the purchase state after a hold ends.
-##
-## `completed` = true  → hold ran to full duration.
-## `completed` = false → hold was released early.
-##
-## The flag is forwarded to the node so it can decide the resting
-## visibility of the progress layer.
 func _cleanup_purchase_state(completed: bool) -> void:
 	_hide_purchase_bar()
 	if _purchase_hold_node and is_instance_valid(_purchase_hold_node):
@@ -857,7 +918,7 @@ func _on_node_dragged(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> vo
 			new_pos = Vector2(
 				round(new_pos.x / grid_size.x) * grid_size.x,
 				round(new_pos.y / grid_size.y) * grid_size.y
-			)
+				)
 
 		nodes_service.update_position(n, new_pos)
 		connections_service.update_lines_of(n)
@@ -1148,6 +1209,114 @@ func _refresh_all_allocatable_flags() -> void:
 	refresh_tooltip_content()
 
 # ============================================================
+# FONT OVERRIDES
+# ============================================================
+
+## Applies the tooltip's font family and size scale.
+##
+## IMPORTANT: We always reset the overrides first, then apply fresh
+## ones based on the CANONICAL base sizes above. This prevents the
+## "font sizes keep growing" bug that happened when the function read
+## `get_theme_font_size()` back (which already included the previous
+## scale) and multiplied it again.
+func _apply_font_overrides() -> void:
+	if not _tree_data or not _tooltip:
+		return
+
+	var family: String = _tree_data.font_family
+	var scale: float = _tree_data.font_size_scale
+	if scale <= 0.0:
+		scale = 1.0
+
+	# 1. Clear previous overrides first. Guarantees a clean slate.
+	_reset_tooltip_font_overrides()
+
+	# 2. If nothing to apply, we're done — defaults are in effect.
+	if family.is_empty() and is_equal_approx(scale, 1.0):
+		return
+
+	# 3. Apply scaled font sizes to each label with its OWN base size.
+	_apply_label_font_size(_tooltip._header_label, TOOLTIP_BASE_HEADER_FONT_SIZE, scale)
+	_apply_label_font_size(_tooltip._body_label, TOOLTIP_BASE_FONT_SIZE, scale)
+	_apply_label_font_size(_tooltip._footer_label, TOOLTIP_BASE_FOOTER_FONT_SIZE, scale)
+
+	# 4. Apply custom font family (if any).
+	if not family.is_empty():
+		var font := _load_theme_font(family)
+		if font:
+			_apply_label_font_family(_tooltip._header_label, font)
+			_apply_label_font_family(_tooltip._body_label, font)
+			_apply_label_font_family(_tooltip._footer_label, font)
+
+
+## Applies a specific pixel size to a RichTextLabel, based on a base
+## size and a scale multiplier. Always computes from the base, never
+## compounds.
+func _apply_label_font_size(lbl: RichTextLabel, base_size: int, scale: float) -> void:
+	if not is_instance_valid(lbl):
+		return
+	var final_size: int = max(6, int(round(float(base_size) * scale)))
+	lbl.add_theme_font_size_override("normal_font_size", final_size)
+	lbl.add_theme_font_size_override("bold_font_size", final_size)
+	lbl.add_theme_font_size_override("italics_font_size", final_size)
+	lbl.add_theme_font_size_override("mono_font_size", final_size)
+
+
+func _apply_label_font_family(lbl: RichTextLabel, font: Font) -> void:
+	if not is_instance_valid(lbl) or not font:
+		return
+	lbl.add_theme_font_override("normal_font", font)
+	lbl.add_theme_font_override("bold_font", font)
+	lbl.add_theme_font_override("italics_font", font)
+	lbl.add_theme_font_override("mono_font", font)
+
+
+## Removes all theme overrides previously applied to the tooltip's
+## RichTextLabels so we can start from a clean slate on every refresh.
+func _reset_tooltip_font_overrides() -> void:
+	if not _tooltip:
+		return
+
+	var labels: Array = [
+		_tooltip._header_label,
+		_tooltip._body_label,
+		_tooltip._footer_label,
+	]
+
+	for lbl in labels:
+		if not is_instance_valid(lbl):
+			continue
+		lbl.remove_theme_font_size_override("normal_font_size")
+		lbl.remove_theme_font_size_override("bold_font_size")
+		lbl.remove_theme_font_size_override("italics_font_size")
+		lbl.remove_theme_font_size_override("mono_font_size")
+		lbl.remove_theme_font_override("normal_font")
+		lbl.remove_theme_font_override("bold_font")
+		lbl.remove_theme_font_override("italics_font")
+		lbl.remove_theme_font_override("mono_font")
+
+
+func _load_theme_font(family: String) -> Font:
+	var sys_fonts: Array = OS.get_system_fonts()
+	for fname in sys_fonts:
+		var lname: String = String(fname).to_lower()
+		if family == "monospace" and ("mono" in lname or "code" in lname or "courier" in lname):
+			var f := SystemFont.new()
+			f.font_names = PackedStringArray([fname])
+			return f
+		if family == "serif" and ("serif" in lname or "times" in lname or "georgia" in lname):
+			var f := SystemFont.new()
+			f.font_names = PackedStringArray([fname])
+			return f
+		if family == "sans" and ("sans" in lname or "arial" in lname or "helvetica" in lname):
+			var f := SystemFont.new()
+			f.font_names = PackedStringArray([fname])
+			return f
+	var fallback := SystemFont.new()
+	fallback.font_names = PackedStringArray([family])
+	return fallback
+
+# ============================================================
 # COORDINATE HELPERS
 # ============================================================
 
@@ -1224,7 +1393,7 @@ func _handle_group_frame_input(event: InputEvent) -> bool:
 
 				var additive: bool = Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
 				if not additive:
-						clear_selection()
+					clear_selection()
 				for node in nodes_service.get_all_nodes():
 					if is_instance_valid(node) and node.node_data and node.node_data.group_id == hit.group_id:
 						select_node(node, true)
@@ -1254,6 +1423,8 @@ func _on_nodes_service_node_created(node: BayterekNodeButton) -> void:
 	node_created.emit(node)
 
 func _on_nodes_service_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
+	if camera and camera.is_right_drag_active():
+		return
 	node_right_clicked.emit(node, screen_pos)
 
 func _on_line_clicked_for_delete(from_id: int, to_id: int) -> void:

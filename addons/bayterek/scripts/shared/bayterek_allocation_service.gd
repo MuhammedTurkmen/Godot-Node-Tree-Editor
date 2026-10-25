@@ -180,12 +180,17 @@ func tick_hold(delta: float) -> float:
 # ============================================================
 
 ## Returns an Array of {attr_id, amount} for every currency attribute
-## used by this node, at the target level.
+## defined on this node, at the target level.
 ##
 ## `for_refund` = false → purchase costs
 ## `for_refund` = true  → refund values
 ##
-## Missing currency attributes are treated as a hard error.
+## Missing currency attributes are SKIPPED (treated as 0). This makes
+## adding new currencies to an existing tree non-breaking.
+##
+## Defined currency attributes are ALWAYS included, even when their
+## value is 0. A 0 value means "this node is free in this currency"
+## and the tooltip still shows it.
 func _collect_currency_operations(node: BayterekNodeButton, for_refund: bool, level_override: int = -1) -> Array:
 	var result: Array = []
 	if not node or not node.node_data or not _tree_data:
@@ -196,12 +201,9 @@ func _collect_currency_operations(node: BayterekNodeButton, for_refund: bool, le
 		if not attr or not attr.is_currency:
 			continue
 
+		# Missing currency = skip. The node doesn't define this
+		# currency, so it costs nothing of it.
 		if not node.node_data.has_currency_attribute(attr_id):
-			push_error(
-				"[Bayterek] Node '%s' (id=%d) is missing currency attribute '%s'. " %
-				[node.node_data.name, node.node_data.id, attr_id] +
-				"Every allocateable node must define a value for every currency attribute."
-			)
 			continue
 
 		var amount: int = 0
@@ -213,9 +215,11 @@ func _collect_currency_operations(node: BayterekNodeButton, for_refund: bool, le
 		else:
 			amount = node.node_data.get_currency_slot(attr_id, BayterekAttribute.SLOT_PURCHASE, level_override)
 
-		if amount <= 0:
-			continue
+		# Never negative — sanitize enforces this, but be defensive.
+		if amount < 0:
+			amount = 0
 
+		# Include ALL defined currencies, including 0.
 		result.append({
 			"attr_id": attr_id,
 			"amount": amount,
@@ -228,6 +232,9 @@ func _can_afford_operations(ops: Array) -> bool:
 	if not wallet_can_afford.is_valid():
 		return true
 	for op in ops:
+		# 0 = no transaction, always affordable.
+		if op.amount == 0:
+			continue
 		if not wallet_can_afford.call(op.attr_id, op.amount):
 			return false
 	return true
@@ -237,6 +244,9 @@ func _pay_operations(ops: Array) -> void:
 	if not wallet_spend.is_valid():
 		return
 	for op in ops:
+		# 0 = no transaction.
+		if op.amount == 0:
+			continue
 		wallet_spend.call(op.attr_id, op.amount)
 
 
@@ -244,6 +254,9 @@ func _refund_operations(ops: Array) -> void:
 	if not wallet_refund.is_valid():
 		return
 	for op in ops:
+		# 0 = no transaction.
+		if op.amount == 0:
+			continue
 		wallet_refund.call(op.attr_id, op.amount)
 
 # ============================================================

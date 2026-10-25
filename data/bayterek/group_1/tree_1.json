@@ -5,18 +5,18 @@
   },
   "attributes": {
     "skills": {
-      "health_regenaration": {
+      "health_regen": {
         "cumulative": false,
         "effect": "Effect {C}",
         "effect_key": "attr_desc_health_regen",
-        "name": "health regenaration",
+        "name": "health regen",
         "name_key": "node_health_regen",
         "operation": "add",
         "value_count": 1
       },
       "max_health": {
-        "cumulative": false,
-        "effect": "Effect {C}",
+        "cumulative": true,
+        "effect": "",
         "effect_key": "attr_desc_max_health",
         "name": "max health",
         "name_key": "node_max_health",
@@ -59,12 +59,12 @@
       "group_id": "",
       "id": 1,
       "is_root": true,
-      "max_allocations": 5,
+      "max_allocations": 3,
       "name": "Max Health",
       "name_key": "node_max_health",
       "position": {
-        "x": -128.0,
-        "y": 176.0
+        "x": -96.0,
+        "y": 128.0
       },
       "prerequisite": {
         "count": 1,
@@ -72,25 +72,6 @@
         "mode": "any"
       },
       "values": {
-        "diamond": {
-          "levels": [
-            [
-              5
-            ],
-            [
-              10
-            ],
-            [
-              15
-            ],
-            [
-              20
-            ],
-            [
-              25
-            ]
-          ]
-        },
         "gold": {
           "levels": [
             [
@@ -98,12 +79,6 @@
             ],
             [
               10
-            ],
-            [
-              15
-            ],
-            [
-              20
             ],
             [
               25
@@ -116,16 +91,10 @@
               5
             ],
             [
-              10
-            ],
-            [
               15
             ],
             [
-              20
-            ],
-            [
-              25
+              35
             ]
           ]
         }
@@ -148,8 +117,8 @@
       "name": "Max Health",
       "name_key": "node_max_health",
       "position": {
-        "x": -128.0,
-        "y": -80.0
+        "x": -96.0,
+        "y": -128.0
       },
       "prerequisite": {
         "count": 1,
@@ -160,26 +129,26 @@
         "diamond": {
           "levels": [
             [
+              5
+            ],
+            [
               15
             ],
             [
               35
-            ],
-            [
-              50
             ]
           ]
         },
         "gold": {
           "levels": [
             [
+              5
+            ],
+            [
               15
             ],
             [
               35
-            ],
-            [
-              50
             ]
           ]
         },
@@ -192,7 +161,7 @@
               35
             ],
             [
-              50
+              55
             ]
           ]
         }
@@ -209,12 +178,12 @@
       "group_id": "",
       "id": 3,
       "is_root": false,
-      "max_allocations": 3,
-      "name": "Health Regenaration",
+      "max_allocations": 4,
+      "name": "Health Regen",
       "name_key": "node_health_regen",
       "position": {
-        "x": 96.0,
-        "y": -304.0
+        "x": 112.0,
+        "y": -336.0
       },
       "prerequisite": {
         "count": 1,
@@ -225,36 +194,45 @@
         "diamond": {
           "levels": [
             [
-              35
+              5
             ],
             [
-              50
+              10
             ],
             [
-              75
+              15
+            ],
+            [
+              20
             ]
           ]
         },
         "gold": {
           "levels": [
             [
-              35
+              5
             ],
             [
-              50
+              10
             ],
             [
-              35
+              15
+            ],
+            [
+              5
             ]
           ]
         },
-        "health_regenaration": {
+        "health_regen": {
           "levels": [
             [
               5
             ],
             [
-              10
+              8
+            ],
+            [
+              12
             ],
             [
               15

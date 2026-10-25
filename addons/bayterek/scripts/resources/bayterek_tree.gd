@@ -9,7 +9,7 @@ extends Resource
 @export_storage var revealed: bool = true
 @export_storage var allocation: bool = true
 @export_storage var preallocation: bool = true
-@export_storage var multiallocation: bool = false
+@export_storage var multiallocation: bool = true
 @export_storage var chain_connection_mode: bool = true
 
 @export_storage var allocation_confirm: bool = false
@@ -18,10 +18,10 @@ extends Resource
 @export_storage var show_group_frames: bool = true
 @export_storage var group_frame_title_align: int = 0
 
-@export_storage var hover_animations_enabled: bool = true
+@export_storage var hover_animations_enabled: bool = false
 
-@export_storage var tooltip_header_align: int = 0
-@export_storage var tooltip_body_align: int = 0
+@export_storage var tooltip_header_align: int = 1
+@export_storage var tooltip_body_align: int = 1
 @export_storage var tooltip_footer_align: int = 1
 
 @export_storage var size: Vector2 = Vector2(5000, 5000)
@@ -48,6 +48,47 @@ extends Resource
 @export_storage var default_design_id: String = ""
 
 # ============================================================
+# CURRENCY ICON
+# ============================================================
+
+## Multiplier applied to currency icon sizes in the tooltip.
+## 1.0 = native size, 2.0 = double, 0.5 = half.
+@export_storage var currency_icon_scale: float = 1.0
+
+# ============================================================
+# FONT
+# ============================================================
+
+## Font family override. Empty = default theme font.
+## Supported values: "", "monospace", "serif", "sans"
+@export_storage var font_family: String = ""
+
+## Multiplier applied to all text sizes in the tooltip.
+## 1.0 = default size.
+@export_storage var font_size_scale: float = 1.0
+
+# ============================================================
+# RENDERING
+# ============================================================
+
+## When true, the TOOLTIP uses crisp pixel rendering:
+##   - All tooltip icons use NEAREST filtering
+##   - All tooltip text uses NEAREST filtering
+##
+## Does NOT affect node or connection rendering. Use the tree-level
+## `texture_filter` setting for those.
+@export_storage var pixel_art_mode: bool = false
+
+# ============================================================
+# TOOLTIP LAYOUT
+# ============================================================
+
+## When true, the "Level: X / Y" text moves from the footer to the
+## header section (below the node name). When false, it stays in the
+## footer (default behavior).
+@export_storage var level_in_header: bool = false
+
+# ============================================================
 # PURCHASE / ALLOCATION TRIGGER
 # ============================================================
 
@@ -57,26 +98,14 @@ extends Resource
 # ============================================================
 # PURCHASE — VISUAL FEEDBACK
 # ============================================================
-#
-# While the user holds the node, we show progress visually:
-#   0 = NONE           — no visual feedback
-#   1 = CANVAS_BAR     — a bar at the canvas edge fills up
-#   2 = NODE_PROGRESS  — a design layer grows (mode configured on the design)
 
 @export_storage var purchase_visual_mode: int = 1
 
-# Where the canvas bar appears (only used when purchase_visual_mode = CANVAS_BAR):
-#   0 = TOP, 1 = BOTTOM, 2 = LEFT, 3 = RIGHT
 @export_storage var purchase_bar_placement: int = 1
 
 @export_storage var purchase_bar_length: float = 320.0
 @export_storage var purchase_bar_margin: float = 24.0
 
-# Direction of the NODE_PROGRESS animation:
-#   0 = INVISIBLE → VISIBLE  — layer starts at scale 0 (design), grows to 1
-#   1 = VISIBLE → INVISIBLE  — layer starts at scale 1 (design), shrinks to 0
-#
-# In BOTH modes, the layer ends at scale 0 after the hold ends.
 @export_storage var purchase_progress_direction: int = 0
 
 # ============================================================
