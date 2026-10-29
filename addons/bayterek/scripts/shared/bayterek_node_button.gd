@@ -534,6 +534,7 @@ func _is_progress_layer_visible_now() -> bool:
 
 	return tree_data.purchase_progress_direction == 1
 
+
 func _render_layer_node(ln: BayterekLayerNode, base_xform: Transform2D) -> void:
 	if not ln or not is_instance_valid(ln):
 		return
@@ -669,6 +670,15 @@ func _gui_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
 
+	# RUNTIME: sol tık bas/bırak tamamen TreeView._input tarafından
+	# yönetilir. Node kendi sinyallerini emit etmesin.
+	# `_input` zaten `set_input_as_handled()` çağırdığı için bu blok
+	# normalde çalışmaz, ama güvenlik için burada da koruyoruz.
+	if not Engine.is_editor_hint():
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			return
+
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -693,20 +703,13 @@ func _gui_input(event: InputEvent) -> void:
 					pressed.emit()
 				accept_event()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			if event.pressed:
-				# Do NOT accept the event — let it bubble to the tree
-				# view so the camera can start a right-drag pan.
-				# The right_clicked signal is emitted on RELEASE below,
-				# after the camera has had a chance to see the drag.
-				pass
-			else:
-				# On release, emit the signal. The tree view will
-				# filter it out if a drag happened.
+			# Node üzerinde sağ tık: TreeView'ın menüyü açabilmesi için
+			# RELEASE'te sinyal emit ediyoruz. Press/release'i accept
+			# ETMİYORUZ ki event TreeView'a da ulaşsın (pan ve menü
+			# filtresi için gerekli).
+			if not event.pressed:
 				var global_pos: Vector2 = get_global_transform() * event.position
 				right_clicked.emit(self, global_pos)
-				# NOTE: no accept_event() here either — the tree view
-				# needs to see this release to open the generic
-				# context menu when no node was hit.
 
 	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		if not _is_dragging:
@@ -1070,17 +1073,6 @@ func _substitute_placeholders(
 # LEVEL TEXT
 # ------------------------------------------------------------
 
-## Builds the "Level: X / Y" text.
-##
-## This is a plain colored BBCode line. Its PLACEMENT (header vs
-## footer) is decided by `format_tooltip_sections()` based on the
-## tree's `level_in_header` setting.
-##
-## NOTE: we intentionally do NOT wrap this in [center] BBCode.
-## RichTextLabel's horizontal_alignment (set by _set_label_align)
-## already centers the text, and [center] adds extra vertical space
-## in some Godot versions, causing the footer to grow taller when
-## the text length changes (e.g. after allocation).
 func _format_level_text() -> String:
 	if not node_data:
 		return ""

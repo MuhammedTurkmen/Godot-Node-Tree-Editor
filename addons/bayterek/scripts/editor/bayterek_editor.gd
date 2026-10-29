@@ -1579,13 +1579,16 @@ func _on_node_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> vo
 			tree_view.select_node(node)
 
 	_last_click_pos = tree_view.screen_to_tree(screen_pos)
-	context_menu.open_at(screen_pos, _last_click_pos)
+
+	# Node üzerinde sağ tık → "node modu" menüsü (New Node gizli).
+	context_menu.open_for_node(screen_pos, _last_click_pos)
 
 func _on_canvas_right_clicked(global_pos: Vector2, tree_pos: Vector2) -> void:
 	if not context_menu:
 		return
 	_last_click_pos = tree_pos
-	context_menu.open_at(global_pos, tree_pos)
+	# Boşluk sağ tık → "canvas modu" menüsü (New Node dahil).
+	context_menu.open_for_canvas(global_pos, tree_pos)
 
 # ============================================================
 # NODE CREATION (design-based)
@@ -2789,8 +2792,8 @@ func _do_import_from_json(path: String) -> void:
 	confirm.title = "Import from JSON"
 	confirm.dialog_text = (
 		"This will REPLACE the current tree's data with the contents of:\n\n"
-		+ path
-		+ "\n\nThe current in-editor state will be lost. Continue?"
+			+ path
+			+ "\n\nThe current in-editor state will be lost. Continue?"
 	)
 	confirm.ok_button_text = "Import"
 	confirm.cancel_button_text = "Cancel"
@@ -2978,11 +2981,11 @@ func _show_attribute_conflict_dialog() -> void:
 	dialog.title = "Attribute ID Conflict"
 	dialog.dialog_text = (
 		"Some attributes have missing or conflicting IDs.\n\n"
-		+ "Fix & Save will:\n"
-		+ "  • Generate unique IDs from each attribute's Name\n"
-		+ "  • Auto-suffix duplicates with _2, _3, ...\n"
-		+ "  • Migrate all node/prefab references\n\n"
-		+ "Continue?"
+			+ "Fix & Save will:\n"
+			+ "  • Generate unique IDs from each attribute's Name\n"
+			+ "  • Auto-suffix duplicates with _2, _3, ...\n"
+			+ "  • Migrate all node/prefab references\n\n"
+			+ "Continue?"
 	)
 	dialog.ok_button_text = "Fix & Save"
 	dialog.cancel_button_text = "Cancel"

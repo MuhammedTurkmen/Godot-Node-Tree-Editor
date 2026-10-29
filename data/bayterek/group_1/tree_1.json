@@ -1,0 +1,266 @@
+{
+  "allocated": {
+    "levels": {
+      "1": 1,
+      "2": 1,
+      "3": 5,
+      "4": 3
+    },
+    "nodes": [
+      1,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "attributes": {
+    "skills": {
+      "health_regen": {
+        "cumulative": false,
+        "effect": "Effect {C}",
+        "effect_key": "desc_health_regen",
+        "name": "health regen",
+        "name_key": "attr_health_regen",
+        "operation": "add",
+        "value_count": 1
+      },
+      "max_health": {
+        "cumulative": true,
+        "effect": "Effect {C}",
+        "effect_key": "desc_max_health",
+        "name": "max health",
+        "name_key": "attr_max_health",
+        "operation": "add",
+        "value_count": 1
+      }
+    }
+  },
+  "currencies": {
+    "diamond": {
+      "effect": "Effect {C}",
+      "effect_key": "",
+      "name": "diamond",
+      "name_key": "",
+      "refund_differs": false
+    },
+    "gold": {
+      "effect": "Effect {C}",
+      "effect_key": "",
+      "name": "gold",
+      "name_key": "",
+      "refund_differs": false
+    }
+  },
+  "meta": {
+    "format": "bayterek-skill-tree",
+    "tree_id": "tree_1",
+    "tree_name": "Tree 1",
+    "version": 2
+  },
+  "nodes": [
+    {
+      "connections": {
+        "in": [],
+        "out": [
+          4
+        ]
+      },
+      "design_id": "new_design",
+      "group_id": "",
+      "id": 1,
+      "is_root": true,
+      "max_allocations": 3,
+      "name": "Max Health",
+      "name_key": "",
+      "position": {
+        "x": -832.0,
+        "y": 496.0
+      },
+      "prerequisite": {
+        "count": 1,
+        "group_id": "",
+        "mode": "any"
+      },
+      "values": {
+        "gold": {
+          "levels": [
+            [
+              10
+            ],
+            [
+              35
+            ],
+            [
+              65
+            ]
+          ]
+        },
+        "max_health": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              15
+            ],
+            [
+              35
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "connections": {
+        "in": [
+          4
+        ],
+        "out": []
+      },
+      "design_id": "new_design",
+      "group_id": "",
+      "id": 3,
+      "is_root": false,
+      "max_allocations": 5,
+      "name": "Health Regen",
+      "name_key": "",
+      "position": {
+        "x": -592.0,
+        "y": -32.0
+      },
+      "prerequisite": {
+        "count": 1,
+        "group_id": "",
+        "mode": "any"
+      },
+      "values": {
+        "diamond": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              10
+            ],
+            [
+              15
+            ],
+            [
+              20
+            ],
+            [
+              25
+            ]
+          ]
+        },
+        "gold": {
+          "levels": [
+            [
+              10
+            ],
+            [
+              20
+            ],
+            [
+              30
+            ],
+            [
+              40
+            ],
+            [
+              50
+            ]
+          ]
+        },
+        "health_regen": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              10
+            ],
+            [
+              15
+            ],
+            [
+              20
+            ],
+            [
+              25
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "connections": {
+        "in": [
+          1
+        ],
+        "out": [
+          3
+        ]
+      },
+      "design_id": "new_design",
+      "group_id": "",
+      "id": 4,
+      "is_root": false,
+      "max_allocations": 3,
+      "name": "Max Health",
+      "name_key": "",
+      "position": {
+        "x": -832.0,
+        "y": 208.0
+      },
+      "prerequisite": {
+        "count": 1,
+        "group_id": "",
+        "mode": "any"
+      },
+      "values": {
+        "diamond": {
+          "levels": [
+            [
+              15
+            ],
+            [
+              30
+            ],
+            [
+              45
+            ]
+          ]
+        },
+        "gold": {
+          "levels": [
+            [
+              30
+            ],
+            [
+              105
+            ],
+            [
+              195
+            ]
+          ]
+        },
+        "max_health": {
+          "levels": [
+            [
+              45
+            ],
+            [
+              75
+            ],
+            [
+              100
+            ]
+          ]
+        }
+      }
+    }
+  ],
+  "wallet": {}
+}

@@ -1,13 +1,15 @@
 @tool
 class_name BayterekEditorContext
 extends PopupMenu
-## Canvas sağ tık context menüsü.
+## Canvas / node sağ tık context menüsü.
 ##
-## Sahibi BayterekEditor. New Node, Make Root, Duplicate, Save as Prefab,
-## Make Unique, Assign to Group ve Delete aksiyonlarını barındırır.
+## İki mod:
+##   - CANVAS modu → boşluğa sağ tık. Tüm seçenekler görünür (New Node dahil).
+##   - NODE modu   → bir node üzerine sağ tık. New Node öğesi TAMAMEN kaldırılır.
 ##
-## `setup(editor)` çağrıldıktan sonra `open_at(screen_pos, tree_pos)` ile
-## ekranda açılır.
+## Godot 4.7'de `set_item_visible` API'si olmadığı için menüyü her
+## açılışta moda göre sıfırdan kuruyoruz. Bu sayede node modunda
+## "New Node" öğesi ve onu takip eden separator hiç görünmez.
 
 signal new_node_requested(design_id: String, tree_pos: Vector2)
 signal make_root_requested
@@ -21,6 +23,7 @@ signal delete_requested
 signal cleanup_orphans_requested
 
 # Context menu item IDs
+const CM_NEW_NODE := 10
 const CM_SAVE_PREFAB := 100
 const CM_MAKE_UNIQUE := 102
 const CM_DELETE := 103
@@ -43,6 +46,9 @@ var _design_menu_id_to_design_id: Dictionary = {}
 
 var _last_tree_pos: Vector2 = Vector2.ZERO
 
+## True → bu açılış bir node üzerine sağ tık.
+var _node_mode: bool = false
+
 # ============================================================
 # SETUP
 # ============================================================
@@ -51,27 +57,73 @@ func setup(p_editor: BayterekEditor) -> void:
 	editor = p_editor
 	name = "BayterekContextMenu"
 
-	_build_menu()
-
-func _build_menu() -> void:
-	# New Node submenu
+	# Submenüleri bir kere oluştur. Menü açılışında ana menüyü
+	# clear() + yeniden kuracağız ama submenu node'larını koruyacağız.
 	_new_node_submenu = PopupMenu.new()
 	_new_node_submenu.name = "NewNodeSubmenu"
 	_new_node_submenu.id_pressed.connect(_on_new_node_design_selected)
 	_new_node_submenu.about_to_popup.connect(_rebuild_new_node_submenu)
-
 	add_child(_new_node_submenu)
-	add_submenu_node_item("New Node", _new_node_submenu, 0)
-
-	add_separator()
-	add_item("Make Root", CM_MAKE_ROOT)
-	add_item("Duplicate", CM_DUPLICATE)
-	add_separator()
 
 	_group_submenu = PopupMenu.new()
 	_group_submenu.name = "GroupSubmenu"
 	_group_submenu.id_pressed.connect(_on_group_submenu_pressed)
 	add_child(_group_submenu)
+
+	id_pressed.connect(_on_id_pressed)
+
+# ============================================================
+# OPEN — MOD'A GÖRE MENÜYÜ YENİDEN KUR
+# ============================================================
+
+## Boşluğa sağ tık — tüm seçenekler (New Node dahil).
+func open_for_canvas(screen_pos: Vector2, tree_pos: Vector2) -> void:
+	_node_mode = false
+	_last_tree_pos = tree_pos
+	_build_menu()
+	_update_enabled_state()
+
+	position = Vector2i(screen_pos)
+	popup()
+
+
+## Node üzerine sağ tık — New Node ve onu takip eden separator YOK.
+func open_for_node(screen_pos: Vector2, tree_pos: Vector2) -> void:
+	_node_mode = true
+	_last_tree_pos = tree_pos
+	_build_menu()
+	_update_enabled_state()
+
+	position = Vector2i(screen_pos)
+	popup()
+
+
+## Geriye dönük uyumluluk — canvas modu gibi davranır.
+func open_at(screen_pos: Vector2, tree_pos: Vector2) -> void:
+	open_for_canvas(screen_pos, tree_pos)
+
+# ============================================================
+# MENÜ KURULUMU — MOD'A GÖRE
+# ============================================================
+
+func _build_menu() -> void:
+	clear()
+
+	if _node_mode:
+		_build_node_menu()
+	else:
+		_build_canvas_menu()
+
+func _build_canvas_menu() -> void:
+	# New Node (submenu)
+	add_submenu_node_item("New Node", _new_node_submenu, CM_NEW_NODE)
+
+	add_separator()
+
+	add_item("Make Root", CM_MAKE_ROOT)
+	add_item("Duplicate", CM_DUPLICATE)
+	add_separator()
+
 	add_submenu_node_item("Assign to Group", _group_submenu, CM_ASSIGN_GROUP)
 
 	add_separator()
@@ -82,19 +134,21 @@ func _build_menu() -> void:
 	add_separator()
 	add_item("Cleanup Orphan Prefabs", CM_CLEANUP_ORPHANS)
 
-	id_pressed.connect(_on_id_pressed)
+func _build_node_menu() -> void:
+	# NOT: New Node ve onu takip eden separator YOK.
+	add_item("Make Root", CM_MAKE_ROOT)
+	add_item("Duplicate", CM_DUPLICATE)
+	add_separator()
 
-# ============================================================
-# OPEN
-# ============================================================
+	add_submenu_node_item("Assign to Group", _group_submenu, CM_ASSIGN_GROUP)
 
-func open_at(screen_pos: Vector2, tree_pos: Vector2) -> void:
-	_last_tree_pos = tree_pos
-	_update_enabled_state()
-	_rebuild_group_submenu()
-
-	position = Vector2i(screen_pos)
-	popup()
+	add_separator()
+	add_item("Save as Prefab", CM_SAVE_PREFAB)
+	add_item("Make Unique", CM_MAKE_UNIQUE)
+	add_separator()
+	add_item("Delete", CM_DELETE)
+	add_separator()
+	add_item("Cleanup Orphan Prefabs", CM_CLEANUP_ORPHANS)
 
 # ============================================================
 # ENABLED STATE
@@ -127,6 +181,9 @@ func _update_enabled_state() -> void:
 	else:
 		_set_disabled(CM_MAKE_ROOT, true)
 
+	# Group submenu'sini (varsa) güncelle.
+	_rebuild_group_submenu()
+
 func _set_disabled(item_id: int, disabled: bool) -> void:
 	var idx := get_item_index(item_id)
 	if idx >= 0:
@@ -138,6 +195,10 @@ func _set_disabled(item_id: int, disabled: bool) -> void:
 
 func _rebuild_new_node_submenu() -> void:
 	if not _new_node_submenu:
+		return
+
+	# Node modunda New Node submenu hiç açılmaz (menüde yok zaten).
+	if _node_mode:
 		return
 
 	_new_node_submenu.clear()

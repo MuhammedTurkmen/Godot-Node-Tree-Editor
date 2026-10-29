@@ -24,12 +24,6 @@ var deallocation_check: Callable
 var refund_check: Callable
 
 # --- Wallet callbacks (currency / cost integration) ---
-#
-# The host game provides these. Bayterek never stores currency; it
-# just asks "is this affordable?" and "charge / refund this much".
-# All three callbacks receive (attribute_id: String, amount: int).
-#
-# If a callback is not set, the operation is treated as allowed / a no-op.
 var wallet_can_afford: Callable
 var wallet_spend: Callable
 var wallet_refund: Callable
@@ -60,6 +54,12 @@ func load_tree(tree_data: BayterekTree) -> void:
 		return
 	if not _tree_data.tree_state:
 		_tree_data.tree_state = BayterekTreeState.new()
+
+	# RUNTIME: node'lar sıfır levelden başlar. Kaydedilmiş state yüklenmez.
+	# Editor'de state korunur (yoksa editor açılışında her şey sıfırlanırdı).
+	if not Engine.is_editor_hint():
+		_tree_data.tree_state.allocated_nodes.clear()
+		_tree_data.tree_state.allocation_level.clear()
 
 	for node_id in _allocated_nodes:
 		var node: BayterekNodeButton = _tree_view.nodes_service.get_node(node_id)
@@ -104,25 +104,48 @@ func on_node_press_start(node: BayterekNodeButton) -> void:
 	if not _tree_data or not _tree_data.allocation:
 		return
 
+	# Refund modu → refund click
 	if _refund_mode:
 		_handle_refund_click_instant(node)
 		return
 
+	# Preallocation + confirm → preallocation click
 	if _tree_data.preallocation and _tree_data.allocation_confirm:
 		_handle_preallocation_instant(node)
 		return
 
+	# HOLD modu → hold başlat
 	if _tree_data.is_hold_purchase_mode():
 		if _can_allocate(node):
 			_start_hold(node)
 		return
 
-	if _can_allocate(node):
-		_allocate_node(node)
+	# CLICK modu → press_start'ta hiçbir şey yapma.
+	# Satın alma, press_end'de fare node üzerindeyse gerçekleşir.
 
-func on_node_press_end(_node: BayterekNodeButton) -> void:
+func on_node_press_end(node: BayterekNodeButton) -> void:
+	# HOLD: her zaman iptal (süre dolmadıysa). Süre dolduysa zaten
+	# tick_hold içinde _complete_hold çağrılmış olur, _hold_active false olur.
 	if _hold_active:
 		_cancel_hold()
+		return
+
+	# CLICK modu: press_end sadece node üzerinde bırakıldığında emit
+	# edilir (drag yoksa). Buraya geldiysek drag yok → satın al.
+	if not node or not node.node_data or not _tree_data:
+		return
+	if not _tree_data.allocation:
+		return
+	if _refund_mode:
+		return
+	if _tree_data.preallocation and _tree_data.allocation_confirm:
+		return
+	if _tree_data.is_hold_purchase_mode():
+		return
+
+	# CLICK: satın al
+	if _can_allocate(node):
+		_allocate_node(node)
 
 # ============================================================
 # HOLD LOGIC
@@ -179,18 +202,6 @@ func tick_hold(delta: float) -> float:
 # CURRENCY / COST INTEGRATION
 # ============================================================
 
-## Returns an Array of {attr_id, amount} for every currency attribute
-## defined on this node, at the target level.
-##
-## `for_refund` = false → purchase costs
-## `for_refund` = true  → refund values
-##
-## Missing currency attributes are SKIPPED (treated as 0). This makes
-## adding new currencies to an existing tree non-breaking.
-##
-## Defined currency attributes are ALWAYS included, even when their
-## value is 0. A 0 value means "this node is free in this currency"
-## and the tooltip still shows it.
 func _collect_currency_operations(node: BayterekNodeButton, for_refund: bool, level_override: int = -1) -> Array:
 	var result: Array = []
 	if not node or not node.node_data or not _tree_data:
@@ -201,8 +212,6 @@ func _collect_currency_operations(node: BayterekNodeButton, for_refund: bool, le
 		if not attr or not attr.is_currency:
 			continue
 
-		# Missing currency = skip. The node doesn't define this
-		# currency, so it costs nothing of it.
 		if not node.node_data.has_currency_attribute(attr_id):
 			continue
 
@@ -215,11 +224,9 @@ func _collect_currency_operations(node: BayterekNodeButton, for_refund: bool, le
 		else:
 			amount = node.node_data.get_currency_slot(attr_id, BayterekAttribute.SLOT_PURCHASE, level_override)
 
-		# Never negative — sanitize enforces this, but be defensive.
 		if amount < 0:
 			amount = 0
 
-		# Include ALL defined currencies, including 0.
 		result.append({
 			"attr_id": attr_id,
 			"amount": amount,
@@ -232,7 +239,6 @@ func _can_afford_operations(ops: Array) -> bool:
 	if not wallet_can_afford.is_valid():
 		return true
 	for op in ops:
-		# 0 = no transaction, always affordable.
 		if op.amount == 0:
 			continue
 		if not wallet_can_afford.call(op.attr_id, op.amount):
@@ -244,7 +250,6 @@ func _pay_operations(ops: Array) -> void:
 	if not wallet_spend.is_valid():
 		return
 	for op in ops:
-		# 0 = no transaction.
 		if op.amount == 0:
 			continue
 		wallet_spend.call(op.attr_id, op.amount)
@@ -254,7 +259,6 @@ func _refund_operations(ops: Array) -> void:
 	if not wallet_refund.is_valid():
 		return
 	for op in ops:
-		# 0 = no transaction.
 		if op.amount == 0:
 			continue
 		wallet_refund.call(op.attr_id, op.amount)

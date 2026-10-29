@@ -81,19 +81,27 @@ var _purchase_hold_node: BayterekNodeButton = null
 var _right_click_node: BayterekNodeButton = null
 var _right_click_screen_pos: Vector2 = Vector2.ZERO
 
+# --- Runtime pan + purchase state ---
+## True while the user is dragging on empty canvas (runtime only).
+var _runtime_panning: bool = false
+## View-local position where the current runtime pan started.
+var _runtime_pan_start: Vector2 = Vector2.ZERO
+## True once the pointer has moved past the drag threshold.
+var _runtime_pan_moved: bool = false
+## The node the user pressed on (runtime). Null if the press started on
+## empty canvas. Used to decide between "purchase" and "cancel".
+var _runtime_pan_node: BayterekNodeButton = null
+
 # ============================================================
 # FONT BASE SIZES (tooltip)
 # ============================================================
 
-## Base font sizes used by the tooltip BEFORE scaling.
-##
-## These are the canonical sizes that `font_size_scale` multiplies.
-## Storing them here means we ALWAYS compute `base * scale` from
-## scratch, instead of accidentally compounding the scale on every
-## refresh (which caused the "font sizes keep growing" bug).
 const TOOLTIP_BASE_FONT_SIZE := 14
 const TOOLTIP_BASE_HEADER_FONT_SIZE := 16
 const TOOLTIP_BASE_FOOTER_FONT_SIZE := 13
+
+## Pixels the pointer must move before a press turns into a drag.
+const RUNTIME_DRAG_THRESHOLD := 4.0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -320,10 +328,125 @@ func refresh_tooltip_content() -> void:
 # INPUT
 # ============================================================
 
+## Global input hook. Runs BEFORE any `_gui_input()`.
+##
+## This is where runtime pan + purchase live. The reason we use
+## `_input()` instead of `_gui_input()` is that nodes have their own
+## `_gui_input()` and consume mouse events before they bubble up to
+## the tree view. `_input()` sees every event first, so we can always
+## decide what to do with a left-click — regardless of which Control
+## is under the mouse.
+func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+
+	if _is_text_input_focused():
+		return
+
+	# RUNTIME: left-click pan + purchase captured here.
+	if not Engine.is_editor_hint():
+		if _handle_runtime_input_global(event):
+			get_viewport().set_input_as_handled()
+			return
+
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_DELETE:
+			if not selected_nodes.is_empty():
+				delete_selected()
+				get_viewport().set_input_as_handled()
+
+
+## Handles runtime left-click pan + node purchase in global input space.
+##
+## Returns `true` if the event was fully consumed and the viewport
+## should mark it as handled.
+func _handle_runtime_input_global(event: InputEvent) -> bool:
+	if not _tree_data:
+		return false
+
+	var local_pos: Vector2
+
+	if event is InputEventMouseButton or event is InputEventMouseMotion:
+		local_pos = get_global_transform().affine_inverse() * (event as InputEventMouse).global_position
+	else:
+		return false
+
+	# --- LEFT PRESS ---
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		var hit: BayterekNodeButton = _find_node_under_screen_pos(local_pos)
+
+		var allocation_active: bool = _tree_data.allocation
+		var can_interact_with_node: bool = (
+			hit != null
+			and is_instance_valid(hit)
+			and hit.node_data != null
+			and not hit.node_data.locked
+			and allocation_active
+		)
+
+		if can_interact_with_node:
+			_runtime_pan_node = hit
+			_runtime_panning = false
+			_runtime_pan_moved = false
+			_runtime_pan_start = local_pos
+
+			if allocation_service:
+				allocation_service.on_node_press_start(hit)
+			return true
+
+		_runtime_pan_node = null
+		_runtime_panning = true
+		_runtime_pan_moved = false
+		_runtime_pan_start = local_pos
+		return true
+
+	# --- LEFT RELEASE ---
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		if _runtime_pan_node and is_instance_valid(_runtime_pan_node):
+			var node: BayterekNodeButton = _runtime_pan_node
+			_runtime_pan_node = null
+
+			if allocation_service:
+				allocation_service.on_node_press_end(node)
+			return true
+
+		if _runtime_panning:
+			_runtime_panning = false
+			_runtime_pan_moved = false
+			return true
+
+		return false
+
+	# --- MOUSE MOTION ---
+	if event is InputEventMouseMotion:
+		if _runtime_pan_node and is_instance_valid(_runtime_pan_node):
+			if not _runtime_pan_moved and local_pos.distance_to(_runtime_pan_start) > RUNTIME_DRAG_THRESHOLD:
+				_runtime_pan_moved = true
+
+				if _tree_data.is_hold_purchase_mode():
+					if allocation_service:
+						allocation_service.on_node_press_end(_runtime_pan_node)
+					_runtime_pan_node = null
+			return false  # motion should still reach hover/tooltip handlers
+
+		if _runtime_panning:
+			var delta: Vector2 = local_pos - _runtime_pan_start
+			_runtime_pan_start = local_pos
+			_runtime_pan_moved = true
+			if camera:
+				camera.pan(delta)
+			return true
+
+	return false
+
+
 func _gui_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
 
+	var editor_mode: bool = Engine.is_editor_hint()
+
+	# 1. Line-delete mode takes priority (editor only).
 	if connections_service and connections_service.is_line_delete_mode_active():
 		if event is InputEventMouseButton:
 			if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -331,52 +454,52 @@ func _gui_input(event: InputEvent) -> void:
 					accept_event()
 					return
 
+	# 2. Group-frame input (editor only; frames are hidden by default
+	#    in runtime, so this is a no-op there anyway).
 	if _handle_group_frame_input(event):
 		return
 
-	# --- Camera input (handles right-drag pan) ---
-	if camera:
-		camera.input(event)
+	# --- Capture right-drag state BEFORE the camera processes the release.
+	var right_was_dragging: bool = false
+	if editor_mode and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and not event.pressed:
+		right_was_dragging = camera != null and camera.is_right_drag_active()
 
-	if selection_box:
+	# --- Camera input (right-drag pan + wheel zoom; runtime sadece wheel) ---
+	if camera:
+		if editor_mode:
+			camera.input(event)
+		else:
+			if event is InputEventMouseButton and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+				camera.input(event)
+
+	# --- Selection box (sadece editor + sol tık) ---
+	if editor_mode and selection_box:
 		selection_box.handle_input(event)
 
-	# --- Right-click handling ---
-	# On PRESS: remember the node and position so we can decide later
-	# whether it was a click (context menu) or a drag (pan).
-	# On RELEASE: only fire the context menu if the camera says it was
-	# a click (no drag threshold exceeded).
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_RIGHT:
-			if event.pressed:
-				var hit_node: BayterekNodeButton = _find_node_under_screen_pos(event.position)
-				_right_click_node = hit_node
-				_right_click_screen_pos = event.position
-			else:
-				# Release: check if it was a click (no drag).
-				if camera and camera.was_right_click_only():
-					var screen_pos: Vector2 = event.position
-					var node_hit: BayterekNodeButton = _right_click_node
+	# --- Editor: sağ tık context menu (sadece boşluk) ---
+	if editor_mode and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		if event.pressed:
+			var hit: BayterekNodeButton = _find_node_under_screen_pos(event.position)
+			_right_click_node = hit
+			_right_click_screen_pos = event.position
+		else:
+			if not right_was_dragging:
+				var screen_pos: Vector2 = event.position
+				var node_hit: BayterekNodeButton = _right_click_node
 
-					if node_hit and is_instance_valid(node_hit):
-						# Node right-click.
-						var global_pos: Vector2 = get_global_transform() * screen_pos
-						node_right_clicked.emit(node_hit, global_pos)
-					else:
-						# Canvas right-click.
-						var global_pos2: Vector2 = get_global_transform() * screen_pos
-						var tree_pos: Vector2 = screen_to_tree(screen_pos)
-						canvas_right_clicked.emit(global_pos2, tree_pos)
+				if not (node_hit and is_instance_valid(node_hit)):
+					var global_pos2: Vector2 = get_global_transform() * screen_pos
+					var tree_pos: Vector2 = screen_to_tree(screen_pos)
+					canvas_right_clicked.emit(global_pos2, tree_pos)
 
-				_right_click_node = null
-				_right_click_screen_pos = Vector2.ZERO
+			_right_click_node = null
+			_right_click_screen_pos = Vector2.ZERO
 
-
-## Finds the topmost node under a given screen position.
-func _find_node_under_screen_pos(screen_pos: Vector2) -> BayterekNodeButton:
+## Finds the topmost node under a given TREE-VIEW-LOCAL position.
+func _find_node_under_screen_pos(view_local_pos: Vector2) -> BayterekNodeButton:
 	if not nodes_service:
 		return null
-	var mc_pos: Vector2 = screen_to_mc_local(screen_pos)
+	var mc_pos: Vector2 = screen_to_mc_local(view_local_pos)
 	var nodes: Array = nodes_service.get_all_nodes()
 	# Iterate in reverse so the topmost (last added) node wins.
 	for i in range(nodes.size() - 1, -1, -1):
@@ -436,20 +559,6 @@ func _dist_sq_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
 	var t: float = clampf((p - a).dot(ab) / ab_len_sq, 0.0, 1.0)
 	var closest: Vector2 = a + ab * t
 	return (p - closest).length_squared()
-
-
-func _input(event: InputEvent) -> void:
-	if not is_visible_in_tree():
-		return
-
-	if _is_text_input_focused():
-		return
-
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_DELETE:
-			if not selected_nodes.is_empty():
-				delete_selected()
-				get_viewport().set_input_as_handled()
 
 
 func _is_text_input_focused() -> bool:
@@ -645,28 +754,6 @@ func _do_create_connection(from_node: BayterekNodeButton, to_node: BayterekNodeB
 func _do_remove_connection(from_id: int, to_id: int) -> void:
 	connections_service.remove_connection(from_id, to_id)
 	_refresh_all_allocatable_flags()
-
-# ============================================================
-# PRESS START / END (purchase)
-# ============================================================
-
-func _on_node_press_started(node: BayterekNodeButton, _screen_pos: Vector2) -> void:
-	if not node or not node.node_data:
-		return
-	if node.node_data.locked:
-		return
-	if not _is_allocation_active():
-		return
-	if not allocation_service:
-		return
-
-	allocation_service.on_node_press_start(node)
-
-
-func _on_node_press_ended(node: BayterekNodeButton, _screen_pos: Vector2) -> void:
-	if not allocation_service:
-		return
-	allocation_service.on_node_press_end(node)
 
 # ============================================================
 # HOLD TICK
@@ -875,7 +962,7 @@ func _notification(what: int) -> void:
 		_layout_purchase_bar()
 
 # ============================================================
-# MOVEMENT
+# MOVEMENT (EDITOR ONLY)
 # ============================================================
 
 func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) -> void:
@@ -883,7 +970,9 @@ func _on_node_drag_started(node: BayterekNodeButton, mouse_screen_pos: Vector2) 
 		return
 	if node.node_data.locked:
 		return
-	if _is_allocation_active():
+
+	# RUNTIME: node drag YOK. Editor'de serbest.
+	if not Engine.is_editor_hint():
 		return
 
 	if not selected_nodes.has(node):
@@ -1127,8 +1216,6 @@ func _create_services() -> void:
 	nodes_service.node_dragged.connect(_on_node_dragged)
 	nodes_service.node_drag_ended.connect(_on_node_drag_ended)
 	nodes_service.node_right_clicked.connect(_on_nodes_service_right_clicked)
-	nodes_service.node_press_started.connect(_on_node_press_started)
-	nodes_service.node_press_ended.connect(_on_node_press_ended)
 
 	connections_service = BayterekConnectionsService.new(self)
 	connections_service.load_tree(_tree_data)
@@ -1212,13 +1299,6 @@ func _refresh_all_allocatable_flags() -> void:
 # FONT OVERRIDES
 # ============================================================
 
-## Applies the tooltip's font family and size scale.
-##
-## IMPORTANT: We always reset the overrides first, then apply fresh
-## ones based on the CANONICAL base sizes above. This prevents the
-## "font sizes keep growing" bug that happened when the function read
-## `get_theme_font_size()` back (which already included the previous
-## scale) and multiplied it again.
 func _apply_font_overrides() -> void:
 	if not _tree_data or not _tooltip:
 		return
@@ -1228,19 +1308,15 @@ func _apply_font_overrides() -> void:
 	if scale <= 0.0:
 		scale = 1.0
 
-	# 1. Clear previous overrides first. Guarantees a clean slate.
 	_reset_tooltip_font_overrides()
 
-	# 2. If nothing to apply, we're done — defaults are in effect.
 	if family.is_empty() and is_equal_approx(scale, 1.0):
 		return
 
-	# 3. Apply scaled font sizes to each label with its OWN base size.
 	_apply_label_font_size(_tooltip._header_label, TOOLTIP_BASE_HEADER_FONT_SIZE, scale)
 	_apply_label_font_size(_tooltip._body_label, TOOLTIP_BASE_FONT_SIZE, scale)
 	_apply_label_font_size(_tooltip._footer_label, TOOLTIP_BASE_FOOTER_FONT_SIZE, scale)
 
-	# 4. Apply custom font family (if any).
 	if not family.is_empty():
 		var font := _load_theme_font(family)
 		if font:
@@ -1249,9 +1325,6 @@ func _apply_font_overrides() -> void:
 			_apply_label_font_family(_tooltip._footer_label, font)
 
 
-## Applies a specific pixel size to a RichTextLabel, based on a base
-## size and a scale multiplier. Always computes from the base, never
-## compounds.
 func _apply_label_font_size(lbl: RichTextLabel, base_size: int, scale: float) -> void:
 	if not is_instance_valid(lbl):
 		return
@@ -1271,8 +1344,6 @@ func _apply_label_font_family(lbl: RichTextLabel, font: Font) -> void:
 	lbl.add_theme_font_override("mono_font", font)
 
 
-## Removes all theme overrides previously applied to the tooltip's
-## RichTextLabels so we can start from a clean slate on every refresh.
 func _reset_tooltip_font_overrides() -> void:
 	if not _tooltip:
 		return
@@ -1423,8 +1494,17 @@ func _on_nodes_service_node_created(node: BayterekNodeButton) -> void:
 	node_created.emit(node)
 
 func _on_nodes_service_right_clicked(node: BayterekNodeButton, screen_pos: Vector2) -> void:
+	# Runtime'da sağ tık yok.
+	if not Engine.is_editor_hint():
+		return
+
+	if not is_instance_valid(node):
+		return
+
+	# Pan sırasında menü açma.
 	if camera and camera.is_right_drag_active():
 		return
+
 	node_right_clicked.emit(node, screen_pos)
 
 func _on_line_clicked_for_delete(from_id: int, to_id: int) -> void:
