@@ -911,6 +911,12 @@ func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> 
 	if not attribute:
 		return ""
 
+	# Node henüz satın alınmamışsa, {C} ve {P} 0 gösterir. Kullanıcı
+	# için anlamsız olduğu için bu durumda {C}/{P} yerine {N} (bir
+	# sonraki seviye) değerini gösteriyoruz. Yani tooltip
+	# "satın alırsan şu kadar" der.
+	var is_purchased: bool = allocated or allocation_level > 0
+
 	var previous_values: Array = _get_values_at_level(attr_id, allocation_level - 1)
 	var current_values: Array = _get_values_at_level(attr_id, allocation_level)
 
@@ -931,6 +937,11 @@ func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> 
 		next_values     = _get_cumulative_values_at_level(attr_id, next_level)
 
 	var raw_effect: String = _get_effect_text(attribute)
+
+	# Satın alınmamışsa {C}/{P} → {N} (next level) göster.
+	if not is_purchased:
+		raw_effect = raw_effect.replace("{C}", "{N}")
+		raw_effect = raw_effect.replace("{P}", "{N}")
 
 	var formatted: String = _substitute_placeholders(
 		raw_effect,

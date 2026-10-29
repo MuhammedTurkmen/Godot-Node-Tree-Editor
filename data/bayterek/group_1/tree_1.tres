@@ -170,7 +170,7 @@ script = ExtResource("1_immpc")
 is_root = true
 id = 1
 name = "Max Health"
-description = "next: {N}"
+description = "next {N}"
 design_id = "new_design"
 position = Vector2(-832, 496)
 line_data = {
@@ -299,7 +299,7 @@ texture_filter_override = 2
 script = ExtResource("1_immpc")
 id = 3
 name = "Health Regen"
-description = "next: {N}"
+description = "next {N}"
 design_id = "new_design"
 position = Vector2(-592, -32)
 in_nodes = Array[int]([4])
@@ -433,7 +433,7 @@ wiggle_phase_offset = 3.367375450806711
 script = ExtResource("1_immpc")
 id = 4
 name = "Max Health"
-description = "next: {N}"
+description = "next {N}"
 design_id = "new_design"
 position = Vector2(-832, 208)
 line_data = {
@@ -461,5 +461,5 @@ attributes = {
 "health_regen": SubResource("Resource_6p5mu"),
 "max_health": SubResource("Resource_5lgyx")
 }
-hierarchy_split_offset = -631
+hierarchy_split_offset = -582
 prefabs_bar_visible = false

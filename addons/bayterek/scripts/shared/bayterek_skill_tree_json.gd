@@ -246,6 +246,7 @@ static func _dict_to_node(raw: Dictionary) -> BayterekNode:
 	node.id = int(raw.get("id", 0))
 	node.name = String(raw.get("name", ""))
 	node.name_key = String(raw.get("name_key", ""))
+	node.description = String(raw.get("description", ""))   # ← FIX: read description
 	node.design_id = String(raw.get("design_id", ""))
 	node.is_root = bool(raw.get("is_root", false))
 	node.max_allocations = int(raw.get("max_allocations", 1))
@@ -296,6 +297,7 @@ static func _node_to_dict(node: BayterekNode) -> Dictionary:
 		"id": node.id,
 		"name": node.name,
 		"name_key": node.name_key,
+		"description": node.description,   # ← FIX: write description
 		"design_id": node.design_id,
 		"is_root": node.is_root,
 		"max_allocations": node.max_allocations,
