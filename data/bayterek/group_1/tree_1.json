@@ -75,8 +75,8 @@
       "name": "Max Health",
       "name_key": "",
       "position": {
-        "x": -832.0,
-        "y": 496.0
+        "x": -592.0,
+        "y": 784.0
       },
       "prerequisite": {
         "count": 1,
@@ -115,94 +115,10 @@
     {
       "connections": {
         "in": [
-          4
-        ],
-        "out": []
-      },
-      "description": "next {N}",
-      "design_id": "new_design",
-      "group_id": "",
-      "id": 3,
-      "is_root": false,
-      "max_allocations": 5,
-      "name": "Health Regen",
-      "name_key": "",
-      "position": {
-        "x": -592.0,
-        "y": -32.0
-      },
-      "prerequisite": {
-        "count": 1,
-        "group_id": "",
-        "mode": "any"
-      },
-      "values": {
-        "diamond": {
-          "levels": [
-            [
-              5
-            ],
-            [
-              10
-            ],
-            [
-              15
-            ],
-            [
-              20
-            ],
-            [
-              25
-            ]
-          ]
-        },
-        "gold": {
-          "levels": [
-            [
-              10
-            ],
-            [
-              20
-            ],
-            [
-              30
-            ],
-            [
-              40
-            ],
-            [
-              50
-            ]
-          ]
-        },
-        "health_regen": {
-          "levels": [
-            [
-              5
-            ],
-            [
-              10
-            ],
-            [
-              15
-            ],
-            [
-              20
-            ],
-            [
-              25
-            ]
-          ]
-        }
-      }
-    },
-    {
-      "connections": {
-        "in": [
           1
         ],
         "out": [
-          3
+          6
         ]
       },
       "description": "next {N}",
@@ -214,8 +130,74 @@
       "name": "Max Health",
       "name_key": "",
       "position": {
-        "x": -832.0,
-        "y": 208.0
+        "x": -544.0,
+        "y": 560.0
+      },
+      "prerequisite": {
+        "count": 1,
+        "group_id": "",
+        "mode": "any"
+      },
+      "values": {
+        "diamond": {
+          "levels": [
+            [
+              15
+            ],
+            [
+              30
+            ],
+            [
+              45
+            ]
+          ]
+        },
+        "gold": {
+          "levels": [
+            [
+              30
+            ],
+            [
+              105
+            ],
+            [
+              195
+            ]
+          ]
+        },
+        "max_health": {
+          "levels": [
+            [
+              45
+            ],
+            [
+              75
+            ],
+            [
+              100
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "connections": {
+        "in": [
+          4
+        ],
+        "out": []
+      },
+      "description": "next {N}",
+      "design_id": "new_design",
+      "group_id": "",
+      "id": 6,
+      "is_root": false,
+      "max_allocations": 3,
+      "name": "Health Regen",
+      "name_key": "",
+      "position": {
+        "x": -320.0,
+        "y": 336.0
       },
       "prerequisite": {
         "count": 1,

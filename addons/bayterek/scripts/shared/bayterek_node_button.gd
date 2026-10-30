@@ -766,12 +766,13 @@ func format_tooltip_sections() -> Dictionary:
 		if not mode_text.is_empty():
 			body_parts.append("[color=#c9a227]%s[/color]" % mode_text)
 
-	var attrs_text: String = _format_attributes()
+	# === ATTRIBUTE DESCRIPTIONS ===
+	# node_data.description artık burada EKLENMİYOR. Sadece attribute
+	# description'ları üretiliyor; node description fallback olarak
+	# _format_attribute_descriptions() içinde kullanılıyor.
+	var attrs_text: String = _format_attribute_descriptions()
 	if not attrs_text.is_empty():
 		body_parts.append(attrs_text)
-
-	if not node_data.description.is_empty():
-		body_parts.append("[color=orange]%s[/color]" % node_data.description)
 
 	body = "\n\n".join(body_parts)
 
@@ -889,34 +890,91 @@ static func _is_cumulative_op(op: BayterekAttribute.Operation) -> bool:
 	return op == BayterekAttribute.Operation.ADD \
 		or op == BayterekAttribute.Operation.SUBTRACT
 
-func _format_attributes() -> String:
+# ============================================================
+# ATTRIBUTE DESCRIPTION FORMATTING (yeni)
+# ============================================================
+
+## Her non-currency attribute için ayrı description satırı üretir.
+##
+## Öncelik sırası (attribute başına):
+##   1. attribute.effect_key varsa → GameLocalization.get_raw_text(effect_key)
+##   2. attribute.effect doluysa → onu kullan
+##   3. node_data.description doluysa → onu kullan (ortak fallback)
+##   4. Hiçbiri yoksa → "{attr_name} next: {N0}" otomatik format
+##
+## Placeholder formatları:
+##   {P}, {C}, {N}        → 0. slot
+##   {P0}, {C0}, {N0}     → belirli slot index
+##   {P1}, {C1}, {N1}     → 1. slot
+##   {<attr_id>_p0}, ...  → belirli attribute + slot (örn: {max_health_c0})
+##   {attr_name}          → attribute görünen adı
+func _format_attribute_descriptions() -> String:
 	if not node_data or not tree_data:
 		return ""
 
-	var result: String = ""
+	var lines: Array[String] = []
 
+	# Aktif non-currency attribute id'leri (alfabetik — deterministik sıra)
+	var active_attr_ids: Array[String] = []
 	for attr_id in node_data.attributes.keys():
 		if not tree_data.attributes.has(attr_id):
 			continue
-		var attribute: BayterekAttribute = tree_data.attributes[attr_id]
-		if attribute.is_currency:
+		var attr: BayterekAttribute = tree_data.attributes[attr_id]
+		if not attr or attr.is_currency:
 			continue
-		result += _format_single_attribute(attribute, attr_id)
-		result += "\n"
+		active_attr_ids.append(attr_id)
+	active_attr_ids.sort()
 
-	return result.strip_edges()
+	# Node description fallback (tüm attribute'lar için ortak)
+	var node_desc_fallback: String = node_data.description.strip_edges()
+
+	for attr_id in active_attr_ids:
+		var attribute: BayterekAttribute = tree_data.attributes[attr_id]
+		if not attribute:
+			continue
+
+		# Description kaynağını belirle
+		var raw_effect: String = _get_effect_text(attribute)
+
+		if raw_effect.strip_edges().is_empty():
+			if not node_desc_fallback.is_empty():
+				raw_effect = node_desc_fallback
+			else:
+				# Son çare: otomatik format
+				raw_effect = "{attr_name} next: {N0}"
+
+		# {attr_name} → attribute görünen adı
+		raw_effect = raw_effect.replace("{attr_name}", attribute.get_display_name())
+
+		# Placeholder'ları doldur
+		var formatted: String = _substitute_attribute_placeholders(raw_effect, attr_id, attribute)
+
+		if formatted.strip_edges().is_empty():
+			continue
+
+		lines.append("[color=#8a8aff]%s[/color]" % formatted)
+
+	return "\n".join(lines)
 
 
-func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> String:
-	if not attribute:
+## Belirli bir attribute için {P}/{C}/{N} ve {P0}/{C0}/{N0} placeholder'larını
+## o attribute'un kendi değerleriyle doldurur.
+##
+## Satın alınmamış node'larda {P} ve {C} otomatik olarak {N}'e dönüşür
+## (yani tooltip "satın alırsan şu kadar" der).
+func _substitute_attribute_placeholders(
+	effect: String,
+	attr_id: String,
+	attribute: BayterekAttribute
+) -> String:
+	if effect.is_empty() or not attribute:
 		return ""
 
-	# Node henüz satın alınmamışsa, {C} ve {P} 0 gösterir. Kullanıcı
-	# için anlamsız olduğu için bu durumda {C}/{P} yerine {N} (bir
-	# sonraki seviye) değerini gösteriyoruz. Yani tooltip
-	# "satın alırsan şu kadar" der.
+	var normalized: String = effect.replace("\\n", "\n")
+
 	var is_purchased: bool = allocated or allocation_level > 0
 
+	# Level değerleri
 	var previous_values: Array = _get_values_at_level(attr_id, allocation_level - 1)
 	var current_values: Array = _get_values_at_level(attr_id, allocation_level)
 
@@ -931,30 +989,157 @@ func _format_single_attribute(attribute: BayterekAttribute, attr_id: String) -> 
 
 	var next_values: Array = _get_values_at_level(attr_id, next_level)
 
+	# Cumulative mode
 	if attribute.cumulative and _is_multiallocation() and _is_cumulative_op(attribute.operation):
 		previous_values = _get_cumulative_values_at_level(attr_id, allocation_level - 1)
 		current_values  = _get_cumulative_values_at_level(attr_id, allocation_level)
 		next_values     = _get_cumulative_values_at_level(attr_id, next_level)
 
-	var raw_effect: String = _get_effect_text(attribute)
-
-	# Satın alınmamışsa {C}/{P} → {N} (next level) göster.
+	# Satın alınmamışsa {C}/{P} → {N}
 	if not is_purchased:
-		raw_effect = raw_effect.replace("{C}", "{N}")
-		raw_effect = raw_effect.replace("{P}", "{N}")
+		normalized = normalized.replace("{C}", "{N}")
+		normalized = normalized.replace("{P}", "{N}")
 
-	var formatted: String = _substitute_placeholders(
-		raw_effect,
-		previous_values,
-		current_values,
-		next_values
-	)
+	# --- {P0}, {C1}, {N2} gibi slot-index'li placeholder'lar ---
+	var regex_slot := RegEx.new()
+	regex_slot.compile("\\{([PCN])(\\d+)\\}")
+	var matches_slot: Array = regex_slot.search_all(normalized)
+	var replacements: Array = []
+	for m in matches_slot:
+		var letter: String = m.get_string(1)
+		var slot: int = int(m.get_string(2))
+		var values: Array = []
+		match letter:
+			"P": values = previous_values
+			"C": values = current_values
+			"N": values = next_values
+		var value: int = 0
+		if slot >= 0 and slot < values.size():
+			value = int(values[slot])
+		replacements.append({
+			"start": m.get_start(),
+			"end": m.get_end(),
+			"replacement": str(value),
+		})
+	replacements.reverse()
+	var result: String = normalized
+	for r in replacements:
+		result = result.substr(0, r["start"]) + r["replacement"] + result.substr(r["end"])
 
-	if formatted.strip_edges().is_empty():
-		return ""
+	# --- Basit {P}, {C}, {N} → 0. slot ---
+	var regex_plain := RegEx.new()
+	regex_plain.compile("\\{([PCN])\\}")
+	var matches_plain: Array = regex_plain.search_all(result)
+	replacements.clear()
+	for m in matches_plain:
+		var letter: String = m.get_string(1)
+		var values: Array = []
+		match letter:
+			"P": values = previous_values
+			"C": values = current_values
+			"N": values = next_values
+		var value: int = 0
+		if values.size() > 0:
+			value = int(values[0])
+		replacements.append({
+			"start": m.get_start(),
+			"end": m.get_end(),
+			"replacement": str(value),
+		})
+	replacements.reverse()
+	for r in replacements:
+		result = result.substr(0, r["start"]) + r["replacement"] + result.substr(r["end"])
 
-	return "[color=#8a8aff]%s[/color]" % formatted
+	# --- {<attr_id>_p}, {<attr_id>_c0}, {<attr_id>_n2} gibi attribute bazlı ---
+	result = _substitute_attribute_specific_placeholders(result, attr_id)
 
+	return result
+
+
+## {<attr_id>_p}, {<attr_id>_c0}, {<attr_id>_n2} gibi attribute'a özel
+## placeholder'ları doldurur. Sadece mevcut attribute'un değerlerini kullanır
+## (cross-attribute referans gerekirse tree_data.attributes üzerinden
+## genişletilebilir).
+func _substitute_attribute_specific_placeholders(text: String, attr_id: String) -> String:
+	var attribute: BayterekAttribute = tree_data.attributes.get(attr_id, null)
+	if not attribute:
+		return text
+
+	var is_purchased: bool = allocated or allocation_level > 0
+
+	var prev_vals: Array = _get_values_at_level(attr_id, allocation_level - 1)
+	var curr_vals: Array = _get_values_at_level(attr_id, allocation_level)
+
+	var next_level: int = allocation_level + 1
+	if _is_multiallocation():
+		var max_lvl: int = node_data.max_allocations if node_data else 0
+		if max_lvl > 0 and next_level > max_lvl:
+			next_level = max_lvl
+	else:
+		if next_level > 1:
+			next_level = 1
+
+	var next_vals: Array = _get_values_at_level(attr_id, next_level)
+
+	if attribute.cumulative and _is_multiallocation() and _is_cumulative_op(attribute.operation):
+		prev_vals = _get_cumulative_values_at_level(attr_id, allocation_level - 1)
+		curr_vals = _get_cumulative_values_at_level(attr_id, allocation_level)
+		next_vals = _get_cumulative_values_at_level(attr_id, next_level)
+
+	# --- {<attr_id>_p}, {<attr_id>_c}, {<attr_id>_n} — slot yok, 0. slot ---
+	var regex_no_slot := RegEx.new()
+	regex_no_slot.compile("\\{%s_([pcn])\\}" % attr_id)
+	var matches: Array = regex_no_slot.search_all(text)
+	var replacements: Array = []
+	for m in matches:
+		var letter: String = m.get_string(1).to_lower()
+		var vals: Array = []
+		match letter:
+			"p": vals = prev_vals
+			"c": vals = curr_vals
+			"n": vals = next_vals
+		if not is_purchased and (letter == "p" or letter == "c"):
+			vals = next_vals
+		var value: int = 0
+		if vals.size() > 0:
+			value = int(vals[0])
+		replacements.append({
+			"start": m.get_start(),
+			"end": m.get_end(),
+			"replacement": str(value),
+		})
+	replacements.reverse()
+	for r in replacements:
+		text = text.substr(0, r["start"]) + r["replacement"] + text.substr(r["end"])
+
+	# --- {<attr_id>_p0}, {<attr_id>_c1}, {<attr_id>_n2} — slot index'li ---
+	var regex_slot := RegEx.new()
+	regex_slot.compile("\\{%s_([pcn])(\\d+)\\}" % attr_id)
+	var matches2: Array = regex_slot.search_all(text)
+	replacements.clear()
+	for m in matches2:
+		var letter: String = m.get_string(1).to_lower()
+		var slot: int = int(m.get_string(2))
+		var vals: Array = []
+		match letter:
+			"p": vals = prev_vals
+			"c": vals = curr_vals
+			"n": vals = next_vals
+		if not is_purchased and (letter == "p" or letter == "c"):
+			vals = next_vals
+		var value: int = 0
+		if slot >= 0 and slot < vals.size():
+			value = int(vals[slot])
+		replacements.append({
+			"start": m.get_start(),
+			"end": m.get_end(),
+			"replacement": str(value),
+		})
+	replacements.reverse()
+	for r in replacements:
+		text = text.substr(0, r["start"]) + r["replacement"] + text.substr(r["end"])
+
+	return text
 
 func _get_effect_text(attribute: BayterekAttribute) -> String:
 	if not attribute:
@@ -1027,57 +1212,6 @@ func _get_cumulative_values_at_level(attr_id: String, level: int) -> Array:
 		var lvl_vals: Array = raw[l]
 		for i in mini(slot_count, lvl_vals.size()):
 			result[i] += int(lvl_vals[i])
-	return result
-
-
-func _substitute_placeholders(
-	effect: String,
-	previous_values: Array,
-	current_values: Array,
-	next_values: Array
-) -> String:
-	if effect.is_empty():
-		return ""
-
-	var normalized: String = effect.replace("\\n", "\n")
-
-	var regex := RegEx.new()
-	regex.compile("\\{([PCN])(\\d*)\\}")
-
-	var matches: Array = regex.search_all(normalized)
-
-	var replacements: Array = []
-	for m in matches:
-		var letter: String = m.get_string(1)
-		var index_str: String = m.get_string(2)
-		var slot: int = 0 if index_str.is_empty() else int(index_str)
-		replacements.append({
-			"start": m.get_start(),
-			"end": m.get_end(),
-			"letter": letter,
-			"slot": slot,
-		})
-
-	replacements.reverse()
-
-	var result: String = normalized
-	for r in replacements:
-		var letter: String = r["letter"]
-		var slot: int = r["slot"]
-		var values: Array = []
-		match letter:
-			"P": values = previous_values
-			"C": values = current_values
-			"N": values = next_values
-
-		var value: int = 0
-		if slot >= 0 and slot < values.size():
-			value = int(values[slot])
-
-		var start: int = r["start"]
-		var end: int = r["end"]
-		result = result.substr(0, start) + str(value) + result.substr(end)
-
 	return result
 
 # ------------------------------------------------------------

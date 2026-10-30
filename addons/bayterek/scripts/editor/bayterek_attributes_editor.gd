@@ -210,7 +210,16 @@ func _build_ui() -> void:
 	effect_label.text = "Effect"
 	effect_label.custom_minimum_size = Vector2(60, 0)
 	effect_label.size_flags_vertical = 0
-	effect_label.tooltip_text = "Fallback text when no Effect Key is set.\nUse {P}, {C}, {N} for previous/current/next level values.\nUse {C0}, {C1} for specific value slots."
+	effect_label.tooltip_text = (
+		"Fallback text when no Effect Key is set.\n\n"
+		+ "Placeholders:\n"
+		+ "  {P}, {C}, {N}      → 0. slot (previous/current/next)\n"
+		+ "  {P0}, {C0}, {N0}   → belirli slot\n"
+		+ "  {P1}, {C1}, {N1}   → 2. slot\n"
+		+ "  {attr_name}        → attribute görünen adı\n\n"
+		+ "Bu attribute'un effect'i boşsa node description kullanılır.\n"
+		+ "O da boşsa '{attr_name} next: {N0}' otomatik üretilir."
+	)
 	effect_row.add_child(effect_label)
 	_effect_input = TextEdit.new()
 	_effect_input.custom_minimum_size = Vector2(0, 60)

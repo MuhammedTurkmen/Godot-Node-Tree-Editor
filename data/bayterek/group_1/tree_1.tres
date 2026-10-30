@@ -172,7 +172,7 @@ id = 1
 name = "Max Health"
 description = "next {N}"
 design_id = "new_design"
-position = Vector2(-832, 496)
+position = Vector2(-592, 784)
 line_data = {
 4: SubResource("Resource_l2tvo")
 }
@@ -296,26 +296,37 @@ transform = SubResource("Resource_3cysg")
 texture_filter_override = 2
 
 [sub_resource type="Resource" id="Resource_safsq"]
-script = ExtResource("1_immpc")
-id = 3
-name = "Health Regen"
-description = "next {N}"
-design_id = "new_design"
-position = Vector2(-592, -32)
-in_nodes = Array[int]([4])
-attributes = {
-"diamond": [[5], [10], [15], [20], [25]],
-"gold": [[10], [20], [30], [40], [50]],
-"health_regen": [[5], [10], [15], [20], [25]]
-}
-max_allocations = 5
-layers = Array[ExtResource("3_e1v5k")]([SubResource("Resource_tmiro"), SubResource("Resource_mklcx")])
+script = ExtResource("9_qlprm")
+start_offset = 8.0
+end_offset = 12.0
+texture_mode = 1
+wiggle_phase_offset = 3.116090222991194
 
 [sub_resource type="Resource" id="Resource_ss5fq"]
+script = ExtResource("1_immpc")
+id = 4
+name = "Max Health"
+description = "next {N}"
+design_id = "new_design"
+position = Vector2(-544, 560)
+line_data = {
+6: SubResource("Resource_safsq")
+}
+out_nodes = Array[int]([6])
+in_nodes = Array[int]([1])
+attributes = {
+"diamond": [[15], [30], [45]],
+"gold": [[30], [105], [195]],
+"max_health": [[45], [75], [100]]
+}
+max_allocations = 3
+layers = Array[ExtResource("3_e1v5k")]([SubResource("Resource_tmiro"), SubResource("Resource_mklcx")])
+
+[sub_resource type="Resource" id="Resource_botrw"]
 script = ExtResource("6_qlprm")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_botrw"]
+[sub_resource type="Resource" id="Resource_67hed"]
 script = ExtResource("5_royti")
 icon_configs = {
 "normal": {
@@ -363,15 +374,15 @@ tint_configs = {
 }
 layer_id = "dddcc57b-3256-49d3-91a5-ced95b3e14fa"
 layer_name = "Texture 1"
-transform = SubResource("Resource_ss5fq")
+transform = SubResource("Resource_botrw")
 render_mode_override = 2
 texture_filter_override = 2
 
-[sub_resource type="Resource" id="Resource_67hed"]
+[sub_resource type="Resource" id="Resource_vn7yg"]
 script = ExtResource("6_qlprm")
 size = Vector2(100, 100)
 
-[sub_resource type="Resource" id="Resource_vn7yg"]
+[sub_resource type="Resource" id="Resource_bjop0"]
 script = ExtResource("5_royti")
 icon_configs = {
 "normal": {
@@ -419,47 +430,36 @@ tint_configs = {
 }
 layer_id = "c7f47cbc-9946-4780-a70e-b9b609bf0c4b"
 layer_name = "Texture 2"
-transform = SubResource("Resource_67hed")
+transform = SubResource("Resource_vn7yg")
 texture_filter_override = 2
-
-[sub_resource type="Resource" id="Resource_bjop0"]
-script = ExtResource("9_qlprm")
-start_offset = 8.0
-end_offset = 12.0
-texture_mode = 1
-wiggle_phase_offset = 3.367375450806711
 
 [sub_resource type="Resource" id="Resource_pvlmy"]
 script = ExtResource("1_immpc")
-id = 4
-name = "Max Health"
+id = 6
+name = "Health Regen"
 description = "next {N}"
 design_id = "new_design"
-position = Vector2(-832, 208)
-line_data = {
-3: SubResource("Resource_bjop0")
-}
-out_nodes = Array[int]([3])
-in_nodes = Array[int]([1])
+position = Vector2(-320, 336)
+in_nodes = Array[int]([4])
 attributes = {
 "diamond": [[15], [30], [45]],
 "gold": [[30], [105], [195]],
 "max_health": [[45], [75], [100]]
 }
 max_allocations = 3
-layers = Array[ExtResource("3_e1v5k")]([SubResource("Resource_botrw"), SubResource("Resource_vn7yg")])
+layers = Array[ExtResource("3_e1v5k")]([SubResource("Resource_67hed"), SubResource("Resource_bjop0")])
 
 [resource]
 script = ExtResource("4_ak1rv")
 id = "tree_1"
 name = "Tree 1"
-id_counter = 4
-nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_k0kgc"), SubResource("Resource_safsq"), SubResource("Resource_pvlmy")])
+id_counter = 6
+nodes = Array[ExtResource("1_immpc")]([SubResource("Resource_k0kgc"), SubResource("Resource_ss5fq"), SubResource("Resource_pvlmy")])
 attributes = {
 "diamond": SubResource("Resource_royti"),
 "gold": SubResource("Resource_qlprm"),
 "health_regen": SubResource("Resource_6p5mu"),
 "max_health": SubResource("Resource_5lgyx")
 }
-hierarchy_split_offset = -582
+hierarchy_split_offset = -487
 prefabs_bar_visible = false

@@ -355,11 +355,16 @@ func _input(event: InputEvent) -> void:
 				delete_selected()
 				get_viewport().set_input_as_handled()
 
-
 ## Handles runtime left-click pan + node purchase in global input space.
 ##
 ## Returns `true` if the event was fully consumed and the viewport
 ## should mark it as handled.
+##
+## IMPORTANT: We must NOT consume clicks that land on OTHER Controls
+## (toolbar buttons, HUD panels, overlays). `_input()` runs before any
+## `_gui_input()`, so consuming here would starve every sibling UI.
+## To prevent that, we only capture a left-click if it actually lands
+## inside this TreeView's rect AND no higher-z Control is on top of it.
 func _handle_runtime_input_global(event: InputEvent) -> bool:
 	if not _tree_data:
 		return false
@@ -373,6 +378,11 @@ func _handle_runtime_input_global(event: InputEvent) -> bool:
 
 	# --- LEFT PRESS ---
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		# If the click landed on another Control (toolbar, HUD, overlay),
+		# let that Control handle it — do not capture.
+		if _is_pointer_over_other_control(local_pos):
+			return false
+
 		var hit: BayterekNodeButton = _find_node_under_screen_pos(local_pos)
 
 		var allocation_active: bool = _tree_data.allocation
@@ -439,6 +449,37 @@ func _handle_runtime_input_global(event: InputEvent) -> bool:
 
 	return false
 
+## Returns true if `view_local_pos` (TreeView-local coordinates) is
+## covered by another Control that is NOT a descendant of this TreeView.
+##
+## We walk the viewport's GUI tree from top (highest z / last child) to
+## bottom, looking for the first Control under the pointer. If that
+## Control is outside our own subtree, the click belongs to someone
+## else (toolbar, HUD, overlay) and we must not intercept it.
+func _is_pointer_over_other_control(view_local_pos: Vector2) -> bool:
+	var vp: Viewport = get_viewport()
+	if not vp:
+		return false
+
+	var global_pos: Vector2 = get_global_transform() * view_local_pos
+
+	# `gui_get_hovered_control()` returns the deepest Control under the
+	# mouse. It respects z_index, mouse_filter = STOP/PASS, and clipping.
+	# This is the single most reliable way to know whether another
+	# widget is above us — no manual tree walking needed.
+	var hovered: Control = vp.gui_get_hovered_control()
+	if not hovered:
+		return false
+	if hovered == self:
+		return false
+
+	# Is `hovered` inside our own subtree? If so, it's a child of this
+	# TreeView (e.g. the tooltip, selection box) — that's fine, we own it.
+	if is_ancestor_of(hovered):
+		return false
+
+	# A foreign Control is on top of us → don't intercept.
+	return true
 
 func _gui_input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
