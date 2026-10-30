@@ -32,7 +32,7 @@ func _ready() -> void:
 func get_registry() -> BayterekRegistry:
 	return _registry
 
-func load_tree(path: String, as_unique: bool = false) -> BayterekTree:
+func load_tree(path: String, as_unique: bool = false, force_reload: bool = false) -> BayterekTree:
 	if not _registry:
 		push_error("Bayterek: registry not loaded.")
 		return null
@@ -44,6 +44,14 @@ func load_tree(path: String, as_unique: bool = false) -> BayterekTree:
 			if key == lower:
 				if as_unique:
 					return tree.duplicate(true) as BayterekTree
+				if force_reload and not tree.resource_path.is_empty():
+					var fresh = ResourceLoader.load(
+						tree.resource_path,
+						"BayterekTree",
+						ResourceLoader.CACHE_MODE_IGNORE
+					)
+					if fresh is BayterekTree:
+						return fresh
 				return tree
 
 	push_error("Bayterek: tree not found in registry: '%s'" % path)

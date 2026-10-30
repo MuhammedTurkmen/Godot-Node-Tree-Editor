@@ -40,7 +40,7 @@ func _ready() -> void:
 
 	var path: String = "%s/%s" % [GROUP_NAME, TREE_NAME]
 	print("[READY] loading tree: ", path)
-	_tree_data = loader.call("load_tree", path)
+	_tree_data = loader.call("load_tree", path, false, true)
 	print("[READY] tree loaded: ", _tree_data)
 	if not _tree_data:
 		push_error("Tree not found: %s" % path)

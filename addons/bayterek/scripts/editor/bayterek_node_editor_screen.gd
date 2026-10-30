@@ -66,9 +66,11 @@ func _exit_tree() -> void:
 
 	_undo_redo = null
 
-
 func _process(delta: float) -> void:
 	if _is_shutting_down:
+		return
+	# Görünür değilse (Script tab'ı vb.) autosave timer'ı dondur.
+	if not is_visible_in_tree():
 		return
 	if _autosave_countdown <= 0.0:
 		return
@@ -81,7 +83,6 @@ func _process(delta: float) -> void:
 	if DEBUG_AUTOSAVE:
 		print("[Autosave] debounce elapsed → _flush_save()")
 	_flush_save()
-
 
 func _build_ui() -> void:
 	_main_split = HSplitContainer.new()

@@ -172,7 +172,7 @@ id = 1
 name = "Max Health"
 description = "next {N}"
 design_id = "new_design"
-position = Vector2(-592, 784)
+position = Vector2(-544, 784)
 line_data = {
 4: SubResource("Resource_l2tvo")
 }

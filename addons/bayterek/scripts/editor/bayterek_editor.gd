@@ -1806,6 +1806,9 @@ func _do_set_node_root(node_ids: Array, root_flags: Array) -> void:
 # ============================================================
 
 func _input(event: InputEvent) -> void:
+	# Görünür değilse hiçbir input işleme (Script tab'ı vb.).
+	if not is_visible_in_tree():
+		return
 	if not _shortcuts:
 		return
 
@@ -2734,6 +2737,8 @@ func _perform_save() -> void:
 		var json_err: Error = loader.save_tree_to_json(tree)
 		if json_err != OK:
 			BayterekLogger.warn("JSON mirror save failed (%d)" % json_err, "editor")
+			if tree_view:
+				BayterekToast.warning(tree_view, "JSON mirror save failed (err %d)" % json_err)
 		else:
 			var json_path: String = loader.get_tree_json_path(tree)
 			BayterekLogger.info("JSON mirror saved: %s" % json_path, "editor")

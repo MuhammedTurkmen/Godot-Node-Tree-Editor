@@ -434,7 +434,12 @@ func _create_node_button(node_data: BayterekNode) -> BayterekNodeButton:
 	return node
 
 func _position_node(node: BayterekNodeButton, pos_in_tree: Vector2) -> void:
-	var local_pos: Vector2 = pos_in_tree + (_tree_data.size * 0.5) - (node.size * 0.5)
+	var node_size: Vector2 = node.custom_minimum_size
+	if node_size.x <= 0.0 or node_size.y <= 0.0:
+		node_size = node.size
+	if node_size.x <= 0.0 or node_size.y <= 0.0:
+		node_size = Vector2(100, 100)
+	var local_pos: Vector2 = pos_in_tree + (_tree_data.size * 0.5) - (node_size * 0.5)
 	node.position = local_pos
 
 func _connect_node_signals(node: BayterekNodeButton) -> void:
