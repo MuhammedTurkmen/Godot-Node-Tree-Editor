@@ -102,6 +102,15 @@ func init() -> void:
 	_build_ui()
 	_undo_helper = UndoHelper.new(self)
 	_show_empty()
+
+	_preview_collapsed = true
+	_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
+	_preview_panel.visible = false
+	_preview_title.visible = false
+	_preview_toggle_btn.text = "◀"
+	_inner_split.split_offset = -PREVIEW_COLLAPSED
+	_inner_split.queue_sort()
+
 	print("[BayterekLocalizationEditor] ready.")
 
 # ============================================================
@@ -125,7 +134,7 @@ func _build_ui() -> void:
 	_inner_split.name = "InnerSplit"
 	_inner_split.size_flags_horizontal = SIZE_EXPAND_FILL
 	_inner_split.size_flags_vertical = SIZE_EXPAND_FILL
-	_inner_split.split_offset = -PREVIEW_EXPANDED
+	_inner_split.split_offset = -PREVIEW_COLLAPSED
 	_outer_split.add_child(_inner_split)
 
 	_build_main_panel()
@@ -870,6 +879,13 @@ func _sync_row_heights(row_id: String) -> void:
 	for c in [key_cell, orig_cell, trans_cell]:
 		if c is BayterekLocalizationKeyRow and is_instance_valid(c):
 			c.custom_minimum_size.y = max_h
+
+	if _key_content:
+		_key_content.queue_sort()
+	if _original_content:
+		_original_content.queue_sort()
+	if _translation_content:
+		_translation_content.queue_sort()
 
 # ============================================================
 # AUTO-COMPLETE KEY PROVIDER

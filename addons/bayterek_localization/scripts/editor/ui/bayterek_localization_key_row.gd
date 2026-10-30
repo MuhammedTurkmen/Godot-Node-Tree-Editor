@@ -136,6 +136,7 @@ func _build_key_cell() -> void:
 	_key_edit.size_flags_horizontal = SIZE_EXPAND_FILL
 	_key_edit.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
 	_key_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	# We manage height manually (grow AND shrink).
 	_key_edit.scroll_fit_content_height = true
 	_key_edit.scroll_vertical = 0
 	_key_edit.scroll_horizontal = 0
@@ -145,6 +146,26 @@ func _build_key_cell() -> void:
 	_key_edit.focus_exited.connect(_on_key_focus_exited)
 	_key_edit.text_changed.connect(_on_key_text_changed)
 	add_child(_key_edit)
+
+	_key_edit.resized.connect(_recompute_key_height)
+	_recompute_key_height.call_deferred()
+
+func _recompute_key_height() -> void:
+	if not _key_edit or not is_inside_tree():
+		return
+
+	_key_edit.update_minimum_size()
+
+	var vbar: VScrollBar = _key_edit.get_v_scroll_bar()
+	var content_h: float = vbar.max_value if vbar else 0.0
+
+	var needed: float = content_h + 8.0
+	if needed < 24.0:
+		needed = 24.0
+
+	if not is_equal_approx(_key_edit.custom_minimum_size.y, needed):
+		_key_edit.custom_minimum_size.y = needed
+		_key_edit.update_minimum_size()
 
 func _build_original_cell() -> void:
 	if _original_label:
@@ -310,6 +331,7 @@ func _on_key_text_changed() -> void:
 		_suppress_key_signal = false
 		_key_edit.set_caret_line(0)
 		_key_edit.set_caret_column(mini(saved_col, stripped.length()))
+	_recompute_key_height()
 
 func _on_key_gui_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
