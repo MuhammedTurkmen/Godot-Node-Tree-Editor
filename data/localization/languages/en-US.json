@@ -1,6 +1,8 @@
 {
+	"attr_health_regen": "Health Regenaration",
 	"attr_max_health": "Max Health",
-	"desc_max_health": "Next: {N}",
+	"desc_health_regen": "Regen Per Second: {C} -> {N}",
+	"desc_max_health": "Added Health: {C} -> {N}",
 	"exit": "Exit",
 	"start": "Start"
 }

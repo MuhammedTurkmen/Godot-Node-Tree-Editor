@@ -76,7 +76,7 @@
       "name_key": "",
       "position": {
         "x": -544.0,
-        "y": 784.0
+        "y": 864.0
       },
       "prerequisite": {
         "count": 1,
@@ -118,7 +118,7 @@
           1
         ],
         "out": [
-          6
+          7
         ]
       },
       "description": "next {N}",
@@ -131,7 +131,7 @@
       "name_key": "",
       "position": {
         "x": -544.0,
-        "y": 560.0
+        "y": 640.0
       },
       "prerequisite": {
         "count": 1,
@@ -183,7 +183,7 @@
     {
       "connections": {
         "in": [
-          4
+          7
         ],
         "out": []
       },
@@ -196,8 +196,8 @@
       "name": "Health Regen",
       "name_key": "",
       "position": {
-        "x": -320.0,
-        "y": 336.0
+        "x": -416.0,
+        "y": 240.0
       },
       "prerequisite": {
         "count": 1,
@@ -228,6 +228,87 @@
             ],
             [
               195
+            ]
+          ]
+        },
+        "health_regen": {
+          "levels": [
+            [
+              25
+            ],
+            [
+              30
+            ],
+            [
+              35
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "connections": {
+        "in": [
+          4
+        ],
+        "out": [
+          6
+        ]
+      },
+      "description": "next {N}",
+      "design_id": "new_design",
+      "group_id": "",
+      "id": 7,
+      "is_root": false,
+      "max_allocations": 3,
+      "name": "X Man",
+      "name_key": "",
+      "position": {
+        "x": -416.0,
+        "y": 464.0
+      },
+      "prerequisite": {
+        "count": 1,
+        "group_id": "",
+        "mode": "any"
+      },
+      "values": {
+        "diamond": {
+          "levels": [
+            [
+              15
+            ],
+            [
+              30
+            ],
+            [
+              45
+            ]
+          ]
+        },
+        "gold": {
+          "levels": [
+            [
+              30
+            ],
+            [
+              105
+            ],
+            [
+              195
+            ]
+          ]
+        },
+        "health_regen": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              10
+            ],
+            [
+              15
             ]
           ]
         },

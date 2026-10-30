@@ -210,9 +210,28 @@ static func _build_attributes(raw: Dictionary, is_currency: bool) -> Dictionary:
 		attr.value_count = int(spec.get("value_count", 1))
 		attr.operation = _parse_operation(String(spec.get("operation", "add")))
 		attr.icon = _load_texture(String(spec.get("icon", "")))
+		attr.icon_atlas_path = String(spec.get("icon_atlas_path", ""))
+
+		var region_raw = spec.get("icon_region", null)
+		if region_raw is Dictionary:
+			attr.icon_region = Rect2(
+				float(region_raw.get("x", 0.0)),
+				float(region_raw.get("y", 0.0)),
+				float(region_raw.get("w", 0.0)),
+				float(region_raw.get("h", 0.0))
+			)
+			if attr.icon is AtlasTexture:
+				var atlas: AtlasTexture = attr.icon
+				atlas.region = attr.icon_region
+		elif attr.icon is AtlasTexture:
+			# JSON'da region yoksa mevcut atlas region'ını al
+			var atlas2: AtlasTexture = attr.icon
+			attr.icon_region = atlas2.region
+
 		attr.sync_value_count()
 		result[attr_id] = attr
 	return result
+
 
 static func _serialize_attributes(attrs: Dictionary, is_currency: bool) -> Dictionary:
 	var out: Dictionary = {}
@@ -230,6 +249,16 @@ static func _serialize_attributes(attrs: Dictionary, is_currency: bool) -> Dicti
 			spec["refund_differs"] = attr.refund_differs
 			if attr.icon:
 				spec["icon"] = attr.icon.resource_path
+				if attr.icon is AtlasTexture:
+					var atlas: AtlasTexture = attr.icon
+					var r: Rect2 = atlas.region
+					spec["icon_region"] = {
+						"x": r.position.x,
+						"y": r.position.y,
+						"w": r.size.x,
+						"h": r.size.y,
+					}
+					spec["icon_atlas_path"] = attr.icon_atlas_path
 		else:
 			spec["operation"] = _operation_to_string(attr.operation)
 			spec["cumulative"] = attr.cumulative

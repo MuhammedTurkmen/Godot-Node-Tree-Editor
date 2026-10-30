@@ -51,6 +51,12 @@ var _cumulative_check: CheckBox
 var _operation_dropdown: OptionButton
 var _icon_panel: HBoxContainer
 var _icon_input: BayterekInspectorTextureInput
+var _icon_region_panel: VBoxContainer
+var _icon_region_x: SpinBox
+var _icon_region_y: SpinBox
+var _icon_region_w: SpinBox
+var _icon_region_h: SpinBox
+var _icon_region_apply_btn: Button
 
 ## Currently selected attribute's DICT KEY (not necessarily attr.id).
 var _current_attr_id: String = ""
@@ -309,7 +315,12 @@ func _build_ui() -> void:
 	var icon_label := Label.new()
 	icon_label.text = "Icon"
 	icon_label.custom_minimum_size = Vector2(90, 0)
-	icon_label.tooltip_text = "Custom icon shown in the tooltip's currency row.\nLeave empty to use the default 💰 emoji."
+	icon_label.tooltip_text = (
+		"Custom icon shown in the tooltip's currency row.\n"
+		+ "Accepts plain textures (PNG/SVG) OR AtlasTexture .tres files.\n"
+		+ "If an AtlasTexture is picked, you can edit its region below.\n"
+		+ "Leave empty to use the default 💰 emoji."
+	)
 	icon_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	_icon_panel.add_child(icon_label)
 
@@ -319,6 +330,91 @@ func _build_ui() -> void:
 	_icon_input.texture_dropped.connect(_on_icon_changed)
 	_icon_input.cleared.connect(_on_icon_cleared)
 	_icon_panel.add_child(_icon_input)
+
+	# --- Atlas region editor (only for AtlasTexture icons) ---
+	_icon_region_panel = VBoxContainer.new()
+	_icon_region_panel.add_theme_constant_override("separation", 2)
+	_icon_region_panel.visible = false
+	_detail_panel.add_child(_icon_region_panel)
+
+	var region_title := Label.new()
+	region_title.text = "Atlas Region (px)"
+	region_title.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	_icon_region_panel.add_child(region_title)
+
+	var rx_row := HBoxContainer.new()
+	rx_row.add_theme_constant_override("separation", 4)
+	_icon_region_panel.add_child(rx_row)
+
+	var rx_label := Label.new()
+	rx_label.text = "X"
+	rx_label.custom_minimum_size = Vector2(20, 0)
+	rx_label.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
+	rx_row.add_child(rx_label)
+
+	_icon_region_x = SpinBox.new()
+	_icon_region_x.size_flags_horizontal = SIZE_EXPAND_FILL
+	_icon_region_x.min_value = 0
+	_icon_region_x.max_value = 99999
+	_icon_region_x.step = 1
+	_icon_region_x.rounded = true
+	_icon_region_x.allow_greater = true
+	rx_row.add_child(_icon_region_x)
+
+	var ry_label := Label.new()
+	ry_label.text = "Y"
+	ry_label.custom_minimum_size = Vector2(20, 0)
+	ry_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.4))
+	rx_row.add_child(ry_label)
+
+	_icon_region_y = SpinBox.new()
+	_icon_region_y.size_flags_horizontal = SIZE_EXPAND_FILL
+	_icon_region_y.min_value = 0
+	_icon_region_y.max_value = 99999
+	_icon_region_y.step = 1
+	_icon_region_y.rounded = true
+	_icon_region_y.allow_greater = true
+	rx_row.add_child(_icon_region_y)
+
+	var rw_row := HBoxContainer.new()
+	rw_row.add_theme_constant_override("separation", 4)
+	_icon_region_panel.add_child(rw_row)
+
+	var rw_label := Label.new()
+	rw_label.text = "W"
+	rw_label.custom_minimum_size = Vector2(20, 0)
+	rw_label.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
+	rw_row.add_child(rw_label)
+
+	_icon_region_w = SpinBox.new()
+	_icon_region_w.size_flags_horizontal = SIZE_EXPAND_FILL
+	_icon_region_w.min_value = 1
+	_icon_region_w.max_value = 99999
+	_icon_region_w.step = 1
+	_icon_region_w.rounded = true
+	_icon_region_w.allow_greater = true
+	rw_row.add_child(_icon_region_w)
+
+	var rh_label := Label.new()
+	rh_label.text = "H"
+	rh_label.custom_minimum_size = Vector2(20, 0)
+	rh_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.4))
+	rw_row.add_child(rh_label)
+
+	_icon_region_h = SpinBox.new()
+	_icon_region_h.size_flags_horizontal = SIZE_EXPAND_FILL
+	_icon_region_h.min_value = 1
+	_icon_region_h.max_value = 99999
+	_icon_region_h.step = 1
+	_icon_region_h.rounded = true
+	_icon_region_h.allow_greater = true
+	rw_row.add_child(_icon_region_h)
+
+	_icon_region_apply_btn = Button.new()
+	_icon_region_apply_btn.text = "Apply Region"
+	_icon_region_apply_btn.tooltip_text = "Apply the region to the AtlasTexture."
+	_icon_region_apply_btn.pressed.connect(_on_icon_region_apply)
+	_icon_region_panel.add_child(_icon_region_apply_btn)
 
 	# Value Count
 	var count_row := HBoxContainer.new()
@@ -499,6 +595,20 @@ func _load_detail(dict_key: String) -> void:
 	if _icon_input and attr.is_currency:
 		_icon_input.set_texture(attr.icon)
 
+	# --- Atlas region UI ---
+	if _icon_region_panel:
+		var show_region: bool = attr.is_currency and attr.icon is AtlasTexture
+		_icon_region_panel.visible = show_region
+		if show_region:
+			var atlas: AtlasTexture = attr.icon
+			var region: Rect2 = atlas.region
+			if region.size.x <= 0.0 or region.size.y <= 0.0:
+				region = attr.icon_region
+			_icon_region_x.set_value_no_signal(region.position.x)
+			_icon_region_y.set_value_no_signal(region.position.y)
+			_icon_region_w.set_value_no_signal(region.size.x)
+			_icon_region_h.set_value_no_signal(region.size.y)
+
 	_update_currency_ui_state(attr)
 	_updating_ui = false
 
@@ -535,6 +645,11 @@ func _update_currency_ui_state(attr: BayterekAttribute) -> void:
 	else:
 		_value_count_input.editable = true
 		_value_count_input.modulate = Color.WHITE
+
+	# --- Atlas region panel visibility ---
+	if _icon_region_panel:
+		var show_region: bool = attr.is_currency and attr.icon is AtlasTexture
+		_icon_region_panel.visible = show_region
 
 # ============================================================
 # ID DERIVATION + CONFLICT
@@ -942,9 +1057,34 @@ func _on_icon_changed(path: String) -> void:
 	if not tex:
 		return
 
+	# AtlasTexture mı? Region'ı hazırla.
 	attr.icon = tex
+	attr.icon_atlas_path = path
+
+	if tex is AtlasTexture:
+		var atlas: AtlasTexture = tex
+		# Eğer region boşsa atlas'ın kendi region'ını kullan
+		if atlas.region.size.x <= 0.0 or atlas.region.size.y <= 0.0:
+			if atlas.atlas:
+				atlas.region = Rect2(Vector2.ZERO, atlas.atlas.get_size())
+		attr.icon_region = atlas.region
+	else:
+		attr.icon_region = Rect2()
+		attr.icon_atlas_path = ""
+
 	if _icon_input:
 		_icon_input.set_texture(tex)
+
+	# Region panelini güncelle
+	if _icon_region_panel:
+		_icon_region_panel.visible = tex is AtlasTexture
+		if tex is AtlasTexture:
+			var atlas2: AtlasTexture = tex
+			var region2: Rect2 = atlas2.region
+			_icon_region_x.set_value_no_signal(region2.position.x)
+			_icon_region_y.set_value_no_signal(region2.position.y)
+			_icon_region_w.set_value_no_signal(region2.size.x)
+			_icon_region_h.set_value_no_signal(region2.size.y)
 
 	editor.set_dirty(true)
 	changed.emit()
@@ -962,8 +1102,12 @@ func _on_icon_cleared() -> void:
 		return
 
 	attr.icon = null
+	attr.icon_region = Rect2()
+	attr.icon_atlas_path = ""
 	if _icon_input:
 		_icon_input.set_texture(null)
+	if _icon_region_panel:
+		_icon_region_panel.visible = false
 
 	editor.set_dirty(true)
 	changed.emit()
@@ -1111,3 +1255,36 @@ func _resize_value_array(values: Variant, new_count: int) -> void:
 			values.append(0)
 		while values.size() > new_count:
 			values.pop_back()
+
+func _on_icon_region_apply() -> void:
+	if _updating_ui or _current_attr_id.is_empty():
+		return
+	if not editor or not editor.tree:
+		return
+	var attr: BayterekAttribute = editor.tree.attributes.get(_current_attr_id, null)
+	if not attr:
+		return
+	if not attr.is_currency:
+		return
+	if not (attr.icon is AtlasTexture):
+		return
+
+	var region := Rect2(
+		Vector2(_icon_region_x.value, _icon_region_y.value),
+		Vector2(_icon_region_w.value, _icon_region_h.value)
+	)
+	if region.size.x <= 0.0:
+		region.size.x = 1.0
+	if region.size.y <= 0.0:
+		region.size.y = 1.0
+
+	var atlas: AtlasTexture = attr.icon
+	atlas.region = region
+	attr.icon_region = region
+
+	if _icon_input:
+		_icon_input.set_texture(atlas)
+
+	editor.set_dirty(true)
+	changed.emit()
+	attribute_changed.emit(_current_attr_id)

@@ -1,6 +1,8 @@
 {
+	"attr_health_regen": "Can Yenilenmesi",
 	"attr_max_health": "Maksimum Can",
-	"desc_max_health": "Sonraki: {N}",
+	"desc_health_regen": "Saniye Başına İyileşme: {C} -> {N}",
+	"desc_max_health": "[color=#ffdd66]Eklenen Can: [/color][color=#fff200]{C}[/color] -> [color=#1dd1a1]{N}[/color]",
 	"exit": "Çıkış",
 	"start": "Başlat"
 }

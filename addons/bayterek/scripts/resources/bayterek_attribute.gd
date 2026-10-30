@@ -93,6 +93,16 @@ enum Operation {
 ## Falls back to the built-in gold-pouch emoji when empty.
 @export_storage var icon: Texture2D = null
 
+## If `icon` is an AtlasTexture, this is the region inside the atlas.
+## Kept in sync with `icon.region` by the inspector when the user edits
+## the region. Ignored for non-atlas textures.
+@export_storage var icon_region: Rect2 = Rect2()
+
+## If `icon` is an AtlasTexture, this is the source atlas file path
+## (res://...). Used purely for display / debugging; the actual texture
+## lives in `icon`.
+@export_storage var icon_atlas_path: String = ""
+
 const SLOT_PURCHASE := 0
 const SLOT_REFUND := 1
 
@@ -164,3 +174,18 @@ static func all_operations() -> Array:
 ## given operation. Only ADD and SUBTRACT support it.
 static func is_cumulative_supported(op: Operation) -> bool:
 	return op == Operation.ADD or op == Operation.SUBTRACT
+
+# ============================================================
+# ICON / ATLAS HELPERS
+# ============================================================
+
+## Returns true if the current `icon` is an AtlasTexture.
+func is_icon_atlas() -> bool:
+	return icon is AtlasTexture
+
+## Applies `icon_region` to the current AtlasTexture, if any.
+## Call this after changing `icon_region` programmatically.
+func sync_icon_region() -> void:
+	if icon is AtlasTexture:
+		var atlas: AtlasTexture = icon
+		atlas.region = icon_region
