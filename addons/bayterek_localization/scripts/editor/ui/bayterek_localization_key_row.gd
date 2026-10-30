@@ -1,7 +1,19 @@
 @tool
 class_name BayterekLocalizationKeyRow
 extends PanelContainer
-## A single row in the Editor's key table.
+## A single CELL in the localization editor's 3-column table.
+##
+## The editor instantiates THREE cells per logical row:
+##   - one for the key
+##   - one for the original value
+##   - one for the translation value
+##
+## Each cell is added to its own column VBox (key / original / translation).
+## The editor then synchronises row heights by setting the same
+## `custom_minimum_size.y` on all three cells of a logical row.
+##
+## This class no longer builds an internal HSplitContainer. The split
+## is owned by the editor (`_table_split` / `_mid_split`).
 
 signal value_changed(key: String, new_value: String)
 signal row_selected(key: String)
@@ -10,8 +22,13 @@ signal key_rename_requested(old_key: String, new_key: String)
 signal value_edit_started(key: String, current_value: String)
 signal value_edit_committed(key: String, new_value: String)
 
-const KEY_COLUMN_WIDTH := 200
-const MIN_ORIGINAL_COL := 160
+enum CellKind {
+	KEY,
+	ORIGINAL,
+	TRANSLATION,
+}
+
+const MIN_ORIGINAL_COL := 140
 const MIN_TRANSLATION_COL := 200
 
 const STATE_NORMAL := Color(0, 0, 0, 0)
@@ -29,19 +46,22 @@ var original_value: String = ""
 var translation_value: String = ""
 var is_original_locale: bool = false
 
+var _kind: CellKind = CellKind.KEY
 var _broken_ref: bool = false
 var _cyclic: bool = false
 var _cycle_path: Array[String] = []
 
-var _key_input: LineEdit
+var _key_edit: TextEdit
 var _original_label: Label
 var _translation_field: BayterekLocalizationTranslationField
 var _row_style: StyleBoxFlat
 var _selected: bool = false
 var _suppress_key_signal: bool = false
 
-## Callback provided by the editor — returns all keys for auto-complete.
 var _key_provider_callback: Callable = Callable()
+
+# Row identifier — editor uses this to group cells of the same logical row.
+var _row_id: String = ""
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -56,76 +76,111 @@ func _ready() -> void:
 		_row_style.content_margin_bottom = 2
 		add_theme_stylebox_override("panel", _row_style)
 
-	if _key_input and not _key_input.text.is_empty():
+	if _kind == CellKind.KEY and _key_edit and not _key_edit.text.is_empty():
 		_apply_values()
+	elif _kind == CellKind.TRANSLATION and _translation_field:
+		_translation_field.set_text(translation_value)
 
-func _build() -> void:
-	if _key_input:
+# ============================================================
+# SETUP — editor calls this per-cell
+# ============================================================
+
+func setup_as_key(p_key: String, p_is_original: bool, p_row_id: String) -> void:
+	_kind = CellKind.KEY
+	key = p_key
+	is_original_locale = p_is_original
+	_row_id = p_row_id
+
+	_build_key_cell()
+	_apply_values()
+	_update_row_style()
+
+func setup_as_original(p_key: String, p_original: String, p_row_id: String) -> void:
+	_kind = CellKind.ORIGINAL
+	key = p_key
+	original_value = p_original
+	_row_id = p_row_id
+
+	_build_original_cell()
+	_apply_values()
+	_update_row_style()
+
+func setup_as_translation(p_key: String, p_original: String, p_translation: String, p_is_original: bool, p_row_id: String) -> void:
+	_kind = CellKind.TRANSLATION
+	key = p_key
+	original_value = p_original
+	translation_value = p_translation
+	is_original_locale = p_is_original
+	_row_id = p_row_id
+
+	_build_translation_cell()
+	_apply_values()
+	_update_row_style()
+
+func get_row_id() -> String:
+	return _row_id
+
+func get_kind() -> CellKind:
+	return _kind
+
+# ============================================================
+# CELL BUILDERS
+# ============================================================
+
+func _build_key_cell() -> void:
+	if _key_edit:
 		return
 
-	var hbox := HBoxContainer.new()
-	hbox.name = "RowHBox"
-	hbox.add_theme_constant_override("separation", 4)
-	hbox.mouse_filter = Control.MOUSE_FILTER_PASS
-	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	add_child(hbox)
+	_key_edit = TextEdit.new()
+	_key_edit.name = "KeyEdit"
+	_key_edit.size_flags_horizontal = SIZE_EXPAND_FILL
+	_key_edit.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+	_key_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	_key_edit.scroll_fit_content_height = true
+	_key_edit.scroll_vertical = 0
+	_key_edit.scroll_horizontal = 0
+	_key_edit.context_menu_enabled = true
+	_key_edit.caret_blink = true
+	_key_edit.gui_input.connect(_on_key_gui_input)
+	_key_edit.focus_exited.connect(_on_key_focus_exited)
+	_key_edit.text_changed.connect(_on_key_text_changed)
+	add_child(_key_edit)
 
-	_key_input = LineEdit.new()
-	_key_input.name = "KeyInput"
-	_key_input.custom_minimum_size.x = KEY_COLUMN_WIDTH
-	_key_input.size_flags_horizontal = Control.SIZE_FILL
-	_key_input.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
-	var key_style := StyleBoxFlat.new()
-	key_style.bg_color = Color(0.12, 0.14, 0.18, 0.5)
-	key_style.content_margin_left = 6
-	key_style.content_margin_right = 6
-	key_style.content_margin_top = 2
-	key_style.content_margin_bottom = 2
-	key_style.set_corner_radius_all(2)
-	_key_input.add_theme_stylebox_override("normal", key_style)
-	_key_input.add_theme_stylebox_override("focus", key_style)
-	_key_input.text_submitted.connect(_on_key_submitted)
-	_key_input.focus_exited.connect(_on_key_focus_exited)
-	hbox.add_child(_key_input)
+func _build_original_cell() -> void:
+	if _original_label:
+		return
 
 	_original_label = Label.new()
 	_original_label.name = "OriginalLabel"
-	_original_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_original_label.size_flags_stretch_ratio = 1.0
+	_original_label.size_flags_horizontal = SIZE_EXPAND_FILL
+	_original_label.size_flags_vertical = SIZE_EXPAND_FILL
 	_original_label.custom_minimum_size.x = MIN_ORIGINAL_COL
-	_original_label.clip_text = true
-	_original_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_original_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_original_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
 	_original_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hbox.add_child(_original_label)
+	_original_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	add_child(_original_label)
+
+func _build_translation_cell() -> void:
+	if _translation_field:
+		return
 
 	_translation_field = BayterekLocalizationTranslationField.new()
 	_translation_field.name = "TranslationField"
-	_translation_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_translation_field.size_flags_stretch_ratio = 1.0
+	_translation_field.size_flags_horizontal = SIZE_EXPAND_FILL
 	_translation_field.custom_minimum_size.x = MIN_TRANSLATION_COL
 	_translation_field.text_changed.connect(_on_field_changed)
 	_translation_field.text_submitted.connect(_on_field_submitted)
 	_translation_field.field_focus_entered.connect(_on_field_focus_entered)
 	_translation_field.field_focus_exited.connect(_on_field_focus_exited)
-	hbox.add_child(_translation_field)
+	add_child(_translation_field)
 
-	# Wire auto-complete key provider.
 	if _key_provider_callback.is_valid():
 		_translation_field.set_key_provider(_key_provider_callback)
 
 # ============================================================
 # PUBLIC API
 # ============================================================
-
-func setup(p_key: String, p_original: String, p_translation: String, p_is_original: bool) -> void:
-	key = p_key
-	original_value = p_original
-	translation_value = p_translation
-	is_original_locale = p_is_original
-
-	_build()
-	_apply_values()
 
 func set_validation_flags(broken_ref: bool, cyclic: bool, cycle_path: Array[String] = []) -> void:
 	_broken_ref = broken_ref
@@ -158,33 +213,34 @@ func focus_translation() -> void:
 func has_field_focus() -> bool:
 	if _translation_field != null and _translation_field.has_field_focus():
 		return true
-	if _key_input != null and _key_input.has_focus():
+	if _key_edit != null and _key_edit.has_focus():
 		return true
 	return false
 
-## Register a callback that returns all keys for auto-complete.
 func set_key_provider_callback(cb: Callable) -> void:
 	_key_provider_callback = cb
 	if _translation_field:
 		_translation_field.set_key_provider(cb)
 
+# ============================================================
+# APPLY VALUES
+# ============================================================
+
 func _apply_values() -> void:
-	if not _key_input:
-		return
+	if _kind == CellKind.KEY and _key_edit:
+		_suppress_key_signal = true
+		_key_edit.text = key
+		_key_edit.editable = is_original_locale
+		if not is_original_locale:
+			_key_edit.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
+		else:
+			_key_edit.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+		_suppress_key_signal = false
 
-	_suppress_key_signal = true
-	_key_input.text = key
-	_key_input.editable = is_original_locale
-	if not is_original_locale:
-		_key_input.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
-	else:
-		_key_input.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
-	_suppress_key_signal = false
+	if _kind == CellKind.ORIGINAL and _original_label:
+		_original_label.text = original_value
 
-	_original_label.text = original_value
-	_original_label.visible = not is_original_locale
-
-	if _translation_field:
+	if _kind == CellKind.TRANSLATION and _translation_field:
 		_translation_field.set_text(translation_value)
 
 	_update_row_style()
@@ -202,7 +258,7 @@ func _update_row_style() -> void:
 
 	if _selected:
 		bg = STATE_SELECTED
-	else:
+	elif _kind == CellKind.TRANSLATION:
 		var cur: String = get_translation()
 		var trimmed: String = cur.strip_edges()
 
@@ -243,7 +299,29 @@ func _has_placeholder_mismatch() -> bool:
 # SIGNAL HANDLERS
 # ============================================================
 
-## TextEdit.text_changed takes no arguments — read text manually.
+func _on_key_text_changed() -> void:
+	if _suppress_key_signal:
+		return
+	var stripped: String = _key_edit.text.replace("\n", "").replace("\r", "")
+	if stripped != _key_edit.text:
+		var saved_col: int = _key_edit.get_caret_column()
+		_suppress_key_signal = true
+		_key_edit.text = stripped
+		_suppress_key_signal = false
+		_key_edit.set_caret_line(0)
+		_key_edit.set_caret_column(mini(saved_col, stripped.length()))
+
+func _on_key_gui_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+		_commit_key_rename(_key_edit.text)
+		accept_event()
+
+func _on_key_focus_exited() -> void:
+	if _key_edit and _key_edit.text != key:
+		_commit_key_rename(_key_edit.text)
+
 func _on_field_changed() -> void:
 	var new_text: String = get_translation()
 	translation_value = new_text
@@ -260,13 +338,6 @@ func _on_field_focus_exited() -> void:
 	_update_row_style()
 	value_edit_committed.emit(key, get_translation())
 
-func _on_key_submitted(new_key_text: String) -> void:
-	_commit_key_rename(new_key_text)
-
-func _on_key_focus_exited() -> void:
-	if _key_input and _key_input.text != key:
-		_commit_key_rename(_key_input.text)
-
 func _commit_key_rename(new_key_text: String) -> void:
 	if _suppress_key_signal:
 		return
@@ -276,7 +347,7 @@ func _commit_key_rename(new_key_text: String) -> void:
 	var trimmed: String = new_key_text.strip_edges()
 	if trimmed.is_empty() or trimmed == key:
 		_suppress_key_signal = true
-		_key_input.text = key
+		_key_edit.text = key
 		_suppress_key_signal = false
 		return
 

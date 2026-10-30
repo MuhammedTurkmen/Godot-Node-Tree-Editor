@@ -2,10 +2,7 @@
 class_name BayterekLocalizationTranslationField
 extends TextEdit
 ## Single-line translation input with placeholder highlighting and
-## key auto-complete.
-##
-## TextEdit already declares a native `text_changed` signal (no args).
-## We reuse that instead of declaring our own signal of the same name.
+## key auto-complete. Grows vertically as content wraps.
 
 signal field_focus_entered
 signal field_focus_exited
@@ -18,21 +15,16 @@ const MIN_HEIGHT := 24
 var _updating: bool = false
 var _has_focus_tracked: bool = false
 
-## Key auto-complete popup.
 var _key_completer: BayterekLocalizationKeyCompleter = null
 var _key_provider: Callable = Callable()
-
-# ============================================================
-# LIFECYCLE
-# ============================================================
 
 func _ready() -> void:
 	custom_minimum_size.y = MIN_HEIGHT
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	size_flags_vertical = Control.SIZE_FILL
 
-	wrap_mode = TextEdit.LINE_WRAPPING_NONE
-	scroll_fit_content_height = false
+	wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	scroll_fit_content_height = true
 	scroll_horizontal = 0
 	scroll_vertical = 0
 	context_menu_enabled = true
@@ -46,7 +38,6 @@ func _ready() -> void:
 	focus_exited.connect(_on_inner_focus_exited)
 	gui_input.connect(_on_inner_gui_input)
 
-	# Key auto-complete popup.
 	_key_completer = BayterekLocalizationKeyCompleter.new()
 	_key_completer.set_target(self)
 	add_child(_key_completer)
@@ -100,21 +91,19 @@ func is_editable() -> bool:
 func has_field_focus() -> bool:
 	return _has_focus_tracked
 
-## Register a callback that returns the list of all keys.
 func set_key_provider(provider: Callable) -> void:
 	_key_provider = provider
 	if _key_completer:
 		_key_completer.set_key_provider(provider)
 
 # ============================================================
-# INTERNAL — TEXT CHANGE
+# INTERNAL
 # ============================================================
 
 func _on_inner_text_changed() -> void:
 	if _updating:
 		return
 
-	# Strip any newlines that sneak in (paste, IME, etc.).
 	var stripped: String = text.replace("\n", "").replace("\r", "")
 	if stripped != text:
 		var saved_line: int = get_caret_line()
@@ -130,13 +119,8 @@ func _on_inner_text_changed() -> void:
 		set_caret_line(line)
 		set_caret_column(col)
 
-	# Auto-complete trigger.
 	if _key_completer:
 		_key_completer.check_for_trigger()
-
-# ============================================================
-# INTERNAL — FOCUS
-# ============================================================
 
 func _on_inner_focus_entered() -> void:
 	_has_focus_tracked = true
@@ -148,15 +132,10 @@ func _on_inner_focus_exited() -> void:
 		_key_completer.hide_popup()
 	field_focus_exited.emit()
 
-# ============================================================
-# INTERNAL — INPUT
-# ============================================================
-
 func _on_inner_gui_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 
-	# Auto-complete popup has priority for navigation keys.
 	if _key_completer and _key_completer.visible:
 		if _key_completer.handle_key(event):
 			accept_event()

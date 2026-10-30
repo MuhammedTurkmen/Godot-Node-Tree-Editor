@@ -27,8 +27,8 @@ var dirty: bool = false
 
 var _rows_by_key: Dictionary = {}
 
-var _h_split: HSplitContainer
-var _inner_split: HBoxContainer
+var _outer_split: HSplitContainer
+var _inner_split: HSplitContainer
 
 var _sidebar_root: VBoxContainer
 var _sidebar_header: HBoxContainer
@@ -50,12 +50,22 @@ var _import_btn: Button
 var _export_btn: Button
 var _search_input: LineEdit
 var _missing_label: Label
+
+var _table_split: HSplitContainer
+var _mid_split: HSplitContainer
+var _key_column: ScrollContainer
+var _original_column: ScrollContainer
+var _translation_column: ScrollContainer
+var _key_content: VBoxContainer
+var _original_content: VBoxContainer
+var _translation_content: VBoxContainer
 var _rows_scroll: ScrollContainer
 var _rows_container: VBoxContainer
 var _empty_label: Label
 var _h_key: Label
 var _h_orig: Label
 var _h_trans: Label
+var _header_split: HBoxContainer
 
 var _stats_panel: HBoxContainer
 var _stats_label: Label
@@ -99,18 +109,27 @@ func init() -> void:
 # ============================================================
 
 func _build_ui() -> void:
-	if _h_split:
+	if _outer_split:
 		return
 
-	_h_split = HSplitContainer.new()
-	_h_split.name = "OuterSplit"
-	_h_split.size_flags_horizontal = SIZE_EXPAND_FILL
-	_h_split.size_flags_vertical = SIZE_EXPAND_FILL
-	_h_split.split_offset = SIDEBAR_EXPANDED
-	add_child(_h_split)
+	_outer_split = HSplitContainer.new()
+	_outer_split.name = "OuterSplit"
+	_outer_split.size_flags_horizontal = SIZE_EXPAND_FILL
+	_outer_split.size_flags_vertical = SIZE_EXPAND_FILL
+	_outer_split.split_offset = SIDEBAR_EXPANDED
+	add_child(_outer_split)
 
 	_build_sidebar()
-	_build_inner_split()
+
+	_inner_split = HSplitContainer.new()
+	_inner_split.name = "InnerSplit"
+	_inner_split.size_flags_horizontal = SIZE_EXPAND_FILL
+	_inner_split.size_flags_vertical = SIZE_EXPAND_FILL
+	_inner_split.split_offset = -PREVIEW_EXPANDED
+	_outer_split.add_child(_inner_split)
+
+	_build_main_panel()
+	_build_preview_panel()
 
 func _build_sidebar() -> void:
 	_sidebar_root = VBoxContainer.new()
@@ -118,7 +137,7 @@ func _build_sidebar() -> void:
 	_sidebar_root.custom_minimum_size = Vector2(SIDEBAR_COLLAPSED, 0)
 	_sidebar_root.size_flags_vertical = SIZE_EXPAND_FILL
 	_sidebar_root.add_theme_constant_override("separation", 2)
-	_h_split.add_child(_sidebar_root)
+	_outer_split.add_child(_sidebar_root)
 
 	_sidebar_header = HBoxContainer.new()
 	_sidebar_header.name = "SidebarHeader"
@@ -162,17 +181,6 @@ func _build_sidebar() -> void:
 	_sidebar_list.item_selected.connect(_on_sidebar_item_selected)
 	_sidebar_content.add_child(_sidebar_list)
 
-func _build_inner_split() -> void:
-	_inner_split = HBoxContainer.new()
-	_inner_split.name = "InnerSplit"
-	_inner_split.size_flags_horizontal = SIZE_EXPAND_FILL
-	_inner_split.size_flags_vertical = SIZE_EXPAND_FILL
-	_inner_split.add_theme_constant_override("separation", 0)
-	_h_split.add_child(_inner_split)
-
-	_build_main_panel()
-	_build_preview_panel()
-
 func _build_main_panel() -> void:
 	_main_panel = VBoxContainer.new()
 	_main_panel.name = "MainPanel"
@@ -181,12 +189,14 @@ func _build_main_panel() -> void:
 	_main_panel.add_theme_constant_override("separation", 4)
 	_inner_split.add_child(_main_panel)
 
+	# ============================================================
+	# TOOLBAR
+	# ============================================================
 	_toolbar = HBoxContainer.new()
 	_toolbar.name = "Toolbar"
 	_toolbar.add_theme_constant_override("separation", 6)
 	_main_panel.add_child(_toolbar)
 
-	# --- Locale selector dropdown ---
 	_locale_dropdown = OptionButton.new()
 	_locale_dropdown.name = "LocaleDropdown"
 	_locale_dropdown.tooltip_text = "Switch active locale"
@@ -194,7 +204,6 @@ func _build_main_panel() -> void:
 	_locale_dropdown.item_selected.connect(_on_locale_dropdown_selected)
 	_toolbar.add_child(_locale_dropdown)
 
-	# --- Locale label (shows "★ original" marker) ---
 	_locale_label = Label.new()
 	_locale_label.name = "LocaleLabel"
 	_locale_label.text = ""
@@ -262,7 +271,9 @@ func _build_main_panel() -> void:
 	_missing_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.4))
 	_toolbar.add_child(_missing_label)
 
-	# --- Statistics row ---
+	# ============================================================
+	# STATS
+	# ============================================================
 	_stats_panel = HBoxContainer.new()
 	_stats_panel.name = "StatsPanel"
 	_stats_panel.add_theme_constant_override("separation", 6)
@@ -275,48 +286,92 @@ func _build_main_panel() -> void:
 	_stats_label.add_theme_font_size_override("font_size", 11)
 	_stats_panel.add_child(_stats_label)
 
-	var header := HBoxContainer.new()
-	header.name = "ColumnHeader"
-	header.add_theme_constant_override("separation", 4)
-	header.custom_minimum_size.y = 24
-	_main_panel.add_child(header)
+	# ============================================================
+	# TABLE HOLDER (header + 3-column table)
+	# ============================================================
+	# The table fills the remaining vertical space and hugs the top
+	# under the header. It stretches to the bottom of the panel.
+	var table_holder := VBoxContainer.new()
+	table_holder.name = "TableHolder"
+	table_holder.size_flags_horizontal = SIZE_EXPAND_FILL
+	table_holder.size_flags_vertical = SIZE_EXPAND_FILL
+	table_holder.add_theme_constant_override("separation", 0)
+	_main_panel.add_child(table_holder)
+
+	# --- Header row (mirrors table split) ---
+	_header_split = HBoxContainer.new()
+	_header_split.name = "ColumnHeader"
+	_header_split.add_theme_constant_override("separation", 0)
+	_header_split.custom_minimum_size.y = 24
+	table_holder.add_child(_header_split)
 
 	_h_key = Label.new()
 	_h_key.text = "Key"
-	_h_key.custom_minimum_size.x = BayterekLocalizationKeyRow.KEY_COLUMN_WIDTH
+	_h_key.custom_minimum_size.x = 120
+	_h_key.size_flags_horizontal = SIZE_EXPAND_FILL
 	_h_key.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	header.add_child(_h_key)
+	_header_split.add_child(_h_key)
 
 	_h_orig = Label.new()
 	_h_orig.text = "Original"
+	_h_orig.custom_minimum_size.x = 120
 	_h_orig.size_flags_horizontal = SIZE_EXPAND_FILL
-	_h_orig.size_flags_stretch_ratio = 1.0
-	_h_orig.custom_minimum_size.x = BayterekLocalizationKeyRow.MIN_ORIGINAL_COL
 	_h_orig.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
-	header.add_child(_h_orig)
+	_header_split.add_child(_h_orig)
 
 	_h_trans = Label.new()
 	_h_trans.text = "Translation"
+	_h_trans.custom_minimum_size.x = 120
 	_h_trans.size_flags_horizontal = SIZE_EXPAND_FILL
-	_h_trans.size_flags_stretch_ratio = 1.0
-	_h_trans.custom_minimum_size.x = BayterekLocalizationKeyRow.MIN_TRANSLATION_COL
 	_h_trans.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
-	header.add_child(_h_trans)
+	_header_split.add_child(_h_trans)
 
-	_rows_scroll = ScrollContainer.new()
-	_rows_scroll.name = "RowsScroll"
-	_rows_scroll.size_flags_horizontal = SIZE_EXPAND_FILL
-	_rows_scroll.size_flags_vertical = SIZE_EXPAND_FILL
-	_rows_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	_rows_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	_main_panel.add_child(_rows_scroll)
+	# --- 3-column HSplitContainer ---
+	_table_split = HSplitContainer.new()
+	_table_split.name = "TableSplit"
+	_table_split.size_flags_horizontal = SIZE_EXPAND_FILL
+	_table_split.size_flags_vertical = SIZE_EXPAND_FILL
+	_table_split.split_offset = 200
+	table_holder.add_child(_table_split)
 
-	_rows_container = VBoxContainer.new()
-	_rows_container.name = "RowsContainer"
-	_rows_container.size_flags_horizontal = SIZE_EXPAND_FILL
-	_rows_container.add_theme_constant_override("separation", 1)
-	_rows_scroll.add_child(_rows_container)
+	# Left: key column (scroll-wrapped)
+	_key_column = _make_scroll_column("KeyColumn", 80)
+	_table_split.add_child(_key_column)
 
+	# Right: nested split for original + translation
+	_mid_split = HSplitContainer.new()
+	_mid_split.name = "MidSplit"
+	_mid_split.size_flags_horizontal = SIZE_EXPAND_FILL
+	_mid_split.size_flags_vertical = SIZE_EXPAND_FILL
+	_mid_split.split_offset = 300
+	_table_split.add_child(_mid_split)
+
+	_original_column = _make_scroll_column("OriginalColumn", 80)
+	_mid_split.add_child(_original_column)
+
+	_translation_column = _make_scroll_column("TranslationColumn", 80)
+	_mid_split.add_child(_translation_column)
+
+	# Cache the inner VBox of each scroll column.
+	_key_content = _key_column.get_node("Content") as VBoxContainer
+	_original_content = _original_column.get_node("Content") as VBoxContainer
+	_translation_content = _translation_column.get_node("Content") as VBoxContainer
+
+	# Sync header column widths when the split is dragged.
+	_table_split.dragged.connect(func(_offset: int): _sync_header_to_table())
+	_mid_split.dragged.connect(func(_offset: int): _sync_header_to_table())
+
+	# Sync vertical scroll between the 3 columns.
+	for sc in [_key_column, _original_column, _translation_column]:
+		var scroll := sc as ScrollContainer
+		if scroll:
+			scroll.get_v_scroll_bar().value_changed.connect(
+				func(_v): _sync_scrolls(scroll)
+			)
+
+	# ============================================================
+	# EMPTY LABEL
+	# ============================================================
 	_empty_label = Label.new()
 	_empty_label.name = "EmptyLabel"
 	_empty_label.text = "Double-click a region in the Browser tab to open its translation editor."
@@ -326,6 +381,47 @@ func _build_main_panel() -> void:
 	_main_panel.add_child(_empty_label)
 	_empty_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_empty_label.visible = false
+
+func _make_scroll_column(column_name: String, min_width: int) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.name = column_name
+	scroll.custom_minimum_size.x = min_width
+	scroll.size_flags_vertical = SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+
+	var content := VBoxContainer.new()
+	content.name = "Content"
+	content.size_flags_horizontal = SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 0)
+	scroll.add_child(content)
+
+	return scroll
+
+func _sync_scrolls(source: ScrollContainer) -> void:
+	var src_v: int = int(source.scroll_vertical)
+	for sc in [_key_column, _original_column, _translation_column]:
+		if sc == source:
+			continue
+		var scroll := sc as ScrollContainer
+		if scroll:
+			scroll.scroll_vertical = src_v
+
+func _sync_header_to_table() -> void:
+	if not _h_key:
+		return
+
+	var total_w: float = _table_split.size.x
+	var key_w: float = _key_column.size.x
+	var orig_w: float = _original_column.size.x
+	var trans_w: float = _translation_column.size.x
+
+	if key_w <= 0.0 or orig_w <= 0.0 or trans_w <= 0.0:
+		return
+
+	_h_key.custom_minimum_size.x = key_w
+	_h_orig.custom_minimum_size.x = orig_w
+	_h_trans.custom_minimum_size.x = trans_w
 
 func _build_preview_panel() -> void:
 	_preview_root = VBoxContainer.new()
@@ -341,7 +437,7 @@ func _build_preview_panel() -> void:
 	_preview_root.add_child(header)
 
 	_preview_toggle_btn = Button.new()
-	_preview_toggle_btn.text = "▶"
+	_preview_toggle_btn.text = "◀"
 	_preview_toggle_btn.tooltip_text = "Collapse / expand preview"
 	_preview_toggle_btn.custom_minimum_size = Vector2(24, 24)
 	_preview_toggle_btn.flat = true
@@ -360,12 +456,11 @@ func _build_preview_panel() -> void:
 	_preview_panel.set_lookup(_preview_lookup)
 	_preview_root.add_child(_preview_panel)
 
-	_preview_toggle_btn.text = "◀"
-	_preview_title.visible = false
+	# Start collapsed — only toggle button + title visible.
 	_preview_collapsed = true
 	_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
-	_preview_panel.modulate.a = 0.0
-	_preview_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_preview_panel.visible = false
+	_preview_title.visible = false
 
 func _preview_lookup(key: String) -> String:
 	if translations.has(key):
@@ -646,38 +741,135 @@ func _rebuild_rows() -> void:
 func _update_validation_flags() -> void:
 	_rebuild_refs_cache()
 	for key in _rows_by_key.keys():
-		var row: BayterekLocalizationKeyRow = _rows_by_key[key]
-		if not is_instance_valid(row):
+		var trans_cell: BayterekLocalizationKeyRow = _get_trans_cell(key)
+		if not trans_cell:
 			continue
 		var broken: bool = _has_broken_reference(key)
 		var cyclic: bool = _has_cycle(key)
 		var cycle_path: Array[String] = []
 		if cyclic:
 			cycle_path = _get_cycle_path(key)
-		row.set_validation_flags(broken, cyclic, cycle_path)
+		trans_cell.set_validation_flags(broken, cyclic, cycle_path)
 
-	# Refresh stats after validation updates.
 	_update_stats_panel()
 
 func _add_row(key: String, orig_val: String, trans_val: String) -> void:
-	var row := KeyRow.new()
-	row.name = "Row_%s" % key
-	row.size_flags_horizontal = SIZE_EXPAND_FILL
-	_rows_container.add_child(row)
-	row.setup(key, orig_val, trans_val, is_original_locale)
-	row.value_changed.connect(_on_row_value_changed)
-	row.row_selected.connect(_on_row_selected)
-	row.navigate_requested.connect(_on_row_navigate_requested)
-	row.key_rename_requested.connect(_on_row_key_rename_requested)
-	row.value_edit_started.connect(_on_row_value_edit_started)
-	row.value_edit_committed.connect(_on_row_value_edit_committed)
-	row.set_key_provider_callback(_provide_all_keys)
-	_rows_by_key[key] = row
+	if not _key_content or not _original_content or not _translation_content:
+		return
+
+	var row_id: String = key
+
+	# --- Key cell ---
+	var key_cell := BayterekLocalizationKeyRow.new()
+	key_cell.name = "KeyCell_%s" % row_id
+	key_cell.size_flags_horizontal = SIZE_EXPAND_FILL
+	_key_content.add_child(key_cell)
+	key_cell.setup_as_key(key, is_original_locale, row_id)
+	key_cell.row_selected.connect(_on_row_selected)
+	key_cell.key_rename_requested.connect(_on_row_key_rename_requested)
+	key_cell.set_key_provider_callback(_provide_all_keys)
+
+	# --- Original cell ---
+	var orig_cell := BayterekLocalizationKeyRow.new()
+	orig_cell.name = "OrigCell_%s" % row_id
+	orig_cell.size_flags_horizontal = SIZE_EXPAND_FILL
+	_original_content.add_child(orig_cell)
+	orig_cell.setup_as_original(key, orig_val, row_id)
+	orig_cell.row_selected.connect(_on_row_selected)
+
+	# --- Translation cell ---
+	var trans_cell := BayterekLocalizationKeyRow.new()
+	trans_cell.name = "TransCell_%s" % row_id
+	trans_cell.size_flags_horizontal = SIZE_EXPAND_FILL
+	_translation_content.add_child(trans_cell)
+	trans_cell.setup_as_translation(key, orig_val, trans_val, is_original_locale, row_id)
+	trans_cell.value_changed.connect(_on_row_value_changed)
+	trans_cell.row_selected.connect(_on_row_selected)
+	trans_cell.navigate_requested.connect(_on_row_navigate_requested)
+	trans_cell.value_edit_started.connect(_on_row_value_edit_started)
+	trans_cell.value_edit_committed.connect(_on_row_value_edit_committed)
+	trans_cell.set_key_provider_callback(_provide_all_keys)
+
+	# Store all 3 cells for later access by key.
+	# `_rows_by_key[key]` was previously a single row; now it's a dict
+	# with the 3 cells so functions like `_update_validation_flags()`,
+	# `_apply_filter()`, `_scroll_to_row()` etc. still work.
+	_rows_by_key[key] = {
+		"key": key_cell,
+		"original": orig_cell,
+		"translation": trans_cell,
+	}
+
+	# Sync row heights after both cells are laid out.
+	_sync_row_heights.call_deferred(row_id)
+
+## Returns the translation cell for a given key, or null.
+func _get_trans_cell(key: String) -> BayterekLocalizationKeyRow:
+	if not _rows_by_key.has(key):
+		return null
+	var entry: Dictionary = _rows_by_key[key]
+	var cell = entry.get("translation", null)
+	if cell is BayterekLocalizationKeyRow and is_instance_valid(cell):
+		return cell
+	return null
+
+## Returns the key cell for a given key, or null.
+func _get_key_cell(key: String) -> BayterekLocalizationKeyRow:
+	if not _rows_by_key.has(key):
+		return null
+	var entry: Dictionary = _rows_by_key[key]
+	var cell = entry.get("key", null)
+	if cell is BayterekLocalizationKeyRow and is_instance_valid(cell):
+		return cell
+	return null
+
+## Returns the original cell for a given key, or null.
+func _get_orig_cell(key: String) -> BayterekLocalizationKeyRow:
+	if not _rows_by_key.has(key):
+		return null
+	var entry: Dictionary = _rows_by_key[key]
+	var cell = entry.get("original", null)
+	if cell is BayterekLocalizationKeyRow and is_instance_valid(cell):
+		return cell
+	return null
 
 func _clear_rows() -> void:
-	for child in _rows_container.get_children():
-		child.queue_free()
+	if _key_content:
+		for child in _key_content.get_children():
+			child.queue_free()
+	if _original_content:
+		for child in _original_content.get_children():
+			child.queue_free()
+	if _translation_content:
+		for child in _translation_content.get_children():
+			child.queue_free()
 	_rows_by_key.clear()
+
+## Synchronises the minimum height of all 3 cells of a logical row.
+## The tallest cell (usually whichever TextEdit has wrapped to most
+## lines) dictates the row height so all columns stay aligned.
+func _sync_row_heights(row_id: String) -> void:
+	if not _rows_by_key.has(row_id):
+		return
+	var entry: Dictionary = _rows_by_key[row_id]
+
+	var key_cell = entry.get("key", null)
+	var orig_cell = entry.get("original", null)
+	var trans_cell = entry.get("translation", null)
+
+	var max_h: float = 0.0
+	for c in [key_cell, orig_cell, trans_cell]:
+		if c is BayterekLocalizationKeyRow and is_instance_valid(c):
+			var h: float = c.get_combined_minimum_size().y
+			if h > max_h:
+				max_h = h
+
+	if max_h <= 0.0:
+		max_h = 30.0
+
+	for c in [key_cell, orig_cell, trans_cell]:
+		if c is BayterekLocalizationKeyRow and is_instance_valid(c):
+			c.custom_minimum_size.y = max_h
 
 # ============================================================
 # AUTO-COMPLETE KEY PROVIDER
@@ -741,19 +933,21 @@ func _refresh_sidebar() -> void:
 func _on_sidebar_toggle() -> void:
 	_sidebar_collapsed = not _sidebar_collapsed
 
-	_sidebar_content.visible = not _sidebar_collapsed
-	_sidebar_title.visible = not _sidebar_collapsed
-
 	if _sidebar_collapsed:
+		# Tamamen kapat: sadece toggle butonu görünsün
+		_sidebar_content.visible = false
+		_sidebar_title.visible = false
 		_sidebar_root.custom_minimum_size.x = SIDEBAR_COLLAPSED
 		_sidebar_toggle_btn.text = "▶"
-		_h_split.split_offset = SIDEBAR_COLLAPSED
+		_outer_split.split_offset = SIDEBAR_COLLAPSED
 	else:
+		_sidebar_content.visible = true
+		_sidebar_title.visible = true
 		_sidebar_root.custom_minimum_size.x = SIDEBAR_EXPANDED
 		_sidebar_toggle_btn.text = "◀"
-		_h_split.split_offset = SIDEBAR_EXPANDED
+		_outer_split.split_offset = SIDEBAR_EXPANDED
 
-	_h_split.queue_sort()
+	_outer_split.queue_sort()
 
 # ============================================================
 # PREVIEW PANEL TOGGLE
@@ -763,17 +957,18 @@ func _on_preview_toggle() -> void:
 	_preview_collapsed = not _preview_collapsed
 
 	if _preview_collapsed:
+		# Tamamen kapat: sadece toggle butonu görünsün
 		_preview_toggle_btn.text = "◀"
 		_preview_title.visible = false
+		_preview_panel.visible = false
 		_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
-		_preview_panel.modulate.a = 0.0
-		_preview_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_inner_split.split_offset = -PREVIEW_COLLAPSED
 	else:
 		_preview_toggle_btn.text = "▶"
 		_preview_title.visible = true
+		_preview_panel.visible = true
 		_preview_root.custom_minimum_size.x = PREVIEW_EXPANDED
-		_preview_panel.modulate.a = 1.0
-		_preview_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+		_inner_split.split_offset = -PREVIEW_EXPANDED
 
 	_inner_split.queue_sort()
 	_push_preview_after_layout.call_deferred()
@@ -811,23 +1006,26 @@ func _apply_filter() -> void:
 	if _sidebar_search:
 		sq = _sidebar_search.text.strip_edges()
 
-	# --- Main table filter (fuzzy over key + original + translation) ---
 	for key in _rows_by_key.keys():
-		var row: BayterekLocalizationKeyRow = _rows_by_key[key]
-		if not is_instance_valid(row):
-			continue
+		var key_cell: BayterekLocalizationKeyRow = _get_key_cell(key)
+		var orig_cell: BayterekLocalizationKeyRow = _get_orig_cell(key)
+		var trans_cell: BayterekLocalizationKeyRow = _get_trans_cell(key)
 
 		var matches: bool = q.is_empty()
 		if not matches:
 			matches = Fuzzy.matches(q, key)
-		if not matches:
-			matches = Fuzzy.matches(q, row.original_value)
-		if not matches:
-			matches = Fuzzy.matches(q, row.get_translation())
+		if not matches and orig_cell:
+			matches = Fuzzy.matches(q, orig_cell.original_value)
+		if not matches and trans_cell:
+			matches = Fuzzy.matches(q, trans_cell.get_translation())
 
-		row.visible = matches
+		if key_cell:
+			key_cell.visible = matches
+		if orig_cell:
+			orig_cell.visible = matches
+		if trans_cell:
+			trans_cell.visible = matches
 
-	# --- Sidebar filter (fuzzy over key names only) ---
 	for i in _sidebar_list.item_count:
 		var key_text: String = _sidebar_list.get_item_text(i)
 		var matches_sidebar: bool = sq.is_empty() or Fuzzy.matches(sq, key_text)
@@ -856,18 +1054,18 @@ func _on_row_value_changed(key: String, new_value: String) -> void:
 	translations[key] = new_value
 	_set_dirty(true)
 	_update_missing_count()
-	# No validation / preview refresh during typing.
+
+	# Re-sync row heights because the translation cell may have grown.
+	_sync_row_heights.call_deferred(key)
 
 func _on_row_value_edit_committed(key: String, _new_value: String) -> void:
 	_update_validation_flags()
 	_update_stats_panel()
+	_sync_row_heights.call_deferred(key)
 	if key == _selected_key:
 		_update_preview_for(key)
 
 func _apply_value_from_undo(key: String, value: String) -> void:
-	# NOTE: Do NOT call row.set_translation() here. This callback runs
-	# immediately from commit_action() while the user is typing — touching
-	# the TextEdit field would reset the caret to 0.
 	if not _rows_by_key.has(key):
 		return
 	translations[key] = value
@@ -875,6 +1073,7 @@ func _apply_value_from_undo(key: String, value: String) -> void:
 	_set_dirty(true)
 	_update_missing_count()
 	_update_validation_flags()
+	_sync_row_heights.call_deferred(key)
 	if key == _selected_key:
 		_update_preview_for(key)
 
@@ -890,18 +1089,31 @@ func _on_row_selected(key: String) -> void:
 			_suppress_sidebar_signal = false
 			break
 
+	# Highlight all 3 cells of this row, deselect others.
+	for k in _rows_by_key.keys():
+		var is_sel: bool = (k == key)
+		var kc: BayterekLocalizationKeyRow = _get_key_cell(k)
+		var oc: BayterekLocalizationKeyRow = _get_orig_cell(k)
+		var tc: BayterekLocalizationKeyRow = _get_trans_cell(k)
+		if kc:
+			kc.set_row_selected(is_sel)
+		if oc:
+			oc.set_row_selected(is_sel)
+		if tc:
+			tc.set_row_selected(is_sel)
+
 	_update_preview_for(key)
 
 func _update_preview_for(key: String) -> void:
 	if not _preview_panel:
 		return
-	if not _rows_by_key.has(key):
+	var trans_cell: BayterekLocalizationKeyRow = _get_trans_cell(key)
+	if not trans_cell:
 		_preview_panel.clear()
 		return
-	var row: BayterekLocalizationKeyRow = _rows_by_key[key]
-	if not is_instance_valid(row):
-		_preview_panel.clear()
-		return
+
+	var orig_cell: BayterekLocalizationKeyRow = _get_orig_cell(key)
+	var orig_val: String = orig_cell.original_value if orig_cell else ""
 
 	var broken: bool = _has_broken_reference(key)
 	var cyclic: bool = _has_cycle(key)
@@ -915,8 +1127,8 @@ func _update_preview_for(key: String) -> void:
 
 	_preview_panel.show_row(
 		key,
-		row.original_value,
-		row.get_translation(),
+		orig_val,
+		trans_cell.get_translation(),
 		current_locale,
 		broken,
 		cyclic,
@@ -940,21 +1152,20 @@ func _make_cycle_safe_lookup(root_key: String) -> Callable:
 		return ""
 
 func _scroll_to_row(key: String) -> void:
-	if not _rows_by_key.has(key):
-		return
-	var row: BayterekLocalizationKeyRow = _rows_by_key[key]
-	if not is_instance_valid(row):
+	var trans_cell: BayterekLocalizationKeyRow = _get_trans_cell(key)
+	if not trans_cell:
 		return
 
-	_rows_scroll.ensure_control_visible(row)
+	# Scroll all three columns to the same vertical offset.
+	_translation_column.ensure_control_visible(trans_cell)
+	var key_cell: BayterekLocalizationKeyRow = _get_key_cell(key)
+	if key_cell:
+		_key_column.ensure_control_visible(key_cell)
+	var orig_cell: BayterekLocalizationKeyRow = _get_orig_cell(key)
+	if orig_cell:
+		_original_column.ensure_control_visible(orig_cell)
 
-	for k in _rows_by_key.keys():
-		var r: BayterekLocalizationKeyRow = _rows_by_key[k]
-		if is_instance_valid(r):
-			r.set_row_selected(k == key)
-
-	_selected_key = key
-	_update_preview_for(key)
+	_on_row_selected(key)
 
 func _on_row_navigate_requested(key: String, direction: int) -> void:
 	if direction == 0:
@@ -964,8 +1175,8 @@ func _on_row_navigate_requested(key: String, direction: int) -> void:
 	var sorted: Array = _rows_by_key.keys()
 	sorted.sort()
 	for k in sorted:
-		var r: BayterekLocalizationKeyRow = _rows_by_key[k]
-		if is_instance_valid(r) and r.visible:
+		var tc: BayterekLocalizationKeyRow = _get_trans_cell(k)
+		if tc and tc.visible:
 			visible_keys.append(k)
 
 	if visible_keys.is_empty():
@@ -982,9 +1193,9 @@ func _on_row_navigate_requested(key: String, direction: int) -> void:
 	var next_key: String = visible_keys[next_idx]
 	_scroll_to_row(next_key)
 
-	var next_row: BayterekLocalizationKeyRow = _rows_by_key[next_key]
-	if is_instance_valid(next_row):
-		next_row.focus_translation()
+	var next_trans: BayterekLocalizationKeyRow = _get_trans_cell(next_key)
+	if next_trans:
+		next_trans.focus_translation()
 
 # ============================================================
 # KEY RENAME
@@ -1005,10 +1216,9 @@ func _on_row_key_rename_requested(old_key: String, new_key: String) -> void:
 
 	if _row_key_exists_anywhere(registry, new_key):
 		push_warning("[Editor] Rename failed: key '%s' already exists." % new_key)
-		if _rows_by_key.has(old_key):
-			var r: BayterekLocalizationKeyRow = _rows_by_key[old_key]
-			if is_instance_valid(r):
-				r._apply_values()
+		var key_cell: BayterekLocalizationKeyRow = _get_key_cell(old_key)
+		if key_cell and key_cell.has_method("_apply_values"):
+			key_cell._apply_values()
 		return
 
 	if _undo_helper:
@@ -1138,9 +1348,11 @@ func _apply_remove_key(key: String) -> void:
 	originals.erase(key)
 	translations.erase(key)
 	if _rows_by_key.has(key):
-		var row: BayterekLocalizationKeyRow = _rows_by_key[key]
-		if is_instance_valid(row):
-			row.queue_free()
+		var entry: Dictionary = _rows_by_key[key]
+		for cell_name in ["key", "original", "translation"]:
+			var cell = entry.get(cell_name, null)
+			if cell is BayterekLocalizationKeyRow and is_instance_valid(cell):
+				cell.queue_free()
 		_rows_by_key.erase(key)
 	if key == _selected_key:
 		_selected_key = ""
@@ -1236,9 +1448,11 @@ func _apply_delete_key(target_key: String) -> void:
 	translations.erase(target_key)
 
 	if _rows_by_key.has(target_key):
-		var row: BayterekLocalizationKeyRow = _rows_by_key[target_key]
-		if is_instance_valid(row):
-			row.queue_free()
+		var entry: Dictionary = _rows_by_key[target_key]
+		for cell_name in ["key", "original", "translation"]:
+			var cell = entry.get(cell_name, null)
+			if cell is BayterekLocalizationKeyRow and is_instance_valid(cell):
+				cell.queue_free()
 		_rows_by_key.erase(target_key)
 
 	if target_key == _selected_key:
@@ -1467,11 +1681,13 @@ func _update_missing_count() -> void:
 
 	var missing: int = 0
 	for key in _rows_by_key.keys():
-		var row: BayterekLocalizationKeyRow = _rows_by_key[key]
-		if not is_instance_valid(row):
+		var trans_cell: BayterekLocalizationKeyRow = _get_trans_cell(key)
+		if not trans_cell:
 			continue
-		var t: String = row.get_translation().strip_edges()
-		if t.is_empty() or t == row.original_value:
+		var t: String = trans_cell.get_translation().strip_edges()
+		var orig_cell: BayterekLocalizationKeyRow = _get_orig_cell(key)
+		var o: String = orig_cell.original_value if orig_cell else ""
+		if t.is_empty() or t == o:
 			missing += 1
 
 	_missing_label.text = "%d missing" % missing
@@ -1497,13 +1713,14 @@ func _update_stats_panel() -> void:
 	var cycle_count: int = 0
 
 	for key in _rows_by_key.keys():
-		var row: BayterekLocalizationKeyRow = _rows_by_key[key]
-		if not is_instance_valid(row):
+		var trans_cell: BayterekLocalizationKeyRow = _get_trans_cell(key)
+		if not trans_cell:
 			continue
 
 		total += 1
-		var cur: String = row.get_translation().strip_edges()
-		var orig: String = row.original_value
+		var cur: String = trans_cell.get_translation().strip_edges()
+		var orig_cell: BayterekLocalizationKeyRow = _get_orig_cell(key)
+		var orig: String = orig_cell.original_value if orig_cell else ""
 
 		if cur.is_empty():
 			empty_count += 1
@@ -1588,8 +1805,12 @@ func _input(event: InputEvent) -> void:
 func _navigate_from_focused(direction: int) -> void:
 	var current_key: String = ""
 	for k in _rows_by_key.keys():
-		var r: BayterekLocalizationKeyRow = _rows_by_key[k]
-		if is_instance_valid(r) and r.has_field_focus():
+		var tc: BayterekLocalizationKeyRow = _get_trans_cell(k)
+		if tc and tc.has_field_focus():
+			current_key = k
+			break
+		var kc: BayterekLocalizationKeyRow = _get_key_cell(k)
+		if kc and kc.has_field_focus():
 			current_key = k
 			break
 
@@ -1597,10 +1818,10 @@ func _navigate_from_focused(direction: int) -> void:
 		var sorted: Array = _rows_by_key.keys()
 		sorted.sort()
 		for k in sorted:
-			var r: BayterekLocalizationKeyRow = _rows_by_key[k]
-			if is_instance_valid(r) and r.visible:
+			var tc: BayterekLocalizationKeyRow = _get_trans_cell(k)
+			if tc and tc.visible:
 				_scroll_to_row(k)
-				r.focus_translation()
+				tc.focus_translation()
 				return
 		return
 
