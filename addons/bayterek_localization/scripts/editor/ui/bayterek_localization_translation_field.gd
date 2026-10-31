@@ -24,9 +24,7 @@ func _ready() -> void:
 	size_flags_vertical = Control.SIZE_FILL
 
 	wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-	# We manage the height ourselves — disable Godot's built-in
-	# fit-content so it doesn't fight us.
-	scroll_fit_content_height = true
+	scroll_fit_content_height = false
 	scroll_horizontal = 0
 	scroll_vertical = 0
 	context_menu_enabled = true
@@ -39,15 +37,12 @@ func _ready() -> void:
 	focus_entered.connect(_on_inner_focus_entered)
 	focus_exited.connect(_on_inner_focus_exited)
 	gui_input.connect(_on_inner_gui_input)
-
-	# Recompute height when the control is resized (e.g. column drag).
 	resized.connect(_recompute_height)
 
 	_key_completer = BayterekLocalizationKeyCompleter.new()
 	_key_completer.set_target(self)
 	add_child(_key_completer)
 
-	# Initial height computation.
 	_recompute_height.call_deferred()
 
 # ============================================================
@@ -57,8 +52,7 @@ func _ready() -> void:
 func set_text(new_text: String) -> void:
 	if _updating:
 		return
-	var current: String = text
-	if current == new_text:
+	if text == new_text:
 		return
 
 	var saved_line: int = get_caret_line()
@@ -106,34 +100,25 @@ func set_key_provider(provider: Callable) -> void:
 	if _key_completer:
 		_key_completer.set_key_provider(provider)
 
-## Forces a height recomputation. Call this after changing the font,
-## theme, or wrapping behavior.
 func refresh_height() -> void:
 	_recompute_height()
 
 # ============================================================
-# HEIGHT MANAGEMENT
+# HEIGHT — tek doğru kaynak: get_visible_line_count_in_range()
 # ============================================================
 
-## Recomputes the widget's minimum height from the ACTUAL wrapped
-## content. Unlike `scroll_fit_content_height = true`, this both
-## grows AND shrinks the height.
 func _recompute_height() -> void:
 	if not is_inside_tree():
 		return
 
-	# Force TextEdit to update its internal scroll-bar metrics BEFORE
-	# we read them. Without this, `get_v_scroll_bar().max_value` lags
-	# one frame behind the text change.
-	update_minimum_size()
+	var line_count: int = get_line_count()
+	var visual_lines: int = 1
+	if line_count > 0:
+		var n: int = get_visible_line_count_in_range(0, line_count - 1)
+		if n > 0:
+			visual_lines = n
 
-	var vbar: VScrollBar = get_v_scroll_bar()
-	var content_h: float = vbar.max_value if vbar else 0.0
-
-	# Content height from the scroll bar includes the full wrapped text.
-	# Add a small padding so the last line isn't clipped.
-	var needed: float = content_h + 8.0
-
+	var needed: float = get_line_height() * float(visual_lines) + 8.0
 	if needed < MIN_HEIGHT:
 		needed = MIN_HEIGHT
 
@@ -165,7 +150,8 @@ func _on_inner_text_changed() -> void:
 		set_caret_line(line)
 		set_caret_column(col)
 
-	# Recompute height on EVERY keystroke (grow OR shrink).
+	# Aynı frame'de hesapla. get_visible_line_count_in_range() iç
+	# layout'a bağlı değil, o yüzden gecikme yok.
 	_recompute_height()
 
 	if _key_completer:

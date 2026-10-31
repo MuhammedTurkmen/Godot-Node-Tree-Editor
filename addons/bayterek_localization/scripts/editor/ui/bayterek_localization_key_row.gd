@@ -62,6 +62,7 @@ var _key_provider_callback: Callable = Callable()
 
 # Row identifier — editor uses this to group cells of the same logical row.
 var _row_id: String = ""
+var _last_key_text_length: int = 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -131,6 +132,8 @@ func _build_key_cell() -> void:
 	if _key_edit:
 		return
 
+	_last_key_text_length = 0
+
 	_key_edit = TextEdit.new()
 	_key_edit.name = "KeyEdit"
 	_key_edit.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -154,18 +157,48 @@ func _recompute_key_height() -> void:
 	if not _key_edit or not is_inside_tree():
 		return
 
-	_key_edit.update_minimum_size()
+	var line_count: int = _key_edit.get_line_count()
+	var visual_lines: int = 1
+	if line_count > 0:
+		visual_lines = _key_edit.get_visible_line_count_in_range(0, line_count - 1)
+		if visual_lines <= 0:
+			visual_lines = 1
 
-	var vbar: VScrollBar = _key_edit.get_v_scroll_bar()
-	var content_h: float = vbar.max_value if vbar else 0.0
-
-	var needed: float = content_h + 8.0
+	var needed: float = _key_edit.get_line_height() * float(visual_lines) + 8.0
 	if needed < 24.0:
 		needed = 24.0
 
 	if not is_equal_approx(_key_edit.custom_minimum_size.y, needed):
 		_key_edit.custom_minimum_size.y = needed
 		_key_edit.update_minimum_size()
+
+func _get_wrapped_key_line_height(line_idx: int) -> float:
+	var line_height: float = _key_edit.get_line_height()
+	if line_idx < 0 or line_idx >= _key_edit.get_line_count():
+		return line_height
+
+	if _key_edit.wrap_mode == TextEdit.LINE_WRAPPING_NONE:
+		return line_height
+
+	var line_text: String = _key_edit.get_line(line_idx)
+	if line_text.is_empty():
+		return line_height
+
+	var font: Font = _key_edit.get_theme_font("font")
+	var font_size: int = _key_edit.get_theme_font_size("font_size")
+	if font_size <= 0:
+		font_size = 16
+	var char_width: float = 8.0
+	if font:
+		char_width = font.get_string_size("M", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	if char_width <= 0.0:
+		return line_height
+
+	var usable_width: float = maxf(1.0, _key_edit.size.x - 8.0)
+	var chars_per_line: int = maxi(1, int(usable_width / char_width))
+	var visual_lines: int = maxi(1, ceili(float(line_text.length()) / float(chars_per_line)))
+
+	return line_height * float(visual_lines)
 
 func _build_original_cell() -> void:
 	if _original_label:
@@ -331,7 +364,33 @@ func _on_key_text_changed() -> void:
 		_suppress_key_signal = false
 		_key_edit.set_caret_line(0)
 		_key_edit.set_caret_column(mini(saved_col, stripped.length()))
-	_recompute_key_height()
+
+	var new_length: int = _key_edit.text.length()
+	var was_deletion: bool = new_length < _last_key_text_length
+	_last_key_text_length = new_length
+
+	if was_deletion:
+		_recompute_key_height_after_deletion()
+	else:
+		_recompute_key_height()
+
+
+func _recompute_key_height_after_deletion() -> void:
+	if not _key_edit or not is_inside_tree():
+		return
+
+	_key_edit.custom_minimum_size.y = 24.0
+	_key_edit.update_minimum_size()
+	_apply_key_deletion_height_next_frame.call_deferred()
+
+
+func _apply_key_deletion_height_next_frame() -> void:
+	if not is_instance_valid(_key_edit) or not _key_edit.is_inside_tree():
+		return
+
+	if _key_edit.custom_minimum_size.y < 24.0:
+		_key_edit.custom_minimum_size.y = 24.0
+		_key_edit.update_minimum_size()
 
 func _on_key_gui_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
@@ -380,3 +439,4 @@ func _gui_input(event: InputEvent) -> void:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			row_selected.emit(key)
 			accept_event()
+

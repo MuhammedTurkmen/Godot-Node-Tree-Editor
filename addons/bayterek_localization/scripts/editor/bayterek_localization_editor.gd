@@ -86,6 +86,9 @@ var _key_refs_cache: Dictionary = {}
 var _undo_helper: BayterekLocalizationUndoHelper
 var _field_edit_old_value: Dictionary = {}
 
+var _sidebar_locked_offset: int = SIDEBAR_COLLAPSED
+var _preview_locked_offset: int = -PREVIEW_COLLAPSED
+
 # ============================================================
 # LIFECYCLE
 # ============================================================
@@ -103,14 +106,18 @@ func init() -> void:
 	_undo_helper = UndoHelper.new(self)
 	_show_empty()
 
+	_sidebar_locked_offset = SIDEBAR_COLLAPSED
+	_preview_locked_offset = -PREVIEW_COLLAPSED
+	_sidebar_collapsed = false
 	_preview_collapsed = true
 	_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
 	_preview_panel.visible = false
 	_preview_title.visible = false
 	_preview_toggle_btn.text = "◀"
 	_inner_split.split_offset = -PREVIEW_COLLAPSED
+	_inner_split.dragger_visibility = SplitContainer.DRAGGER_HIDDEN_COLLAPSED
+	
 	_inner_split.queue_sort()
-
 	print("[BayterekLocalizationEditor] ready.")
 
 # ============================================================
@@ -127,6 +134,7 @@ func _build_ui() -> void:
 	_outer_split.size_flags_vertical = SIZE_EXPAND_FILL
 	_outer_split.split_offset = SIDEBAR_EXPANDED
 	add_child(_outer_split)
+	_outer_split.dragged.connect(_on_outer_split_dragged)
 
 	_build_sidebar()
 
@@ -136,9 +144,24 @@ func _build_ui() -> void:
 	_inner_split.size_flags_vertical = SIZE_EXPAND_FILL
 	_inner_split.split_offset = -PREVIEW_COLLAPSED
 	_outer_split.add_child(_inner_split)
+	_inner_split.dragged.connect(_on_inner_split_dragged)
 
 	_build_main_panel()
 	_build_preview_panel()
+
+func _on_outer_split_dragged(offset: int) -> void:
+	if _sidebar_collapsed:
+		# Sidebar kapalı → offset'i kilitli değere geri zorla.
+		if _outer_split.split_offset != _sidebar_locked_offset:
+			_outer_split.split_offset = _sidebar_locked_offset
+			_outer_split.queue_sort()
+
+func _on_inner_split_dragged(offset: int) -> void:
+	if _preview_collapsed:
+		# Preview kapalı → offset'i kilitli değere geri zorla.
+		if _inner_split.split_offset != _preview_locked_offset:
+			_inner_split.split_offset = _preview_locked_offset
+			_inner_split.queue_sort()
 
 func _build_sidebar() -> void:
 	_sidebar_root = VBoxContainer.new()
@@ -611,11 +634,13 @@ func _on_locale_dropdown_selected(index: int) -> void:
 		open_locale(loc)
 
 ## Shows a confirmation dialog if there are unsaved changes.
+## Shows a confirmation dialog if there are unsaved changes.
+## On confirm: saves the current locale FIRST, then switches.
 func _confirm_switch_locale(target_locale: String) -> void:
 	var dialog := ConfirmationDialog.new()
 	dialog.name = "SwitchLocaleConfirmDialog"
 	dialog.title = "Unsaved Changes"
-	dialog.ok_button_text = "Discard & Switch"
+	dialog.ok_button_text = "Save & Switch"
 	dialog.cancel_button_text = "Cancel"
 	dialog.dialog_text = ""
 	dialog.min_size = Vector2i.ZERO
@@ -628,7 +653,7 @@ func _confirm_switch_locale(target_locale: String) -> void:
 	dialog.add_child(vbox)
 
 	var info := Label.new()
-	info.text = "Current locale \"%s\" has unsaved changes.\nSwitch to \"%s\" anyway?" % [
+	info.text = "Current locale \"%s\" has unsaved changes.\nSave and switch to \"%s\"?" % [
 		current_locale, target_locale
 	]
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -636,6 +661,8 @@ func _confirm_switch_locale(target_locale: String) -> void:
 	vbox.add_child(info)
 
 	dialog.confirmed.connect(func():
+		if dirty:
+			_on_save_pressed()
 		open_locale(target_locale)
 		dialog.queue_free()
 	)
@@ -855,8 +882,8 @@ func _clear_rows() -> void:
 	_rows_by_key.clear()
 
 ## Synchronises the minimum height of all 3 cells of a logical row.
-## The tallest cell (usually whichever TextEdit has wrapped to most
-## lines) dictates the row height so all columns stay aligned.
+## Uses the TALLEST cell's height so all columns stay aligned, and
+## allows the row to SHRINK when every cell has shrunk.
 func _sync_row_heights(row_id: String) -> void:
 	if not _rows_by_key.has(row_id):
 		return
@@ -865,6 +892,11 @@ func _sync_row_heights(row_id: String) -> void:
 	var key_cell = entry.get("key", null)
 	var orig_cell = entry.get("original", null)
 	var trans_cell = entry.get("translation", null)
+
+	# TextEdit'lerin internal layout'unun oturması için bir frame bekle.
+	await get_tree().process_frame
+	if not is_instance_valid(self) or not _rows_by_key.has(row_id):
+		return
 
 	var max_h: float = 0.0
 	for c in [key_cell, orig_cell, trans_cell]:
@@ -876,9 +908,15 @@ func _sync_row_heights(row_id: String) -> void:
 	if max_h <= 0.0:
 		max_h = 30.0
 
+	# KRİTİK: custom_minimum_size'ı ÖNCE 0'a indir, sonra max_h'ye
+	# ayarla. Aksi halde Godot eski büyük değeri koruyabilir ve satır
+	# asla küçülmez. Bu, silme sonrası küçülmeyi garanti eder.
 	for c in [key_cell, orig_cell, trans_cell]:
 		if c is BayterekLocalizationKeyRow and is_instance_valid(c):
+			c.custom_minimum_size.y = 0
+			c.update_minimum_size()
 			c.custom_minimum_size.y = max_h
+			c.update_minimum_size()
 
 	if _key_content:
 		_key_content.queue_sort()
@@ -950,12 +988,12 @@ func _on_sidebar_toggle() -> void:
 	_sidebar_collapsed = not _sidebar_collapsed
 
 	if _sidebar_collapsed:
-		# Tamamen kapat: sadece toggle butonu görünsün
 		_sidebar_content.visible = false
 		_sidebar_title.visible = false
 		_sidebar_root.custom_minimum_size.x = SIDEBAR_COLLAPSED
 		_sidebar_toggle_btn.text = "▶"
 		_outer_split.split_offset = SIDEBAR_COLLAPSED
+		_sidebar_locked_offset = SIDEBAR_COLLAPSED
 	else:
 		_sidebar_content.visible = true
 		_sidebar_title.visible = true
@@ -973,12 +1011,12 @@ func _on_preview_toggle() -> void:
 	_preview_collapsed = not _preview_collapsed
 
 	if _preview_collapsed:
-		# Tamamen kapat: sadece toggle butonu görünsün
 		_preview_toggle_btn.text = "◀"
 		_preview_title.visible = false
 		_preview_panel.visible = false
 		_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
 		_inner_split.split_offset = -PREVIEW_COLLAPSED
+		_preview_locked_offset = -PREVIEW_COLLAPSED
 	else:
 		_preview_toggle_btn.text = "▶"
 		_preview_title.visible = true
@@ -1818,6 +1856,18 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
+	# Alt + Left / Right → önceki / sonraki locale
+	if event.alt_pressed and not ctrl and not shift:
+		if key == KEY_LEFT:
+			_cycle_locale(-1)
+			get_viewport().set_input_as_handled()
+			return
+		if key == KEY_RIGHT:
+			_cycle_locale(1)
+			get_viewport().set_input_as_handled()
+			return
+
+
 func _navigate_from_focused(direction: int) -> void:
 	var current_key: String = ""
 	for k in _rows_by_key.keys():
@@ -1842,3 +1892,75 @@ func _navigate_from_focused(direction: int) -> void:
 		return
 
 	_on_row_navigate_requested(current_key, direction)
+
+## Locale dropdown'ındaki bir önceki / bir sonraki locale'e geçer.
+## Alt + Left / Right kısayolları tarafından çağrılır.
+##
+## Dropdown'ı hiç kullanmaz; registry'den locale listesini doğrudan
+## alıp `current_locale` baz alarak bir sonraki/önceki locale'i
+## hesaplar. Dirty state varsa `_on_locale_dropdown_selected()`
+## üzerinden gelen onay dialogu aynen korunur.
+## Locale dropdown'ındaki bir önceki / bir sonraki locale'e geçer.
+## Alt + Left / Right kısayolları tarafından çağrılır.
+##
+## Dirty state varsa `_confirm_switch_locale()` üzerinden gelen onay
+## dialogunda "Save & Switch" seçilirse önce kaydeder, sonra geçer.
+func _cycle_locale(direction: int) -> void:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	var all_locales: PackedStringArray = registry.get_all_locales()
+	if all_locales.size() < 2:
+		return
+
+	var orig: String = registry.original_locale
+
+	# Dropdown ile aynı sıralamayı kullan: original önce, geri kalanı
+	# alfabetik.
+	var ordered: Array[String] = []
+	if not orig.is_empty() and all_locales.has(orig):
+		ordered.append(orig)
+	var others: Array[String] = []
+	for loc in all_locales:
+		if loc != orig:
+			others.append(loc)
+	others.sort()
+	ordered.append_array(others)
+
+	if ordered.size() < 2:
+		return
+
+	# current_locale'in sıradaki konumunu bul. Bulunamazsa baştan başla.
+	var current_idx: int = ordered.find(current_locale)
+	if current_idx < 0:
+		current_idx = 0
+
+	var next_idx: int = (current_idx + direction + ordered.size()) % ordered.size()
+	var target_locale: String = ordered[next_idx]
+
+	if target_locale == current_locale:
+		return
+
+	# Dropdown'ı görsel olarak senkron tut.
+	_sync_dropdown_selection_to(target_locale)
+
+	# Dirty ise onay sor (Save & Switch / Cancel), değilse direkt geç.
+	if dirty:
+		_confirm_switch_locale(target_locale)
+	else:
+		open_locale(target_locale)
+
+## Dropdown'da `locale`'e karşılık gelen item'ı seçer (sadece görsel
+## senkron için, `_on_locale_dropdown_selected`'i TETİKLEMEZ).
+func _sync_dropdown_selection_to(locale: String) -> void:
+	if not _locale_dropdown:
+		return
+	for i in _locale_dropdown.item_count:
+		var meta = _locale_dropdown.get_item_metadata(i)
+		if meta is String and String(meta) == locale:
+			_locale_dropdown.select(i)
+			return
