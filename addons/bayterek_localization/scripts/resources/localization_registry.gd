@@ -8,6 +8,12 @@ extends Resource
 ## `original_locale` designates the "source of truth" locale — the one whose
 ## key list drives the Editor's Key sidebar. Other locales only translate
 ## existing keys.
+##
+## Godot locale format: language_Script_COUNTRY_VARIANT
+##   language — 2 or 3-letter lowercase
+##   Script   — optional, 4-letter Title case (e.g. Hans, Hant)
+##   COUNTRY  — optional, 2-letter UPPERCASE
+##   VARIANT  — optional
 
 @export_storage var languages: Array[LocalizationLanguage] = []
 @export_storage var original_locale: String = ""
@@ -48,34 +54,45 @@ func remove_language(lang_code: String) -> bool:
 # ============================================================
 
 ## Returns { language: LocalizationLanguage, region: LocalizationRegion or null }
-## for a locale string like "en-US" or "en".
+## for a locale string like "en_US" or "en".
 func find_locale(locale: String) -> Dictionary:
 	if locale.is_empty():
 		return {}
 
-	# Try "lang-REGION"
-	var dash: int = locale.find("-")
-	if dash > 0:
-		var lang_code: String = locale.substr(0, dash)
-		var region_code: String = locale.substr(dash + 1)
-		var lang: LocalizationLanguage = get_language(lang_code)
-		if lang:
-			var reg: LocalizationRegion = lang.get_region(region_code)
-			if reg:
-				return {"language": lang, "region": reg}
+	# Godot formatı: dil_Script_COUNTRY_VARIANT
+	# Örnek: en_US, zh_Hans_CN, zh_Hant_TW, pt_BR
+	var parts: PackedStringArray = locale.split("_", false)
+	if parts.size() < 2:
+		# Sadece dil (en, tr, zh)
+		var lang_only: LocalizationLanguage = get_language(locale)
+		if lang_only:
+			return {"language": lang_only, "region": null}
 		return {}
 
-	# No dash: treat as language-only locale
-	var lang2: LocalizationLanguage = get_language(locale)
-	if lang2:
-		return {"language": lang2, "region": null}
+	var lang_code: String = parts[0].to_lower()
+	var lang: LocalizationLanguage = get_language(lang_code)
+	if not lang:
+		return {}
+
+	# Kalan tüm parçaları region kodu olarak birleştir:
+	#   en_US       → region = "US"
+	#   zh_Hans_CN  → region = "Hans_CN"
+	#   zh_Hant_TW  → region = "Hant_TW"
+	var region_parts: Array[String] = []
+	for i in range(1, parts.size()):
+		region_parts.append(parts[i])
+	var region_code: String = "_".join(region_parts)
+
+	var reg: LocalizationRegion = lang.get_region(region_code)
+	if reg:
+		return {"language": lang, "region": reg}
 
 	return {}
 
 func has_locale(locale: String) -> bool:
 	return not find_locale(locale).is_empty()
 
-## Returns every locale in the registry, e.g. ["en-US", "en-GB", "tr-TR"].
+## Returns every locale in the registry, e.g. ["en_US", "en_GB", "tr_TR"].
 func get_all_locales() -> PackedStringArray:
 	var out: PackedStringArray = []
 	for l in languages:

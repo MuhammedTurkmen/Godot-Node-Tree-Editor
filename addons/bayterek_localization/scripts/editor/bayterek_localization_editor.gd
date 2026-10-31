@@ -12,10 +12,15 @@ const ImportExportDialog = preload("res://addons/bayterek_localization/scripts/e
 const UndoHelper = preload("res://addons/bayterek_localization/scripts/editor/bayterek_localization_undo_helper.gd")
 const Fuzzy = preload("res://addons/bayterek_localization/scripts/editor/bayterek_localization_fuzzy.gd")
 
+const SIDEBAR_TOGGLE_BTN_SIZE := 24
+const PREVIEW_TOGGLE_BTN_SIZE := 24
+
 const SIDEBAR_EXPANDED := 240
-const SIDEBAR_COLLAPSED := 28
+const SIDEBAR_COLLAPSED := SIDEBAR_TOGGLE_BTN_SIZE   # 24
+
 const PREVIEW_EXPANDED := 280
-const PREVIEW_COLLAPSED := 28
+const PREVIEW_COLLAPSED := PREVIEW_TOGGLE_BTN_SIZE   # 24
+
 
 var current_locale: String = ""
 var original_locale: String = ""
@@ -46,8 +51,6 @@ var _save_btn: Button
 var _add_key_btn: Button
 var _delete_key_btn: Button
 var _sync_missing_btn: Button
-var _import_btn: Button
-var _export_btn: Button
 var _search_input: LineEdit
 var _missing_label: Label
 
@@ -114,10 +117,9 @@ func init() -> void:
 	_preview_panel.visible = false
 	_preview_title.visible = false
 	_preview_toggle_btn.text = "◀"
-	_inner_split.split_offset = -PREVIEW_COLLAPSED
-	_inner_split.dragger_visibility = SplitContainer.DRAGGER_HIDDEN_COLLAPSED
 	
 	_inner_split.queue_sort()
+	call_deferred("_apply_layout_fix")
 	print("[BayterekLocalizationEditor] ready.")
 
 # ============================================================
@@ -149,38 +151,25 @@ func _build_ui() -> void:
 	_build_main_panel()
 	_build_preview_panel()
 
-func _on_outer_split_dragged(offset: int) -> void:
-	if _sidebar_collapsed:
-		# Sidebar kapalı → offset'i kilitli değere geri zorla.
-		if _outer_split.split_offset != _sidebar_locked_offset:
-			_outer_split.split_offset = _sidebar_locked_offset
-			_outer_split.queue_sort()
-
-func _on_inner_split_dragged(offset: int) -> void:
-	if _preview_collapsed:
-		# Preview kapalı → offset'i kilitli değere geri zorla.
-		if _inner_split.split_offset != _preview_locked_offset:
-			_inner_split.split_offset = _preview_locked_offset
-			_inner_split.queue_sort()
-
 func _build_sidebar() -> void:
 	_sidebar_root = VBoxContainer.new()
 	_sidebar_root.name = "SidebarRoot"
 	_sidebar_root.custom_minimum_size = Vector2(SIDEBAR_COLLAPSED, 0)
 	_sidebar_root.size_flags_vertical = SIZE_EXPAND_FILL
+	_sidebar_root.clip_contents = true
 	_sidebar_root.add_theme_constant_override("separation", 2)
 	_outer_split.add_child(_sidebar_root)
 
 	_sidebar_header = HBoxContainer.new()
 	_sidebar_header.name = "SidebarHeader"
-	_sidebar_header.add_theme_constant_override("separation", 2)
+	_sidebar_header.add_theme_constant_override("separation", 0)
 	_sidebar_root.add_child(_sidebar_header)
 
 	_sidebar_toggle_btn = Button.new()
 	_sidebar_toggle_btn.name = "SidebarToggle"
 	_sidebar_toggle_btn.text = "◀"
 	_sidebar_toggle_btn.tooltip_text = "Collapse / expand key list"
-	_sidebar_toggle_btn.custom_minimum_size = Vector2(24, 24)
+	_sidebar_toggle_btn.custom_minimum_size = Vector2(SIDEBAR_TOGGLE_BTN_SIZE, 24)
 	_sidebar_toggle_btn.flat = true
 	_sidebar_toggle_btn.pressed.connect(_on_sidebar_toggle)
 	_sidebar_header.add_child(_sidebar_toggle_btn)
@@ -269,22 +258,6 @@ func _build_main_panel() -> void:
 	_sync_missing_btn.tooltip_text = "Copy all keys from the original locale that are missing here (empty values)"
 	_sync_missing_btn.pressed.connect(_on_sync_missing_pressed)
 	_toolbar.add_child(_sync_missing_btn)
-
-	_toolbar.add_child(VSeparator.new())
-
-	_import_btn = Button.new()
-	_import_btn.name = "ImportButton"
-	_import_btn.text = "Import CSV"
-	_import_btn.tooltip_text = "Import translations from a CSV file"
-	_import_btn.pressed.connect(_on_import_pressed)
-	_toolbar.add_child(_import_btn)
-
-	_export_btn = Button.new()
-	_export_btn.name = "ExportButton"
-	_export_btn.text = "Export CSV"
-	_export_btn.tooltip_text = "Export all locales to a CSV file"
-	_export_btn.pressed.connect(_on_export_pressed)
-	_toolbar.add_child(_export_btn)
 
 	_toolbar.add_child(VSeparator.new())
 
@@ -461,17 +434,19 @@ func _build_preview_panel() -> void:
 	_preview_root.custom_minimum_size = Vector2(PREVIEW_COLLAPSED, 0)
 	_preview_root.size_flags_horizontal = Control.SIZE_FILL
 	_preview_root.size_flags_vertical = SIZE_EXPAND_FILL
+	_preview_root.clip_contents = true
 	_preview_root.add_theme_constant_override("separation", 2)
 	_inner_split.add_child(_preview_root)
 
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 2)
+	header.name = "PreviewHeader"
+	header.add_theme_constant_override("separation", 0)
 	_preview_root.add_child(header)
 
 	_preview_toggle_btn = Button.new()
 	_preview_toggle_btn.text = "◀"
 	_preview_toggle_btn.tooltip_text = "Collapse / expand preview"
-	_preview_toggle_btn.custom_minimum_size = Vector2(24, 24)
+	_preview_toggle_btn.custom_minimum_size = Vector2(PREVIEW_TOGGLE_BTN_SIZE, 24)
 	_preview_toggle_btn.flat = true
 	_preview_toggle_btn.pressed.connect(_on_preview_toggle)
 	header.add_child(_preview_toggle_btn)
@@ -488,7 +463,6 @@ func _build_preview_panel() -> void:
 	_preview_panel.set_lookup(_preview_lookup)
 	_preview_root.add_child(_preview_panel)
 
-	# Start collapsed — only toggle button + title visible.
 	_preview_collapsed = true
 	_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
 	_preview_panel.visible = false
@@ -990,18 +964,22 @@ func _on_sidebar_toggle() -> void:
 	if _sidebar_collapsed:
 		_sidebar_content.visible = false
 		_sidebar_title.visible = false
+		# İçeriği root'tan çıkarmıyoruz; sadece görünürlüğü kapatıp
+		# minimum boyutunu sıfırlıyoruz. Böylece split offset bozulmaz.
+		_sidebar_content.custom_minimum_size = Vector2.ZERO
+		_sidebar_content.size_flags_horizontal = SIZE_SHRINK_BEGIN
+		_sidebar_header.custom_minimum_size.x = SIDEBAR_TOGGLE_BTN_SIZE
 		_sidebar_root.custom_minimum_size.x = SIDEBAR_COLLAPSED
 		_sidebar_toggle_btn.text = "▶"
-		_outer_split.split_offset = SIDEBAR_COLLAPSED
-		_sidebar_locked_offset = SIDEBAR_COLLAPSED
 	else:
 		_sidebar_content.visible = true
 		_sidebar_title.visible = true
+		_sidebar_content.size_flags_horizontal = SIZE_EXPAND_FILL
+		_sidebar_header.custom_minimum_size.x = 0
 		_sidebar_root.custom_minimum_size.x = SIDEBAR_EXPANDED
 		_sidebar_toggle_btn.text = "◀"
-		_outer_split.split_offset = SIDEBAR_EXPANDED
 
-	_outer_split.queue_sort()
+	call_deferred("_apply_layout_fix")
 
 # ============================================================
 # PREVIEW PANEL TOGGLE
@@ -1014,18 +992,27 @@ func _on_preview_toggle() -> void:
 		_preview_toggle_btn.text = "◀"
 		_preview_title.visible = false
 		_preview_panel.visible = false
+		# İçeriği root'tan çıkarmak yerine sadece gizle ve minimum
+		# boyutunu sıfırla. HSplitContainer sağ taraf offset'i bozulmaz.
+		_preview_panel.custom_minimum_size = Vector2.ZERO
+		_preview_panel.size_flags_horizontal = SIZE_SHRINK_END
+		var header := _preview_root.get_node_or_null("PreviewHeader")
+		if header and header is Control:
+			(header as Control).custom_minimum_size.x = PREVIEW_TOGGLE_BTN_SIZE
 		_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
-		_inner_split.split_offset = -PREVIEW_COLLAPSED
-		_preview_locked_offset = -PREVIEW_COLLAPSED
 	else:
 		_preview_toggle_btn.text = "▶"
 		_preview_title.visible = true
 		_preview_panel.visible = true
+		_preview_panel.size_flags_horizontal = SIZE_EXPAND_FILL
+		var header2 := _preview_root.get_node_or_null("PreviewHeader")
+		if header2 and header2 is Control:
+			(header2 as Control).custom_minimum_size.x = 0
 		_preview_root.custom_minimum_size.x = PREVIEW_EXPANDED
-		_inner_split.split_offset = -PREVIEW_EXPANDED
 
-	_inner_split.queue_sort()
-	_push_preview_after_layout.call_deferred()
+	call_deferred("_apply_layout_fix")
+	if not _preview_collapsed:
+		_push_preview_after_layout.call_deferred()
 
 func _push_preview_after_layout() -> void:
 	if _selected_key.is_empty():
@@ -1630,44 +1617,6 @@ func _show_info_toast(message: String) -> void:
 	tween.tween_property(toast, "modulate:a", 0.0, 0.5)
 	tween.tween_callback(toast.queue_free)
 
-# ============================================================
-# IMPORT / EXPORT
-# ============================================================
-
-func _on_export_pressed() -> void:
-	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
-	if not loader:
-		return
-	var registry: LocalizationRegistry = loader.call("get_registry")
-	if not registry:
-		return
-
-	if not _csv_dialog:
-		_csv_dialog = ImportExportDialog.new()
-		_csv_dialog.export_completed.connect(_on_csv_export_completed)
-		_csv_dialog.import_completed.connect(_on_csv_import_completed)
-		add_child(_csv_dialog)
-
-	var default_path: String = _make_export_default_path()
-	_csv_dialog.open_export(registry, default_path)
-
-func _on_import_pressed() -> void:
-	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
-	if not loader:
-		return
-	var registry: LocalizationRegistry = loader.call("get_registry")
-	if not registry:
-		return
-
-	if not _csv_dialog:
-		_csv_dialog = ImportExportDialog.new()
-		_csv_dialog.export_completed.connect(_on_csv_export_completed)
-		_csv_dialog.import_completed.connect(_on_csv_import_completed)
-		add_child(_csv_dialog)
-
-	var default_path: String = _make_export_default_path()
-	_csv_dialog.open_import(registry, default_path)
-
 ## Default CSV path: user://localization/<locale>_<timestamp>.csv
 func _make_export_default_path() -> String:
 	var locale_part: String = current_locale
@@ -1964,3 +1913,62 @@ func _sync_dropdown_selection_to(locale: String) -> void:
 		if meta is String and String(meta) == locale:
 			_locale_dropdown.select(i)
 			return
+
+func _on_outer_split_dragged(offset: int) -> void:
+	# Sidebar'ı 80..400 arasına sıkıştır — aşırı daralmasın,
+	# aşırı büyümesin. Bu, editörün input kilidini de önler.
+	if _outer_split:
+		var clamped: int = clampi(offset, 80, 400)
+		if _outer_split.split_offset != clamped:
+			_outer_split.split_offset = clamped
+
+func _on_inner_split_dragged(offset: int) -> void:
+	# Preview'ı 80..500 arasına sıkıştır (sağ panel negatif offset).
+	if _inner_split:
+		var clamped: int = clampi(offset, -500, -80)
+		if _inner_split.split_offset != clamped:
+			_inner_split.split_offset = clamped
+
+var _layout_fix_pending: bool = false
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		if _layout_fix_pending:
+			return
+		_layout_fix_pending = true
+		call_deferred("_apply_layout_fix")
+
+func _apply_layout_fix() -> void:
+	_layout_fix_pending = false
+	if not is_inside_tree():
+		return
+
+	if _outer_split:
+		var desired_sidebar: float = SIDEBAR_COLLAPSED if _sidebar_collapsed else SIDEBAR_EXPANDED
+		var container_w: float = _outer_split.size.x
+		if container_w > 0.0:
+			var desired: int = int(desired_sidebar - container_w * 0.5)
+			desired = clampi(desired, 80, 400)
+			if _outer_split.split_offset != desired:
+				_outer_split.split_offset = desired
+		_outer_split.queue_sort()
+
+	if _inner_split:
+		var desired_preview: float = PREVIEW_COLLAPSED if _preview_collapsed else PREVIEW_EXPANDED
+		var container_w2: float = _inner_split.size.x
+		if container_w2 > 0.0:
+			var desired2: int = int(-desired_preview + container_w2 * 0.5)
+			desired2 = clampi(desired2, -500, -80)
+			if _inner_split.split_offset != desired2:
+				_inner_split.split_offset = desired2
+		_inner_split.queue_sort()
+
+	_sync_header_to_table()
+
+func _force_min_width(node: Node, width: int) -> void:
+	if node is Control:
+		var c: Control = node
+		c.custom_minimum_size.x = 0 if width < 0 else width
+		c.update_minimum_size()
+	for child in node.get_children():
+		_force_min_width(child, width)

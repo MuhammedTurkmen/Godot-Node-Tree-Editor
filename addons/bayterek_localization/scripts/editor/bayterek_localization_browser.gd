@@ -27,6 +27,11 @@ var _search: LineEdit
 var _lang_menu: MenuButton
 var _region_menu: MenuButton
 var _refresh_btn: Button
+var _import_btn: Button
+var _export_btn: Button
+var _polyglot_import_btn: Button
+var _reset_registry_btn: Button
+var _csv_dialog: BayterekLocalizationImportExportDialog
 var _lang_count_label: Label
 var _region_count_label: Label
 var _locale_count_label: Label
@@ -116,6 +121,38 @@ func _build_ui() -> void:
 	_refresh_btn.pressed.connect(_on_refresh_pressed)
 	top.add_child(_refresh_btn)
 
+	_import_btn = Button.new()
+	_import_btn.name = "ImportButton"
+	_import_btn.text = "Import CSV"
+	_import_btn.tooltip_text = "Import translations from a CSV file (key + locale columns)"
+	_import_btn.custom_minimum_size = Vector2(110, 0)
+	_import_btn.pressed.connect(_on_import_pressed)
+	top.add_child(_import_btn)
+
+	_export_btn = Button.new()
+	_export_btn.name = "ExportButton"
+	_export_btn.text = "Export CSV"
+	_export_btn.tooltip_text = "Export all locales to a single CSV file"
+	_export_btn.custom_minimum_size = Vector2(110, 0)
+	_export_btn.pressed.connect(_on_export_pressed)
+	top.add_child(_export_btn)
+
+	_polyglot_import_btn = Button.new()
+	_polyglot_import_btn.name = "PolyglotImportButton"
+	_polyglot_import_btn.text = "Import Polyglot CSV"
+	_polyglot_import_btn.tooltip_text = "Import a Polyglot Gamedev CSV file (multi-locale, one file)"
+	_polyglot_import_btn.custom_minimum_size = Vector2(160, 0)
+	_polyglot_import_btn.pressed.connect(_on_polyglot_import_pressed)
+	top.add_child(_polyglot_import_btn)
+
+	_reset_registry_btn = Button.new()
+	_reset_registry_btn.name = "ResetRegistryButton"
+	_reset_registry_btn.text = "Reset Registry"
+	_reset_registry_btn.tooltip_text = "Delete ALL languages, regions and JSON files. Creates an empty registry."
+	_reset_registry_btn.custom_minimum_size = Vector2(120, 0)
+	_reset_registry_btn.pressed.connect(_on_reset_registry_pressed)
+	top.add_child(_reset_registry_btn)
+
 	# --- Tree ---
 	_tree = Tree.new()
 	_tree.hide_root = true
@@ -196,6 +233,196 @@ func _reload_registry_from_disk() -> void:
 func _on_refresh_pressed() -> void:
 	_reload_registry_from_disk()
 	_refresh()
+
+# ============================================================
+# CSV IMPORT / EXPORT (key + locale columns)
+# ============================================================
+
+func _on_export_pressed() -> void:
+	var registry: LocalizationRegistry = _get_registry()
+	if not registry:
+		return
+
+	if not _csv_dialog:
+		_csv_dialog = BayterekLocalizationImportExportDialog.new()
+		_csv_dialog.export_completed.connect(_on_csv_export_completed)
+		_csv_dialog.import_completed.connect(_on_csv_import_completed)
+		add_child(_csv_dialog)
+
+	var default_path: String = _make_export_default_path()
+	_csv_dialog.open_export(registry, default_path)
+
+
+func _on_import_pressed() -> void:
+	var registry: LocalizationRegistry = _get_registry()
+	if not registry:
+		return
+
+	if not _csv_dialog:
+		_csv_dialog = BayterekLocalizationImportExportDialog.new()
+		_csv_dialog.export_completed.connect(_on_csv_export_completed)
+		_csv_dialog.import_completed.connect(_on_csv_import_completed)
+		add_child(_csv_dialog)
+
+	var default_path: String = _make_export_default_path()
+	_csv_dialog.open_import(registry, default_path)
+
+
+func _make_export_default_path() -> String:
+	var dt: Dictionary = Time.get_datetime_dict_from_system()
+	var timestamp: String = "%04d-%02d-%02d_%02d-%02d" % [
+		dt.get("year", 0), dt.get("month", 0), dt.get("day", 0),
+		dt.get("hour", 0), dt.get("minute", 0),
+	]
+	return "user://localization/all_%s.csv" % timestamp
+
+
+func _on_csv_export_completed(path: String) -> void:
+	print("[Browser] CSV exported: ", path)
+
+
+func _on_csv_import_completed(imported_count: int) -> void:
+	print("[Browser] CSV imported: %d keys" % imported_count)
+	_reload_registry_from_disk()
+	_refresh()
+
+
+# ============================================================
+# POLYGLOT IMPORT
+# ============================================================
+
+func _on_polyglot_import_pressed() -> void:
+	var file_dialog := FileDialog.new()
+	file_dialog.name = "PolyglotImportFileDialog"
+	file_dialog.title = "Import Polyglot CSV"
+	file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	file_dialog.use_native_dialog = false
+	file_dialog.filters = PackedStringArray(["*.csv ; CSV Files"])
+
+	var user_dir: String = ProjectSettings.globalize_path("user://")
+	if not DirAccess.dir_exists_absolute(user_dir):
+		DirAccess.make_dir_recursive_absolute(user_dir)
+	file_dialog.current_dir = user_dir
+
+	file_dialog.file_selected.connect(func(path: String) -> void:
+		var result: Dictionary = BayterekLocalizationPolyglotImport.import_csv(path)
+		var imported: int = int(result.get("imported", 0))
+		var locales: Array = result.get("locales", [])
+		var skipped: int = int(result.get("skipped", 0))
+
+		if imported == 0:
+			push_warning("[PolyglotImport] Import failed — see Output for details.")
+		else:
+			print("[PolyglotImport] Imported %d keys into %d locale(s), %d skipped." % [
+				imported, locales.size(), skipped
+			])
+			_reload_registry_from_disk()
+			_refresh()
+
+		file_dialog.queue_free()
+	)
+	file_dialog.canceled.connect(func() -> void:
+		file_dialog.queue_free()
+	)
+
+	add_child(file_dialog)
+	file_dialog.popup_centered_ratio(0.6)
+
+func _on_reset_registry_pressed() -> void:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	var lang_count: int = registry.get_language_count()
+	var region_count: int = registry.get_region_count()
+	var locale_count: int = registry.get_all_locales().size()
+
+	var dialog := ConfirmationDialog.new()
+	dialog.name = "ResetRegistryDialog"
+	dialog.title = "Reset Registry"
+	dialog.ok_button_text = "Delete Everything"
+	dialog.cancel_button_text = "Cancel"
+	dialog.dialog_text = ""
+	dialog.min_size = Vector2i.ZERO
+	dialog.unresizable = true
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "ContentVBox"
+	vbox.custom_minimum_size = Vector2(460, 80)
+	vbox.add_theme_constant_override("separation", 10)
+	dialog.add_child(vbox)
+
+	var info := Label.new()
+	info.text = (
+		"This will permanently delete:\n"
+		+ "  • %d language(s)\n" % lang_count
+		+ "  • %d region(s)\n" % region_count
+		+ "  • %d locale JSON file(s) from disk\n\n" % locale_count
+		+ "The registry will be re-created empty afterwards.\n\n"
+		+ "This action cannot be undone. Continue?"
+	)
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size = Vector2(460, 0)
+	info.add_theme_color_override("font_color", Color(0.9, 0.9, 0.95))
+	vbox.add_child(info)
+
+	dialog.confirmed.connect(func() -> void:
+		_do_reset_registry(loader, registry)
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func() -> void:
+		dialog.queue_free()
+	)
+	dialog.close_requested.connect(func() -> void:
+		dialog.queue_free()
+	)
+
+	add_child(dialog)
+	dialog.reset_size()
+	dialog.size = Vector2i(520, 280)
+	dialog.popup_centered()
+
+func _do_reset_registry(loader: Node, registry: LocalizationRegistry) -> void:
+	if not registry:
+		return
+
+	# 1) Tüm JSON dosyalarını diskten sil.
+	var all_locales: PackedStringArray = registry.get_all_locales()
+	for locale in all_locales:
+		var path: String = Service.get_locale_file_path(locale)
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
+		var uid_path: String = path + ".uid"
+		if FileAccess.file_exists(uid_path):
+			DirAccess.remove_absolute(uid_path)
+
+	# 2) Registry'yi temizle.
+	registry.languages.clear()
+	registry.original_locale = ""
+
+	# 3) Diske kaydet.
+	loader.call("save_registry")
+
+	# 4) Filesystem'i yenile ve Browser'ı güncelle.
+	EditorInterface.get_resource_filesystem().scan()
+	_reload_registry_from_disk()
+	_refresh()
+
+	print("[Browser] Registry reset. Deleted %d locale file(s)." % all_locales.size())
+
+# ============================================================
+# HELPER
+# ============================================================
+
+func _get_registry() -> LocalizationRegistry:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return null
+	return loader.call("get_registry")
 
 func _refresh() -> void:
 	_refresh_ui.call_deferred()
