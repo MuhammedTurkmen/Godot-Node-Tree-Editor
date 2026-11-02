@@ -1454,10 +1454,11 @@ func _apply_remove_key(key: String) -> void:
 	_update_validation_flags()
 
 func _on_delete_key_pressed() -> void:
-	if not is_original_locale:
-		_show_info_toast("Only the original locale can delete keys.")
-		return
-
+	# Orijinal locale kontrolünü KALDIRDIK — kullanıcı hangi locale'de
+	# olursa olsun seçili key'i silebilmeli. `_delete_key_across_locales`
+	# zaten tüm locale'lerden siliyor ve `_undo_helper` üzerinden
+	# geri alınabiliyor.
+	#
 	# Sidebar fallback: _selected_key boşsa sidebar'dan türet.
 	var selected_key: String = _selected_key
 	if selected_key.is_empty() and _sidebar_list:
@@ -1467,6 +1468,8 @@ func _on_delete_key_pressed() -> void:
 			_selected_key = selected_key
 			_update_ui_state()
 
+	# Hâlâ boşsa hiçbir şey yapma (buton zaten disabled olmalı ama
+	# emniyet için).
 	if selected_key.is_empty():
 		_show_info_toast("Select a key first.")
 		return
@@ -1492,8 +1495,13 @@ func _on_delete_key_pressed() -> void:
 	info.custom_minimum_size = Vector2(400, 0)
 	vbox.add_child(info)
 
+	# Silinecek key'i closure'a kilitle — dialog açıkken kullanıcı
+	# başka satıra tıklayıp `_selected_key`'i değiştirebilir; eski kod
+	# bu yüzden yanlış key'i veya boş key'i siliyordu.
+	var target_key: String = selected_key
+
 	dialog.confirmed.connect(func():
-		_delete_key_across_locales(selected_key)
+		_delete_key_across_locales(target_key)
 		dialog.queue_free()
 	)
 	dialog.canceled.connect(func(): dialog.queue_free())
@@ -1505,6 +1513,10 @@ func _on_delete_key_pressed() -> void:
 	dialog.popup_centered()
 
 func _delete_key_across_locales(target_key: String) -> void:
+	if target_key.is_empty():
+		_show_info_toast("No key selected.")
+		return
+
 	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
 	if not loader:
 		return
@@ -1512,12 +1524,22 @@ func _delete_key_across_locales(target_key: String) -> void:
 	if not registry:
 		return
 
+	# Silinecek değerleri topla (undo için).
 	var deleted_values: Dictionary = {}
 	for locale in registry.get_all_locales():
 		var path: String = Service.get_locale_file_path(locale)
 		var data: Dictionary = Service.read_json(path)
 		if data.has(target_key):
 			deleted_values[locale] = data[target_key]
+
+	# Hiçbir locale'de yoksa boşuna dialog açmayalım / undo push etmeyelim.
+	if deleted_values.is_empty():
+		_show_info_toast("Key \"%s\" not found in any locale." % target_key)
+		# Row hâlâ UI'da olabilir (sadece current locale'de vardı ama
+		# başka locale'de yoktu gibi bir durum). Yine de UI'dan
+		# temizlemek için doğrudan _apply_delete_key çağırabiliriz.
+		_apply_delete_key(target_key)
+		return
 
 	if _undo_helper:
 		_undo_helper.push_delete_key(
@@ -1530,6 +1552,9 @@ func _delete_key_across_locales(target_key: String) -> void:
 		_apply_delete_key(target_key)
 
 func _apply_delete_key(target_key: String) -> void:
+	if target_key.is_empty():
+		return
+
 	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
 	if not loader:
 		return
@@ -1537,6 +1562,7 @@ func _apply_delete_key(target_key: String) -> void:
 	if not registry:
 		return
 
+	# Diskten sil.
 	for locale in registry.get_all_locales():
 		var path: String = Service.get_locale_file_path(locale)
 		var data: Dictionary = Service.read_json(path)
@@ -1544,9 +1570,11 @@ func _apply_delete_key(target_key: String) -> void:
 			data.erase(target_key)
 			Service.write_json(path, data)
 
+	# Bellekten sil.
 	originals.erase(target_key)
 	translations.erase(target_key)
 
+	# UI'dan sil — üç hücreyi de temizle.
 	if _rows_by_key.has(target_key):
 		var entry: Dictionary = _rows_by_key[target_key]
 		for cell_name in ["key", "original", "translation"]:
@@ -1555,6 +1583,7 @@ func _apply_delete_key(target_key: String) -> void:
 				cell.queue_free()
 		_rows_by_key.erase(target_key)
 
+	# Seçimi temizle.
 	if target_key == _selected_key:
 		_selected_key = ""
 		_preview_panel.clear()
