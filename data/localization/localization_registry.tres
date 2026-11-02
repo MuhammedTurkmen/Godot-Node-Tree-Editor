@@ -2,6 +2,348 @@
 
 [ext_resource type="Script" uid="uid://dnfuflirg327x" path="res://addons/bayterek_localization/scripts/resources/localization_registry.gd" id="1_8qjge"]
 [ext_resource type="Script" uid="uid://crcrhyhokadjw" path="res://addons/bayterek_localization/scripts/resources/localization_language.gd" id="1_h0r5q"]
+[ext_resource type="Script" uid="uid://dgm0ag8qen374" path="res://addons/bayterek_localization/scripts/resources/localization_region.gd" id="2_na31a"]
+
+[sub_resource type="Resource" id="Resource_na31a"]
+script = ExtResource("2_na31a")
+code = "US"
+name = "United States"
+language_code = "en"
+file_path = "res://data/localization/languages/en_US.json"
+
+[sub_resource type="Resource" id="Resource_1tpuh"]
+script = ExtResource("1_h0r5q")
+code = "en"
+name = "English"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_na31a")])
+
+[sub_resource type="Resource" id="Resource_5wenj"]
+script = ExtResource("2_na31a")
+code = "FR"
+name = "France"
+language_code = "fr"
+file_path = "res://data/localization/languages/fr_FR.json"
+
+[sub_resource type="Resource" id="Resource_2ypsp"]
+script = ExtResource("1_h0r5q")
+code = "fr"
+name = "Français"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_5wenj")])
+
+[sub_resource type="Resource" id="Resource_lok7u"]
+script = ExtResource("2_na31a")
+code = "ES"
+name = "España"
+language_code = "es"
+file_path = "res://data/localization/languages/es_ES.json"
+
+[sub_resource type="Resource" id="Resource_kqv3v"]
+script = ExtResource("1_h0r5q")
+code = "es"
+name = "Español"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_lok7u")])
+
+[sub_resource type="Resource" id="Resource_ikgdi"]
+script = ExtResource("2_na31a")
+code = "DE"
+name = "Deutschland"
+language_code = "de"
+file_path = "res://data/localization/languages/de_DE.json"
+
+[sub_resource type="Resource" id="Resource_1hysv"]
+script = ExtResource("1_h0r5q")
+code = "de"
+name = "Deutsch"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_ikgdi")])
+
+[sub_resource type="Resource" id="Resource_6h611"]
+script = ExtResource("2_na31a")
+code = "IT"
+name = "Italia"
+language_code = "it"
+file_path = "res://data/localization/languages/it_IT.json"
+
+[sub_resource type="Resource" id="Resource_v6acx"]
+script = ExtResource("1_h0r5q")
+code = "it"
+name = "Italiano"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_6h611")])
+
+[sub_resource type="Resource" id="Resource_p7weg"]
+script = ExtResource("2_na31a")
+code = "BR"
+name = "Brasil"
+language_code = "pt"
+file_path = "res://data/localization/languages/pt_BR.json"
+
+[sub_resource type="Resource" id="Resource_tl0wn"]
+script = ExtResource("2_na31a")
+code = "PT"
+name = "Portugal"
+language_code = "pt"
+file_path = "res://data/localization/languages/pt_PT.json"
+
+[sub_resource type="Resource" id="Resource_fxuky"]
+script = ExtResource("1_h0r5q")
+code = "pt"
+name = "Português"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_p7weg"), SubResource("Resource_tl0wn")])
+
+[sub_resource type="Resource" id="Resource_1nf5i"]
+script = ExtResource("2_na31a")
+code = "RU"
+name = "Россия"
+language_code = "ru"
+file_path = "res://data/localization/languages/ru_RU.json"
+
+[sub_resource type="Resource" id="Resource_7dv78"]
+script = ExtResource("1_h0r5q")
+code = "ru"
+name = "Русский"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_1nf5i")])
+
+[sub_resource type="Resource" id="Resource_7w55w"]
+script = ExtResource("2_na31a")
+code = "GR"
+name = "Ελλάδα"
+language_code = "el"
+file_path = "res://data/localization/languages/el_GR.json"
+
+[sub_resource type="Resource" id="Resource_la4kt"]
+script = ExtResource("1_h0r5q")
+code = "el"
+name = "Ελληνικά"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_7w55w")])
+
+[sub_resource type="Resource" id="Resource_787at"]
+script = ExtResource("2_na31a")
+code = "TR"
+name = "Türkiye"
+language_code = "tr"
+file_path = "res://data/localization/languages/tr_TR.json"
+
+[sub_resource type="Resource" id="Resource_u2yo8"]
+script = ExtResource("1_h0r5q")
+code = "tr"
+name = "Türkçe"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_787at")])
+
+[sub_resource type="Resource" id="Resource_k5e2b"]
+script = ExtResource("2_na31a")
+code = "DK"
+name = "Danmark"
+language_code = "da"
+file_path = "res://data/localization/languages/da_DK.json"
+
+[sub_resource type="Resource" id="Resource_3ucf3"]
+script = ExtResource("1_h0r5q")
+code = "da"
+name = "Dansk"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_k5e2b")])
+
+[sub_resource type="Resource" id="Resource_ul06p"]
+script = ExtResource("2_na31a")
+code = "NO"
+name = "Norge"
+language_code = "nb"
+file_path = "res://data/localization/languages/nb_NO.json"
+
+[sub_resource type="Resource" id="Resource_ed431"]
+script = ExtResource("1_h0r5q")
+code = "nb"
+name = "nb"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_ul06p")])
+
+[sub_resource type="Resource" id="Resource_0tbvb"]
+script = ExtResource("2_na31a")
+code = "SE"
+name = "Sverige"
+language_code = "sv"
+file_path = "res://data/localization/languages/sv_SE.json"
+
+[sub_resource type="Resource" id="Resource_wg2cj"]
+script = ExtResource("1_h0r5q")
+code = "sv"
+name = "Svenska"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_0tbvb")])
+
+[sub_resource type="Resource" id="Resource_mae3q"]
+script = ExtResource("2_na31a")
+code = "NL"
+name = "Nederland"
+language_code = "nl"
+file_path = "res://data/localization/languages/nl_NL.json"
+
+[sub_resource type="Resource" id="Resource_dn48s"]
+script = ExtResource("1_h0r5q")
+code = "nl"
+name = "Nederlands"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_mae3q")])
+
+[sub_resource type="Resource" id="Resource_wyfe1"]
+script = ExtResource("2_na31a")
+code = "PL"
+name = "Polska"
+language_code = "pl"
+file_path = "res://data/localization/languages/pl_PL.json"
+
+[sub_resource type="Resource" id="Resource_3at45"]
+script = ExtResource("1_h0r5q")
+code = "pl"
+name = "Polski"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_wyfe1")])
+
+[sub_resource type="Resource" id="Resource_a8fy4"]
+script = ExtResource("2_na31a")
+code = "FI"
+name = "Suomi"
+language_code = "fi"
+file_path = "res://data/localization/languages/fi_FI.json"
+
+[sub_resource type="Resource" id="Resource_yco7w"]
+script = ExtResource("1_h0r5q")
+code = "fi"
+name = "Suomi"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_a8fy4")])
+
+[sub_resource type="Resource" id="Resource_ojx43"]
+script = ExtResource("2_na31a")
+code = "JP"
+name = "日本"
+language_code = "ja"
+file_path = "res://data/localization/languages/ja_JP.json"
+
+[sub_resource type="Resource" id="Resource_fnvph"]
+script = ExtResource("1_h0r5q")
+code = "ja"
+name = "日本語"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_ojx43")])
+
+[sub_resource type="Resource" id="Resource_8pwj6"]
+script = ExtResource("2_na31a")
+code = "Hans_CN"
+name = "Hans_CN"
+language_code = "zh"
+file_path = "res://data/localization/languages/zh_Hans_CN.json"
+
+[sub_resource type="Resource" id="Resource_1mmrn"]
+script = ExtResource("2_na31a")
+code = "Hant_TW"
+name = "Hant_TW"
+language_code = "zh"
+file_path = "res://data/localization/languages/zh_Hant_TW.json"
+
+[sub_resource type="Resource" id="Resource_3ao3g"]
+script = ExtResource("1_h0r5q")
+code = "zh"
+name = "zh"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_8pwj6"), SubResource("Resource_1mmrn")])
+
+[sub_resource type="Resource" id="Resource_ve302"]
+script = ExtResource("2_na31a")
+code = "KR"
+name = "대한민국"
+language_code = "ko"
+file_path = "res://data/localization/languages/ko_KR.json"
+
+[sub_resource type="Resource" id="Resource_c17f7"]
+script = ExtResource("1_h0r5q")
+code = "ko"
+name = "한국어"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_ve302")])
+
+[sub_resource type="Resource" id="Resource_a0gil"]
+script = ExtResource("2_na31a")
+code = "CZ"
+name = "Česko"
+language_code = "cs"
+file_path = "res://data/localization/languages/cs_CZ.json"
+
+[sub_resource type="Resource" id="Resource_7nwt6"]
+script = ExtResource("1_h0r5q")
+code = "cs"
+name = "Čeština"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_a0gil")])
+
+[sub_resource type="Resource" id="Resource_h0njt"]
+script = ExtResource("2_na31a")
+code = "HU"
+name = "Magyarország"
+language_code = "hu"
+file_path = "res://data/localization/languages/hu_HU.json"
+
+[sub_resource type="Resource" id="Resource_5aijy"]
+script = ExtResource("1_h0r5q")
+code = "hu"
+name = "Magyar"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_h0njt")])
+
+[sub_resource type="Resource" id="Resource_w04eh"]
+script = ExtResource("2_na31a")
+code = "RO"
+name = "România"
+language_code = "ro"
+file_path = "res://data/localization/languages/ro_RO.json"
+
+[sub_resource type="Resource" id="Resource_nac4v"]
+script = ExtResource("1_h0r5q")
+code = "ro"
+name = "Română"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_w04eh")])
+
+[sub_resource type="Resource" id="Resource_wslwh"]
+script = ExtResource("2_na31a")
+code = "TH"
+name = "ไทย"
+language_code = "th"
+file_path = "res://data/localization/languages/th_TH.json"
+
+[sub_resource type="Resource" id="Resource_xs58i"]
+script = ExtResource("1_h0r5q")
+code = "th"
+name = "ไทย"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_wslwh")])
+
+[sub_resource type="Resource" id="Resource_q6cji"]
+script = ExtResource("2_na31a")
+code = "BG"
+name = "BG"
+language_code = "bg"
+file_path = "res://data/localization/languages/bg_BG.json"
+
+[sub_resource type="Resource" id="Resource_0nvtq"]
+script = ExtResource("1_h0r5q")
+code = "bg"
+name = "bg"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_q6cji")])
+
+[sub_resource type="Resource" id="Resource_utf4u"]
+script = ExtResource("2_na31a")
+code = "IL"
+name = "ישראל"
+language_code = "he"
+file_path = "res://data/localization/languages/he_IL.json"
+
+[sub_resource type="Resource" id="Resource_fhyjx"]
+script = ExtResource("1_h0r5q")
+code = "he"
+name = "עברית"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_utf4u")])
+
+[sub_resource type="Resource" id="Resource_cfajy"]
+script = ExtResource("2_na31a")
+code = "BA"
+name = "BA"
+language_code = "bs"
+file_path = "res://data/localization/languages/bs_BA.json"
+
+[sub_resource type="Resource" id="Resource_i05gl"]
+script = ExtResource("1_h0r5q")
+code = "bs"
+name = "bs"
+regions = Array[ExtResource("2_na31a")]([SubResource("Resource_cfajy")])
 
 [resource]
 script = ExtResource("1_8qjge")
+languages = Array[ExtResource("1_h0r5q")]([SubResource("Resource_1tpuh"), SubResource("Resource_2ypsp"), SubResource("Resource_kqv3v"), SubResource("Resource_1hysv"), SubResource("Resource_v6acx"), SubResource("Resource_fxuky"), SubResource("Resource_7dv78"), SubResource("Resource_la4kt"), SubResource("Resource_u2yo8"), SubResource("Resource_3ucf3"), SubResource("Resource_ed431"), SubResource("Resource_wg2cj"), SubResource("Resource_dn48s"), SubResource("Resource_3at45"), SubResource("Resource_yco7w"), SubResource("Resource_fnvph"), SubResource("Resource_3ao3g"), SubResource("Resource_c17f7"), SubResource("Resource_7nwt6"), SubResource("Resource_5aijy"), SubResource("Resource_nac4v"), SubResource("Resource_xs58i"), SubResource("Resource_0nvtq"), SubResource("Resource_fhyjx"), SubResource("Resource_i05gl")])
+original_locale = "en_US"

@@ -7,6 +7,12 @@
 
 ## MEDIUM
 
+importlarda orijinal dil default olarak varsa ingilizce orjinal dil olsun.
+orijinal dil en üstte listelensin hep.
+sağ tıklayıp orijinal dil olarak işaretleme de yapabilelim değiştirmiş oluruz bu şekilde
+yıldızlama ekleyelim birde browserda sağ tıklayıp bir dili yıldızlarsak bu yıldızlanmış diller hemen orijinal dilin altına listelensin.
+dillerin yanındaki caret tan küçültüp genişletebiliyoruzya bir buton ekleyelim diyorum tamamını genişletebileceğimiz bir butonu browser a ekleyelim.
+
 ## HARD
 
 # BUGS 

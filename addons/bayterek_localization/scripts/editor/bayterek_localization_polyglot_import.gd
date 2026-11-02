@@ -59,7 +59,6 @@ const COLUMN_TO_LOCALE := {
 ## CONTEXT_* genelde tek başına anlam taşımaz, atlanır.
 const SKIP_PREFIXES: Array[String] = ["CONTEXT_", "LANGUAGE_", "Polyglot"]
 
-
 ## Ana giriş noktası.
 ## `csv_path` — okunacak dosya.
 ## `locale_filter` — sadece bu locale'lere yaz (boş = hepsi).
@@ -118,6 +117,13 @@ static func import_csv(csv_path: String, locale_filter: Array = []) -> Dictionar
 		col_to_locale[i] = locale
 
 	if new_languages_added:
+		loader.call("save_registry")
+
+	# Ensure a valid original locale exists (English preferred).
+	# This makes "ENGLISH" the default original on first import.
+	var old_original: String = registry.original_locale
+	registry.ensure_original_locale()
+	if registry.original_locale != old_original:
 		loader.call("save_registry")
 
 	if col_to_locale.is_empty():

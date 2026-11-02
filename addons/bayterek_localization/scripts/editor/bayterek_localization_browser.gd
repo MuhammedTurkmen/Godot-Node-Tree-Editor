@@ -15,6 +15,8 @@ enum ContextMenuId {
 	RENAME = 20,
 	DELETE = 30,
 	OPEN_REGION = 40,
+	SET_AS_ORIGINAL = 50,
+	TOGGLE_STAR = 51,
 }
 
 signal region_activated(locale: String)
@@ -47,6 +49,7 @@ var _pending_delete: Dictionary = {}
 
 # --- State ---
 var _suppress_selection: bool = false
+var _all_collapsed: bool = false
 
 # ============================================================
 # LIFECYCLE
@@ -112,6 +115,15 @@ func _build_ui() -> void:
 	_search.clear_button_enabled = true
 	_search.size_flags_horizontal = SIZE_EXPAND_FILL
 	top.add_child(_search)
+
+	# --- Expand / Collapse All ---
+	var expand_all_btn := Button.new()
+	expand_all_btn.name = "ExpandAllButton"
+	expand_all_btn.text = "⊞"
+	expand_all_btn.tooltip_text = "Expand / collapse all languages"
+	expand_all_btn.custom_minimum_size = Vector2(32, 0)
+	expand_all_btn.pressed.connect(_on_expand_all_pressed)
+	top.add_child(expand_all_btn)
 
 	_refresh_btn = Button.new()
 	_refresh_btn.name = "RefreshButton"
@@ -443,6 +455,11 @@ func _refresh_ui() -> void:
 		_tree.create_item()
 		return
 
+	# Ensure a valid original locale and clean stale star entries.
+	registry.ensure_original_locale()
+	if registry.sanitize_starred():
+		loader.call("save_registry")
+
 	_rebuild_tree(registry)
 	_update_stats(registry)
 	_apply_filter(_search.text if _search else "")
@@ -465,17 +482,24 @@ func _rebuild_tree(registry: LocalizationRegistry) -> void:
 		l_item.set_text(0, "%s  (%s)" % [lang.name, lang.code])
 		l_item.set_metadata(0, {"type": "language", "code": lang.code, "name": lang.name})
 		l_item.set_icon(0, theme.get_icon(Localization.LANGUAGE_ICON, Localization.ICON_THEME))
-		l_item.set_collapsed(false)
 
-		if lang.regions.is_empty() and registry.is_original(lang.code):
-			l_item.set_custom_color(0, Color(1.0, 0.85, 0.4))
+		# Sort regions using the same display order logic as locales.
+		var display_regions: Array[LocalizationRegion] = _sort_regions_for_display(lang, registry)
 
-		for region in lang.regions:
+		for region in display_regions:
 			if not region:
 				continue
 			var r_item := l_item.create_child()
 			var locale: String = region.get_locale()
-			r_item.set_text(0, "%s  (%s)" % [region.name, locale])
+
+			# Prefix markers: original ★ , starred ☆
+			var prefix: String = ""
+			if registry.is_original(locale):
+				prefix = "★ "
+			elif registry.is_starred(locale):
+				prefix = "☆ "
+
+			r_item.set_text(0, "%s%s  (%s)" % [prefix, region.name, locale])
 			r_item.set_metadata(0, {
 				"type": "region",
 				"locale": locale,
@@ -485,20 +509,159 @@ func _rebuild_tree(registry: LocalizationRegistry) -> void:
 			})
 			r_item.set_icon(0, theme.get_icon(Localization.REGION_ICON, Localization.ICON_THEME))
 
+			# Colors: original = gold, starred = soft cyan.
 			if registry.is_original(locale):
 				r_item.set_custom_color(0, Color(1.0, 0.85, 0.4))
+			elif registry.is_starred(locale):
+				r_item.set_custom_color(0, Color(0.6, 0.9, 1.0))
+
+		# Language-only locales (no regions): show as a child entry.
+		if lang.regions.is_empty():
+			var lang_locale: String = lang.code
+			var prefix2: String = ""
+			if registry.is_original(lang_locale):
+				prefix2 = "★ "
+			elif registry.is_starred(lang_locale):
+				prefix2 = "☆ "
+			l_item.set_text(0, "%s%s  (%s)" % [prefix2, lang.name, lang.code])
+
+			if registry.is_original(lang_locale):
+				l_item.set_custom_color(0, Color(1.0, 0.85, 0.4))
+			elif registry.is_starred(lang_locale):
+				l_item.set_custom_color(0, Color(0.6, 0.9, 1.0))
+
+		# --- Parent-language tinting ---
+		# If this language contains the ORIGINAL locale (as a region),
+		# tint the language row gold so the user can immediately see
+		# which language the original locale lives under.
+		# (Language-only case is already handled above.)
+		if not lang.regions.is_empty():
+			var contains_original: bool = false
+			var contains_starred: bool = false
+			for region in lang.regions:
+				if not region:
+					continue
+				var loc: String = region.get_locale()
+				if registry.is_original(loc):
+					contains_original = true
+					break
+				if registry.is_starred(loc):
+					contains_starred = true
+
+			if contains_original:
+				l_item.set_custom_color(0, Color(1.0, 0.85, 0.4))
+			elif contains_starred:
+				l_item.set_custom_color(0, Color(0.6, 0.9, 1.0))
+
+	# Also apply display order to the top-level language items:
+	# languages containing the original locale come first, then languages
+	# containing starred locales, then the rest.
+	_reorder_language_items(root, registry)
+
+	# Apply the current collapse state to all language items.
+	# This must run AFTER _reorder_language_items() because removing
+	# and re-adding children can reset the `collapsed` property.
+	_apply_collapsed_state()
 
 	_tree.hide()
 	_tree.show()
+
+## Returns the list of regions for `lang` sorted by display priority:
+##   1. Original region first
+##   2. Starred regions (alphabetical)
+##   3. Remaining regions (alphabetical)
+func _sort_regions_for_display(lang: LocalizationLanguage, registry: LocalizationRegistry) -> Array[LocalizationRegion]:
+	var original: LocalizationRegion = null
+	var starred: Array[LocalizationRegion] = []
+	var rest: Array[LocalizationRegion] = []
+
+	for region in lang.regions:
+		if not region:
+			continue
+		var locale: String = region.get_locale()
+		if registry.is_original(locale):
+			original = region
+		elif registry.is_starred(locale):
+			starred.append(region)
+		else:
+			rest.append(region)
+
+	starred.sort_custom(func(a, b): return a.name.naturalnocasecmp_to(b.name) < 0)
+	rest.sort_custom(func(a, b): return a.name.naturalnocasecmp_to(b.name) < 0)
+
+	var out: Array[LocalizationRegion] = []
+	if original:
+		out.append(original)
+	out.append_array(starred)
+	out.append_array(rest)
+	return out
+
+
+## Reorders the top-level language items so that the language containing
+## the original locale comes first, then languages containing starred
+## locales, then the rest (all alphabetical within each group).
+func _reorder_language_items(root: TreeItem, registry: LocalizationRegistry) -> void:
+	var all_children: Array = root.get_children()
+	if all_children.is_empty():
+		return
+
+	# Group languages into three buckets.
+	var original_lang_code: String = ""
+	if not registry.original_locale.is_empty():
+		var orig_lang: LocalizationLanguage = registry.get_language_for_locale(registry.original_locale)
+		if orig_lang:
+			original_lang_code = orig_lang.code
+
+	var starred_codes: Dictionary = {}
+	for loc in registry.starred_locales.keys():
+		var l: LocalizationLanguage = registry.get_language_for_locale(loc)
+		if l:
+			starred_codes[l.code] = true
+
+	var bucket_original: Array = []
+	var bucket_starred: Array = []
+	var bucket_rest: Array = []
+
+	for item in all_children:
+		var meta = item.get_metadata(0)
+		if not (meta is Dictionary):
+			bucket_rest.append(item)
+			continue
+		var code: String = meta.get("code", "")
+		if code == original_lang_code:
+			bucket_original.append(item)
+		elif starred_codes.has(code):
+			bucket_starred.append(item)
+		else:
+			bucket_rest.append(item)
+
+	bucket_original.sort_custom(func(a, b): return a.get_text(0) < b.get_text(0))
+	bucket_starred.sort_custom(func(a, b): return a.get_text(0) < b.get_text(0))
+	bucket_rest.sort_custom(func(a, b): return a.get_text(0) < b.get_text(0))
+
+	# Detach all children, then re-attach in the desired order.
+	for item in all_children:
+		root.remove_child(item)
+
+	for item in bucket_original:
+		root.add_child(item)
+	for item in bucket_starred:
+		root.add_child(item)
+	for item in bucket_rest:
+		root.add_child(item)
 
 func _update_stats(registry: LocalizationRegistry) -> void:
 	var lang_count: int = registry.get_language_count()
 	var region_count: int = registry.get_region_count()
 	var locale_count: int = registry.get_all_locales().size()
+	var star_count: int = registry.starred_locales.size()
 
 	_lang_count_label.text = "Languages: %d" % lang_count
 	_region_count_label.text = "Regions: %d" % region_count
 	_locale_count_label.text = "Locales: %d" % locale_count
+
+	if star_count > 0:
+		_locale_count_label.text += "  (☆ %d)" % star_count
 
 	if registry.original_locale.is_empty():
 		_original_label.text = "Original: —"
@@ -676,10 +839,22 @@ func _show_context_menu(mouse_pos: Vector2) -> void:
 
 		if t == "language":
 			_context_menu.add_item("Add Region...", ContextMenuId.CREATE_REGION)
+
+			# Language-only locale: this entry IS a locale, so we can
+			# set it as original / star it directly.
+			var is_lang_only: bool = _is_language_only_locale(meta)
+			if is_lang_only:
+				var lang_locale: String = meta.get("code", "")
+				_add_original_and_star_items(lang_locale)
+
 			_context_menu.add_separator()
 			_context_menu.add_item("Delete Language", ContextMenuId.DELETE)
+
 		elif t == "region":
+			var locale: String = meta.get("locale", "")
 			_context_menu.add_item("Open in Editor", ContextMenuId.OPEN_REGION)
+			_context_menu.add_separator()
+			_add_original_and_star_items(locale)
 			_context_menu.add_separator()
 			_context_menu.add_item("Delete Region", ContextMenuId.DELETE)
 
@@ -687,6 +862,47 @@ func _show_context_menu(mouse_pos: Vector2) -> void:
 		_tree.get_screen_transform() * mouse_pos,
 		Vector2i.ZERO
 	))
+
+
+## Returns true if the metadata refers to a language with no regions
+## (i.e. the language code IS the locale).
+func _is_language_only_locale(meta: Dictionary) -> bool:
+	var code: String = meta.get("code", "")
+	if code.is_empty():
+		return false
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return false
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return false
+	var lang: LocalizationLanguage = registry.get_language(code)
+	if not lang:
+		return false
+	return lang.regions.is_empty()
+
+
+## Adds "Set as Original" / "Star"/"Unstar" items for a given locale.
+func _add_original_and_star_items(locale: String) -> void:
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader or locale.is_empty():
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	var is_orig: bool = registry.is_original(locale)
+	var is_star: bool = registry.is_starred(locale)
+
+	var orig_item_index: int = _context_menu.item_count
+	_context_menu.add_check_item("Set as Original Language", ContextMenuId.SET_AS_ORIGINAL)
+	_context_menu.set_item_checked(orig_item_index, is_orig)
+	_context_menu.set_item_disabled(orig_item_index, is_orig)
+
+	var star_label: String = "Unstar Locale" if is_star else "Star Locale"
+	var star_item_index: int = _context_menu.item_count
+	_context_menu.add_item(star_label, ContextMenuId.TOGGLE_STAR)
+	_context_menu.set_item_disabled(star_item_index, is_orig)
 
 func _on_context_menu_pressed(id: int) -> void:
 	# Magic id for "Refresh"
@@ -699,6 +915,107 @@ func _on_context_menu_pressed(id: int) -> void:
 		ContextMenuId.CREATE_REGION: _open_add_region()
 		ContextMenuId.DELETE: _request_delete_selected()
 		ContextMenuId.OPEN_REGION: _on_item_activated()
+		ContextMenuId.SET_AS_ORIGINAL: _on_set_as_original_pressed()
+		ContextMenuId.TOGGLE_STAR: _on_toggle_star_pressed()
+
+## Returns the locale string ("en_US", "tr_TR", ...) associated with
+## the currently selected tree item. Handles both region items and
+## language-only items.
+func _get_current_locale_string() -> String:
+	var selected: TreeItem = _tree.get_selected()
+	if not selected:
+		return ""
+	var meta = selected.get_metadata(0)
+	if not (meta is Dictionary):
+		return ""
+	var t: String = meta.get("type", "")
+
+	if t == "region":
+		return String(meta.get("locale", ""))
+
+	if t == "language":
+		# Language-only: the language code IS the locale.
+		var code: String = String(meta.get("code", ""))
+		if code.is_empty():
+			return ""
+		var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+		if not loader:
+			return ""
+		var registry: LocalizationRegistry = loader.call("get_registry")
+		if not registry:
+			return ""
+		var lang: LocalizationLanguage = registry.get_language(code)
+		if lang and lang.regions.is_empty():
+			return code
+		return ""
+
+	return ""
+
+
+func _on_set_as_original_pressed() -> void:
+	var locale: String = _get_current_locale_string()
+	if locale.is_empty():
+		return
+
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	if registry.set_original_locale(locale):
+		loader.call("save_registry")
+		_refresh()
+		print("[Browser] Original locale set to: ", locale)
+
+
+func _on_toggle_star_pressed() -> void:
+	var locale: String = _get_current_locale_string()
+	if locale.is_empty():
+		return
+
+	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
+	if not loader:
+		return
+	var registry: LocalizationRegistry = loader.call("get_registry")
+	if not registry:
+		return
+
+	# Don't allow starring the original locale.
+	if registry.is_original(locale):
+		return
+
+	var now_starred: bool = registry.toggle_star(locale)
+	loader.call("save_registry")
+	_refresh()
+
+	if now_starred:
+		print("[Browser] Starred: ", locale)
+	else:
+		print("[Browser] Unstarred: ", locale)
+
+func _on_expand_all_pressed() -> void:
+	_all_collapsed = not _all_collapsed
+	_apply_collapsed_state()
+
+## Applies the current `_all_collapsed` flag to every language item
+## in the tree. Only language items (children of root) are affected;
+## region items are leaves and have no collapsed state.
+func _apply_collapsed_state() -> void:
+	if not _tree or not is_instance_valid(_tree):
+		return
+	var root: TreeItem = _tree.get_root()
+	if not root:
+		return
+
+	for lang_item in root.get_children():
+		if not lang_item:
+			continue
+		# Only collapse items that actually have children.
+		# Leaf items (language-only locales) don't need it.
+		if lang_item.get_child_count() > 0:
+			lang_item.collapsed = _all_collapsed
 
 # ============================================================
 # DELETE

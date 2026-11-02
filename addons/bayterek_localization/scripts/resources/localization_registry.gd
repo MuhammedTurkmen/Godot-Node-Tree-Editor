@@ -5,9 +5,9 @@ extends Resource
 ##
 ## Saved to res://data/localization/localization_registry.tres.
 ##
-## `original_locale` designates the "source of truth" locale — the one whose
-## key list drives the Editor's Key sidebar. Other locales only translate
-## existing keys.
+## `original_locale` designates the "source of truth" locale.
+## `starred_locales` holds locales the user marked as favorites;
+## they are listed right below the original locale in the Browser.
 ##
 ## Godot locale format: language_Script_COUNTRY_VARIANT
 ##   language — 2 or 3-letter lowercase
@@ -17,6 +17,10 @@ extends Resource
 
 @export_storage var languages: Array[LocalizationLanguage] = []
 @export_storage var original_locale: String = ""
+
+## Locales marked as favorites in the Browser.
+## They appear immediately below the original locale in the tree.
+@export_storage var starred_locales: Dictionary = {}  # locale -> true
 
 # ============================================================
 # LANGUAGE LOOKUP
@@ -60,10 +64,8 @@ func find_locale(locale: String) -> Dictionary:
 		return {}
 
 	# Godot formatı: dil_Script_COUNTRY_VARIANT
-	# Örnek: en_US, zh_Hans_CN, zh_Hant_TW, pt_BR
 	var parts: PackedStringArray = locale.split("_", false)
 	if parts.size() < 2:
-		# Sadece dil (en, tr, zh)
 		var lang_only: LocalizationLanguage = get_language(locale)
 		if lang_only:
 			return {"language": lang_only, "region": null}
@@ -77,7 +79,6 @@ func find_locale(locale: String) -> Dictionary:
 	# Kalan tüm parçaları region kodu olarak birleştir:
 	#   en_US       → region = "US"
 	#   zh_Hans_CN  → region = "Hans_CN"
-	#   zh_Hant_TW  → region = "Hant_TW"
 	var region_parts: Array[String] = []
 	for i in range(1, parts.size()):
 		region_parts.append(parts[i])
@@ -117,11 +118,116 @@ func get_language_for_locale(locale: String) -> LocalizationLanguage:
 	return found.get("language", null)
 
 # ============================================================
-# HELPERS
+# ORIGINAL LOCALE
 # ============================================================
 
 func is_original(locale: String) -> bool:
 	return not original_locale.is_empty() and locale == original_locale
+
+## Sets the original locale. Returns true if the value actually changed.
+## If `original_locale` is a valid locale in the registry, clears any
+## star flag on it (original is implicitly top priority).
+func set_original_locale(locale: String) -> bool:
+	if locale == original_locale:
+		return false
+	original_locale = locale
+	# Original and star flags are mutually exclusive.
+	starred_locales.erase(locale)
+	return true
+
+## Picks a sensible default original locale if one isn't set yet.
+## Preference order:
+##   1. Existing original_locale if valid
+##   2. English locales (en_US, en-US, en_GB, ...)
+##   3. First available locale
+func ensure_original_locale() -> void:
+	var all_locales: PackedStringArray = get_all_locales()
+
+	if not original_locale.is_empty() and all_locales.has(original_locale):
+		return
+
+	# Prefer English — try exact matches first, then prefix.
+	var english_candidates: Array[String] = ["en_US", "en-US", "en_GB", "en-GB", "en"]
+	for candidate in english_candidates:
+		if all_locales.has(candidate):
+			original_locale = candidate
+			return
+
+	# Any locale starting with "en"
+	for loc in all_locales:
+		var lower: String = loc.to_lower()
+		if lower.begins_with("en_") or lower.begins_with("en-"):
+			original_locale = loc
+			return
+
+	# Fallback: first locale
+	if all_locales.size() > 0:
+		original_locale = all_locales[0]
+
+# ============================================================
+# STARRED LOCALES
+# ============================================================
+
+func is_starred(locale: String) -> bool:
+	return starred_locales.has(locale)
+
+func star_locale(locale: String) -> bool:
+	if locale.is_empty():
+		return false
+	if locale == original_locale:
+		return false
+	if starred_locales.has(locale):
+		return false
+	starred_locales[locale] = true
+	return true
+
+func unstar_locale(locale: String) -> bool:
+	if not starred_locales.has(locale):
+		return false
+	starred_locales.erase(locale)
+	return true
+
+func toggle_star(locale: String) -> bool:
+	if starred_locales.has(locale):
+		unstar_locale(locale)
+		return false
+	star_locale(locale)
+	return true
+
+## Returns all locales in Browser display order:
+##   1. Original locale (first)
+##   2. Starred locales (sorted alphabetically)
+##   3. Remaining locales (sorted alphabetically)
+func get_locales_in_display_order() -> PackedStringArray:
+	var all_locales: PackedStringArray = get_all_locales()
+
+	var original: String = original_locale
+	var starred: Array[String] = []
+	var rest: Array[String] = []
+
+	for loc in all_locales:
+		if loc == original:
+			continue
+		if starred_locales.has(loc):
+			starred.append(loc)
+		else:
+			rest.append(loc)
+
+	starred.sort()
+	rest.sort()
+
+	var out: PackedStringArray = []
+	if not original.is_empty() and all_locales.has(original):
+		out.append(original)
+	for loc in starred:
+		out.append(loc)
+	for loc in rest:
+		out.append(loc)
+	return out
+
+# ============================================================
+# HELPERS
+# ============================================================
 
 func get_language_count() -> int:
 	return languages.size()
@@ -133,5 +239,18 @@ func get_region_count() -> int:
 			total += l.regions.size()
 	return total
 
+## Cleans up starred_locales entries that no longer exist in the registry.
+func sanitize_starred() -> bool:
+	var all_locales: PackedStringArray = get_all_locales()
+	var to_remove: Array[String] = []
+	for loc in starred_locales.keys():
+		if not all_locales.has(loc):
+			to_remove.append(loc)
+	for loc in to_remove:
+		starred_locales.erase(loc)
+	return not to_remove.is_empty()
+
 func _to_string() -> String:
-	return "LocalizationRegistry(languages=%d, original='%s')" % [languages.size(), original_locale]
+	return "LocalizationRegistry(languages=%d, original='%s', starred=%d)" % [
+		languages.size(), original_locale, starred_locales.size()
+	]

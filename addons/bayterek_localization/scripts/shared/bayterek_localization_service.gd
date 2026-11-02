@@ -23,6 +23,7 @@ const LocalizationRegistry = preload("res://addons/bayterek_localization/scripts
 # ============================================================
 
 ## Loads the registry from disk. Creates an empty one if missing.
+## Loads the registry from disk. Creates an empty one if missing.
 static func load_registry() -> LocalizationRegistry:
 	_ensure_dirs()
 
@@ -40,7 +41,23 @@ static func load_registry() -> LocalizationRegistry:
 		ResourceSaver.save(fresh, path)
 		return fresh
 
-	return loaded
+	# Ensure a valid original locale (English preferred) and clean
+	# stale star entries. Save if anything changed.
+	var registry: LocalizationRegistry = loaded
+	var changed: bool = false
+
+	var old_original: String = registry.original_locale
+	registry.ensure_original_locale()
+	if registry.original_locale != old_original:
+		changed = true
+
+	if registry.sanitize_starred():
+		changed = true
+
+	if changed:
+		ResourceSaver.save(registry, path)
+
+	return registry
 
 static func save_registry(registry: LocalizationRegistry) -> Error:
 	if not registry:
@@ -52,6 +69,8 @@ static func save_registry(registry: LocalizationRegistry) -> Error:
 # LANGUAGE CRUD
 # ============================================================
 
+## Adds a language. If `region_code` is provided, immediately creates a
+## region under it. Returns the new language or null on error.
 ## Adds a language. If `region_code` is provided, immediately creates a
 ## region under it. Returns the new language or null on error.
 static func add_language(
@@ -79,12 +98,8 @@ static func add_language(
 	if not region_code.is_empty():
 		add_region(registry, lang_code, region_code)
 
-	# If this is the first language and no original locale exists yet,
-	# designate its (single) locale as original.
-	if registry.original_locale.is_empty():
-		var locales: PackedStringArray = lang.get_locales()
-		if locales.size() > 0:
-			registry.original_locale = locales[0]
+	# Let the registry pick the best original locale (prefers English).
+	registry.ensure_original_locale()
 
 	return lang
 
@@ -288,11 +303,4 @@ static func _delete_file_with_uid(path: String) -> void:
 		DirAccess.remove_absolute(uid_path)
 
 static func _promote_first_locale_as_original(registry: LocalizationRegistry) -> void:
-	for l in registry.languages:
-		if not l:
-			continue
-		var locales: PackedStringArray = l.get_locales()
-		if locales.size() > 0:
-			registry.original_locale = locales[0]
-			return
-	registry.original_locale = ""
+	registry.ensure_original_locale()

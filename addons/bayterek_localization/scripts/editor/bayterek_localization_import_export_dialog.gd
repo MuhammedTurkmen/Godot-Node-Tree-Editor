@@ -484,6 +484,8 @@ func _do_import(path: String) -> void:
 # HELPERS
 # ============================================================
 
+## Returns locales in the "original first, then starred, then rest"
+## order used by the Browser. Keeps CSV exports deterministic.
 func _ordered_locale_codes() -> PackedStringArray:
 	if not _registry:
 		return PackedStringArray()
@@ -495,12 +497,27 @@ func _ordered_locale_codes() -> PackedStringArray:
 	if not orig.is_empty() and all.has(orig):
 		out.append(orig)
 
-	var others: Array = []
+	# Starred (sorted).
+	var starred: Array[String] = []
 	for loc in all:
-		if loc != orig:
-			others.append(loc)
-	others.sort()
-	for loc in others:
+		if loc == orig:
+			continue
+		if _registry.is_starred(loc):
+			starred.append(loc)
+	starred.sort()
+	for loc in starred:
+		out.append(loc)
+
+	# Rest (sorted).
+	var rest: Array[String] = []
+	for loc in all:
+		if loc == orig:
+			continue
+		if _registry.is_starred(loc):
+			continue
+		rest.append(loc)
+	rest.sort()
+	for loc in rest:
 		out.append(loc)
 
 	return out
