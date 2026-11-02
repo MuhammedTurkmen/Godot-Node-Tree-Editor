@@ -984,13 +984,29 @@ func _on_sidebar_toggle() -> void:
 	if _sidebar_collapsed:
 		_sidebar_content.visible = false
 		_sidebar_title.visible = false
-		_sidebar_root.custom_minimum_size.x = SIDEBAR_COLLAPSED
 		_sidebar_toggle_btn.text = "▶"
+
+		# ÖNEMLİ: önce minimum size'ı küçült, SONRA split_offset'i
+		# aynı değere ayarla. İkisi tutarlı olmazsa HSplitContainer
+		# genişliği eski değerde tutmaya çalışır.
+		_sidebar_root.custom_minimum_size.x = SIDEBAR_COLLAPSED
+		if _outer_split:
+			_outer_split.split_offset = SIDEBAR_COLLAPSED
 	else:
 		_sidebar_content.visible = true
 		_sidebar_title.visible = true
-		_sidebar_root.custom_minimum_size.x = SIDEBAR_EXPANDED
 		_sidebar_toggle_btn.text = "◀"
+
+		_sidebar_root.custom_minimum_size.x = SIDEBAR_EXPANDED
+		if _outer_split:
+			# Kullanıcının en son sürüklediği genişliğe geri dön.
+			var restore: int = clampi(_sidebar_locked_offset, SIDEBAR_EXPANDED, 400)
+			_outer_split.split_offset = restore
+
+	if _outer_split:
+		_outer_split.queue_sort()
+	if _inner_split:
+		_inner_split.queue_sort()
 
 # ============================================================
 # PREVIEW PANEL TOGGLE
@@ -1002,13 +1018,23 @@ func _on_preview_toggle() -> void:
 	if _preview_collapsed:
 		_preview_panel.visible = false
 		_preview_title.visible = false
-		_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
 		_preview_toggle_btn.text = "◀"
+
+		_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
+		if _inner_split:
+			_inner_split.split_offset = -PREVIEW_COLLAPSED
 	else:
 		_preview_panel.visible = true
 		_preview_title.visible = true
-		_preview_root.custom_minimum_size.x = PREVIEW_EXPANDED
 		_preview_toggle_btn.text = "▶"
+
+		_preview_root.custom_minimum_size.x = PREVIEW_EXPANDED
+		if _inner_split:
+			var restore: int = clampi(_preview_locked_offset, -500, -PREVIEW_EXPANDED)
+			_inner_split.split_offset = restore
+
+	if _inner_split:
+		_inner_split.queue_sort()
 
 	if not _preview_collapsed:
 		_push_preview_after_layout.call_deferred()
@@ -1916,18 +1942,23 @@ func _sync_dropdown_selection_to(locale: String) -> void:
 			return
 
 func _on_outer_split_dragged(offset: int) -> void:
-	# Sidebar'ı 80..400 arasına sıkıştır — aşırı daralmasın, büyümesin.
 	if _outer_split:
-		var clamped: int = clampi(offset, 80, 400)
+		var min_offset: int = SIDEBAR_COLLAPSED if _sidebar_collapsed else SIDEBAR_EXPANDED
+		var clamped: int = clampi(offset, min_offset, 400)
 		if _outer_split.split_offset != clamped:
 			_outer_split.split_offset = clamped
+			# Kullanıcının tercih ettiği genişliği hatırla (sadece açıkken).
+			if not _sidebar_collapsed:
+				_sidebar_locked_offset = clamped
 
 func _on_inner_split_dragged(offset: int) -> void:
-	# Preview'ı 80..500 arasına sıkıştır (sağ panel negatif offset).
 	if _inner_split:
-		var clamped: int = clampi(offset, -500, -80)
+		var min_offset: int = -PREVIEW_COLLAPSED if _preview_collapsed else -PREVIEW_EXPANDED
+		var clamped: int = clampi(offset, -500, min_offset)
 		if _inner_split.split_offset != clamped:
 			_inner_split.split_offset = clamped
+			if not _preview_collapsed:
+				_preview_locked_offset = clamped
 
 var _layout_fix_pending: bool = false
 
@@ -1952,6 +1983,24 @@ func _apply_layout_fix() -> void:
 		var desired_preview: int = PREVIEW_COLLAPSED if _preview_collapsed else PREVIEW_EXPANDED
 		if _preview_root.custom_minimum_size.x != desired_preview:
 			_preview_root.custom_minimum_size.x = desired_preview
+
+	# Sidebar durumu ile split_offset tutarlı mı? Tutarlı değilse düzelt.
+	if _outer_split:
+		if _sidebar_collapsed:
+			if _outer_split.split_offset > SIDEBAR_COLLAPSED:
+				_outer_split.split_offset = SIDEBAR_COLLAPSED
+		else:
+			if _outer_split.split_offset < SIDEBAR_EXPANDED:
+				_outer_split.split_offset = SIDEBAR_EXPANDED
+
+	# Aynı kontrol preview için.
+	if _inner_split:
+		if _preview_collapsed:
+			if _inner_split.split_offset < -PREVIEW_COLLAPSED:
+				_inner_split.split_offset = -PREVIEW_COLLAPSED
+		else:
+			if _inner_split.split_offset > -PREVIEW_EXPANDED:
+				_inner_split.split_offset = -PREVIEW_EXPANDED
 
 	_sync_header_to_table()
 
