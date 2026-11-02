@@ -82,6 +82,15 @@ func set_placeholder(p: String) -> void:
 
 func grab_focus_field() -> void:
 	grab_focus()
+	# Ensure the parent editor knows this row is now active, even if
+	# the focus signal doesn't fire (e.g. already focused).
+	if not _has_focus_tracked:
+		_has_tracked_on_grab.call_deferred()
+
+func _has_tracked_on_grab() -> void:
+	if not _has_focus_tracked and has_focus():
+		_has_focus_tracked = true
+		field_focus_entered.emit()
 
 func select_all() -> void:
 	super.select_all()

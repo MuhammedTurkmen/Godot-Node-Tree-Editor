@@ -109,17 +109,22 @@ func init() -> void:
 	_undo_helper = UndoHelper.new(self)
 	_show_empty()
 
-	_sidebar_locked_offset = SIDEBAR_COLLAPSED
-	_preview_locked_offset = -PREVIEW_COLLAPSED
 	_sidebar_collapsed = false
 	_preview_collapsed = true
-	_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
+
+	_sidebar_content.visible = true
+	_sidebar_title.visible = true
+	_sidebar_root.custom_minimum_size.x = SIDEBAR_EXPANDED
+	_sidebar_toggle_btn.text = "◀"
+
 	_preview_panel.visible = false
 	_preview_title.visible = false
+	_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
 	_preview_toggle_btn.text = "◀"
-	
-	_inner_split.queue_sort()
-	call_deferred("_apply_layout_fix")
+
+	# Force initial button state after all widgets exist.
+	_update_ui_state()
+
 	print("[BayterekLocalizationEditor] ready.")
 
 # ============================================================
@@ -144,7 +149,6 @@ func _build_ui() -> void:
 	_inner_split.name = "InnerSplit"
 	_inner_split.size_flags_horizontal = SIZE_EXPAND_FILL
 	_inner_split.size_flags_vertical = SIZE_EXPAND_FILL
-	_inner_split.split_offset = -PREVIEW_COLLAPSED
 	_outer_split.add_child(_inner_split)
 	_inner_split.dragged.connect(_on_inner_split_dragged)
 
@@ -249,6 +253,7 @@ func _build_main_panel() -> void:
 	_delete_key_btn = Button.new()
 	_delete_key_btn.name = "DeleteKeyButton"
 	_delete_key_btn.text = "Delete Key"
+	_delete_key_btn.disabled = true
 	_delete_key_btn.pressed.connect(_on_delete_key_pressed)
 	_toolbar.add_child(_delete_key_btn)
 
@@ -294,8 +299,6 @@ func _build_main_panel() -> void:
 	# ============================================================
 	# TABLE HOLDER (header + 3-column table)
 	# ============================================================
-	# The table fills the remaining vertical space and hugs the top
-	# under the header. It stretches to the bottom of the panel.
 	var table_holder := VBoxContainer.new()
 	table_holder.name = "TableHolder"
 	table_holder.size_flags_horizontal = SIZE_EXPAND_FILL
@@ -542,6 +545,10 @@ func _update_header_visibility() -> void:
 # ============================================================
 
 ## Rebuilds the locale dropdown from the registry.
+## Order matches the Browser tree:
+##   1. Original locale (first)
+##   2. Starred locales (alphabetical)
+##   3. Remaining locales (alphabetical)
 func _refresh_locale_dropdown() -> void:
 	if not _locale_dropdown:
 		return
@@ -555,28 +562,18 @@ func _refresh_locale_dropdown() -> void:
 
 	_locale_dropdown.clear()
 
-	var all_locales: PackedStringArray = registry.get_all_locales()
+	var ordered: PackedStringArray = registry.get_locales_in_display_order()
 	var orig: String = registry.original_locale
-
-	# Build items: original first, then others alphabetically.
-	var sorted_locales: Array[String] = []
-	var others: Array[String] = []
-
-	for loc in all_locales:
-		if loc == orig:
-			sorted_locales.append(loc)
-		else:
-			others.append(loc)
-	others.sort()
-	sorted_locales.append_array(others)
 
 	var selected_idx: int = -1
 	var idx: int = 0
 
-	for loc in sorted_locales:
+	for loc in ordered:
 		var label: String = loc
 		if loc == orig:
 			label = "%s  (Original)" % loc
+		elif registry.is_starred(loc):
+			label = "☆ %s" % loc
 		_locale_dropdown.add_item(label, idx)
 		_locale_dropdown.set_item_metadata(idx, loc)
 
@@ -930,9 +927,29 @@ func _update_ui_state() -> void:
 		_locale_label.text = ""
 
 	_add_key_btn.disabled = not is_original_locale
-	_delete_key_btn.disabled = not is_original_locale
 	_sync_missing_btn.disabled = is_original_locale
 	_save_btn.disabled = not dirty
+
+	# Effective selection = _selected_key OR whatever the sidebar currently
+	# has selected. Reading the sidebar here makes the button robust against
+	# any missed row_selected signal (focus quirks, sidebar clicks, etc).
+	var effective_selection: String = _selected_key
+	if effective_selection.is_empty() and _sidebar_list:
+		var sel: PackedInt32Array = _sidebar_list.get_selected_items()
+		if sel.size() > 0:
+			effective_selection = _sidebar_list.get_item_text(sel[0])
+
+	# Delete key needs BOTH: original locale AND a selected key.
+	if _delete_key_btn:
+		var has_selection: bool = not effective_selection.is_empty()
+		_delete_key_btn.disabled = (not is_original_locale) or (not has_selection)
+
+		if not is_original_locale:
+			_delete_key_btn.tooltip_text = "Only the original locale can delete keys."
+		elif not has_selection:
+			_delete_key_btn.tooltip_text = "Select a key first."
+		else:
+			_delete_key_btn.tooltip_text = "Delete the selected key from all locales."
 
 func _show_empty() -> void:
 	if _empty_label:
@@ -967,22 +984,13 @@ func _on_sidebar_toggle() -> void:
 	if _sidebar_collapsed:
 		_sidebar_content.visible = false
 		_sidebar_title.visible = false
-		# İçeriği root'tan çıkarmıyoruz; sadece görünürlüğü kapatıp
-		# minimum boyutunu sıfırlıyoruz. Böylece split offset bozulmaz.
-		_sidebar_content.custom_minimum_size = Vector2.ZERO
-		_sidebar_content.size_flags_horizontal = SIZE_SHRINK_BEGIN
-		_sidebar_header.custom_minimum_size.x = SIDEBAR_TOGGLE_BTN_SIZE
 		_sidebar_root.custom_minimum_size.x = SIDEBAR_COLLAPSED
 		_sidebar_toggle_btn.text = "▶"
 	else:
 		_sidebar_content.visible = true
 		_sidebar_title.visible = true
-		_sidebar_content.size_flags_horizontal = SIZE_EXPAND_FILL
-		_sidebar_header.custom_minimum_size.x = 0
 		_sidebar_root.custom_minimum_size.x = SIDEBAR_EXPANDED
 		_sidebar_toggle_btn.text = "◀"
-
-	call_deferred("_apply_layout_fix")
 
 # ============================================================
 # PREVIEW PANEL TOGGLE
@@ -992,36 +1000,23 @@ func _on_preview_toggle() -> void:
 	_preview_collapsed = not _preview_collapsed
 
 	if _preview_collapsed:
-		_preview_toggle_btn.text = "◀"
-		_preview_title.visible = false
 		_preview_panel.visible = false
-		# İçeriği root'tan çıkarmak yerine sadece gizle ve minimum
-		# boyutunu sıfırla. HSplitContainer sağ taraf offset'i bozulmaz.
-		_preview_panel.custom_minimum_size = Vector2.ZERO
-		_preview_panel.size_flags_horizontal = SIZE_SHRINK_END
-		var header := _preview_root.get_node_or_null("PreviewHeader")
-		if header and header is Control:
-			(header as Control).custom_minimum_size.x = PREVIEW_TOGGLE_BTN_SIZE
+		_preview_title.visible = false
 		_preview_root.custom_minimum_size.x = PREVIEW_COLLAPSED
+		_preview_toggle_btn.text = "◀"
 	else:
-		_preview_toggle_btn.text = "▶"
-		_preview_title.visible = true
 		_preview_panel.visible = true
-		_preview_panel.size_flags_horizontal = SIZE_EXPAND_FILL
-		var header2 := _preview_root.get_node_or_null("PreviewHeader")
-		if header2 and header2 is Control:
-			(header2 as Control).custom_minimum_size.x = 0
+		_preview_title.visible = true
 		_preview_root.custom_minimum_size.x = PREVIEW_EXPANDED
+		_preview_toggle_btn.text = "▶"
 
-	call_deferred("_apply_layout_fix")
 	if not _preview_collapsed:
 		_push_preview_after_layout.call_deferred()
 
 func _push_preview_after_layout() -> void:
 	if _selected_key.is_empty():
 		return
-	await get_tree().process_frame
-	if not is_instance_valid(self) or _selected_key.is_empty():
+	if not is_inside_tree():
 		return
 	_update_preview_for(_selected_key)
 
@@ -1029,10 +1024,13 @@ func _on_sidebar_item_selected(index: int) -> void:
 	if _suppress_sidebar_signal:
 		return
 	var key: String = _sidebar_list.get_item_text(index)
-	_scroll_to_row(key)
 
-func _on_sidebar_search_changed(_new_text: String) -> void:
-	_apply_filter()
+	# Set the selection state IMMEDIATELY so the Delete button reflects
+	# the new selection even if _scroll_to_row bails out early.
+	_selected_key = key
+	_update_ui_state()
+
+	_scroll_to_row(key)
 
 # ============================================================
 # SEARCH / FILTER
@@ -1070,10 +1068,20 @@ func _apply_filter() -> void:
 		if trans_cell:
 			trans_cell.visible = matches
 
+	var selected_still_visible: bool = _selected_key.is_empty()
+
 	for i in _sidebar_list.item_count:
 		var key_text: String = _sidebar_list.get_item_text(i)
 		var matches_sidebar: bool = sq.is_empty() or Fuzzy.matches(sq, key_text)
 		_sidebar_list.set_item_disabled(i, not matches_sidebar)
+		if not _selected_key.is_empty() and key_text == _selected_key and matches_sidebar:
+			selected_still_visible = true
+
+	# If the selected key got filtered out, drop the selection so the
+	# Delete button doesn't act on an invisible row.
+	if not selected_still_visible:
+		_selected_key = ""
+		_update_ui_state()
 
 # ============================================================
 # ROW INTERACTION
@@ -1146,6 +1154,11 @@ func _on_row_selected(key: String) -> void:
 		if tc:
 			tc.set_row_selected(is_sel)
 
+	# Refresh button states so Delete becomes enabled once a key is
+	# selected (it was previously stuck disabled because nothing
+	# called _update_ui_state() after selection).
+	_update_ui_state()
+
 	_update_preview_for(key)
 
 func _update_preview_for(key: String) -> void:
@@ -1201,10 +1214,6 @@ func _scroll_to_row(key: String) -> void:
 		return
 
 	# Scroll all three columns so the selected row is at the VERY TOP.
-	# We set scroll_vertical directly (rather than ensure_control_visible)
-	# because ensure_control_visible only scrolls when the target is out
-	# of view, and it scrolls it just barely into view — never pinning it
-	# to the top edge.
 	var target_scroll: int = int(trans_cell.position.y)
 	_key_column.scroll_vertical = target_scroll
 	_original_column.scroll_vertical = target_scroll
@@ -1409,11 +1418,22 @@ func _apply_remove_key(key: String) -> void:
 
 func _on_delete_key_pressed() -> void:
 	if not is_original_locale:
+		_show_info_toast("Only the original locale can delete keys.")
 		return
 
+	# Fallback: if _selected_key is empty, try to derive it from the
+	# sidebar selection (which the user might have clicked without
+	# triggering _on_row_selected due to focus quirks).
 	var selected_key: String = _selected_key
+	if selected_key.is_empty() and _sidebar_list:
+		var sel: PackedInt32Array = _sidebar_list.get_selected_items()
+		if sel.size() > 0:
+			selected_key = _sidebar_list.get_item_text(sel[0])
+			_selected_key = selected_key
+			_update_ui_state()
+
 	if selected_key.is_empty():
-		push_warning("[Editor] No key selected for deletion.")
+		_show_info_toast("Select a key first.")
 		return
 
 	var dialog := ConfirmationDialog.new()
@@ -1508,6 +1528,7 @@ func _apply_delete_key(target_key: String) -> void:
 	_set_dirty(true)
 	_update_missing_count()
 	_update_validation_flags()
+	_update_ui_state()
 	EditorInterface.get_resource_filesystem().scan()
 
 func _apply_restore_key(target_key: String, values: Dictionary) -> void:
@@ -1849,15 +1870,8 @@ func _navigate_from_focused(direction: int) -> void:
 ## Locale dropdown'ındaki bir önceki / bir sonraki locale'e geçer.
 ## Alt + Left / Right kısayolları tarafından çağrılır.
 ##
-## Dropdown'ı hiç kullanmaz; registry'den locale listesini doğrudan
-## alıp `current_locale` baz alarak bir sonraki/önceki locale'i
-## hesaplar. Dirty state varsa `_on_locale_dropdown_selected()`
-## üzerinden gelen onay dialogu aynen korunur.
-## Locale dropdown'ındaki bir önceki / bir sonraki locale'e geçer.
-## Alt + Left / Right kısayolları tarafından çağrılır.
-##
-## Dirty state varsa `_confirm_switch_locale()` üzerinden gelen onay
-## dialogunda "Save & Switch" seçilirse önce kaydeder, sonra geçer.
+## Dropdown sırasıyla BİREBİR aynı sırayı kullanır (original → starred →
+## rest), böylece Alt+Left/Right ile gezinirken dropdown'daki sıra bozulmaz.
 func _cycle_locale(direction: int) -> void:
 	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
 	if not loader:
@@ -1866,24 +1880,7 @@ func _cycle_locale(direction: int) -> void:
 	if not registry:
 		return
 
-	var all_locales: PackedStringArray = registry.get_all_locales()
-	if all_locales.size() < 2:
-		return
-
-	var orig: String = registry.original_locale
-
-	# Dropdown ile aynı sıralamayı kullan: original önce, geri kalanı
-	# alfabetik.
-	var ordered: Array[String] = []
-	if not orig.is_empty() and all_locales.has(orig):
-		ordered.append(orig)
-	var others: Array[String] = []
-	for loc in all_locales:
-		if loc != orig:
-			others.append(loc)
-	others.sort()
-	ordered.append_array(others)
-
+	var ordered: PackedStringArray = registry.get_locales_in_display_order()
 	if ordered.size() < 2:
 		return
 
@@ -1919,8 +1916,7 @@ func _sync_dropdown_selection_to(locale: String) -> void:
 			return
 
 func _on_outer_split_dragged(offset: int) -> void:
-	# Sidebar'ı 80..400 arasına sıkıştır — aşırı daralmasın,
-	# aşırı büyümesin. Bu, editörün input kilidini de önler.
+	# Sidebar'ı 80..400 arasına sıkıştır — aşırı daralmasın, büyümesin.
 	if _outer_split:
 		var clamped: int = clampi(offset, 80, 400)
 		if _outer_split.split_offset != clamped:
@@ -1937,35 +1933,25 @@ var _layout_fix_pending: bool = false
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
-		if _layout_fix_pending:
-			return
-		_layout_fix_pending = true
-		call_deferred("_apply_layout_fix")
+		_sync_header_to_table()
 
+## Ensures the sidebar and preview panels have correct minimum widths.
+## Does NOT touch `split_offset` — HSplitContainer manages that itself
+## and overriding it here was the source of the infinite resize loop
+## and the "preview goes off-screen" bug.
 func _apply_layout_fix() -> void:
-	_layout_fix_pending = false
 	if not is_inside_tree():
 		return
 
-	if _outer_split:
-		var desired_sidebar: float = SIDEBAR_COLLAPSED if _sidebar_collapsed else SIDEBAR_EXPANDED
-		var container_w: float = _outer_split.size.x
-		if container_w > 0.0:
-			var desired: int = int(desired_sidebar - container_w * 0.5)
-			desired = clampi(desired, 80, 400)
-			if _outer_split.split_offset != desired:
-				_outer_split.split_offset = desired
-		_outer_split.queue_sort()
+	if _sidebar_root:
+		var desired_sidebar: int = SIDEBAR_COLLAPSED if _sidebar_collapsed else SIDEBAR_EXPANDED
+		if _sidebar_root.custom_minimum_size.x != desired_sidebar:
+			_sidebar_root.custom_minimum_size.x = desired_sidebar
 
-	if _inner_split:
-		var desired_preview: float = PREVIEW_COLLAPSED if _preview_collapsed else PREVIEW_EXPANDED
-		var container_w2: float = _inner_split.size.x
-		if container_w2 > 0.0:
-			var desired2: int = int(-desired_preview + container_w2 * 0.5)
-			desired2 = clampi(desired2, -500, -80)
-			if _inner_split.split_offset != desired2:
-				_inner_split.split_offset = desired2
-		_inner_split.queue_sort()
+	if _preview_root:
+		var desired_preview: int = PREVIEW_COLLAPSED if _preview_collapsed else PREVIEW_EXPANDED
+		if _preview_root.custom_minimum_size.x != desired_preview:
+			_preview_root.custom_minimum_size.x = desired_preview
 
 	_sync_header_to_table()
 
@@ -1976,3 +1962,21 @@ func _force_min_width(node: Node, width: int) -> void:
 		c.update_minimum_size()
 	for child in node.get_children():
 		_force_min_width(child, width)
+
+func _on_sidebar_search_changed(_new_text: String) -> void:
+	_apply_filter()
+
+	# If the currently selected key got filtered out of the sidebar
+	# (i.e. it no longer matches the sidebar search), clear the
+	# selection so the "Delete Key" button doesn't stay enabled on
+	# an invisible/stale row.
+	if not _selected_key.is_empty():
+		var still_visible: bool = false
+		for i in _sidebar_list.item_count:
+			if _sidebar_list.get_item_text(i) == _selected_key:
+				if not _sidebar_list.is_item_disabled(i):
+					still_visible = true
+				break
+		if not still_visible:
+			_selected_key = ""
+			_update_ui_state()

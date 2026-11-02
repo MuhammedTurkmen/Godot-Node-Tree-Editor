@@ -347,3 +347,6 @@ regions = Array[ExtResource("2_na31a")]([SubResource("Resource_cfajy")])
 script = ExtResource("1_8qjge")
 languages = Array[ExtResource("1_h0r5q")]([SubResource("Resource_1tpuh"), SubResource("Resource_2ypsp"), SubResource("Resource_kqv3v"), SubResource("Resource_1hysv"), SubResource("Resource_v6acx"), SubResource("Resource_fxuky"), SubResource("Resource_7dv78"), SubResource("Resource_la4kt"), SubResource("Resource_u2yo8"), SubResource("Resource_3ucf3"), SubResource("Resource_ed431"), SubResource("Resource_wg2cj"), SubResource("Resource_dn48s"), SubResource("Resource_3at45"), SubResource("Resource_yco7w"), SubResource("Resource_fnvph"), SubResource("Resource_3ao3g"), SubResource("Resource_c17f7"), SubResource("Resource_7nwt6"), SubResource("Resource_5aijy"), SubResource("Resource_nac4v"), SubResource("Resource_xs58i"), SubResource("Resource_0nvtq"), SubResource("Resource_fhyjx"), SubResource("Resource_i05gl")])
 original_locale = "en_US"
+starred_locales = {
+"tr_TR": true
+}

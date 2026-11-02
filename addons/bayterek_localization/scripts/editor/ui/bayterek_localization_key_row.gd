@@ -139,19 +139,39 @@ func _build_key_cell() -> void:
 	_key_edit.size_flags_horizontal = SIZE_EXPAND_FILL
 	_key_edit.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
 	_key_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-	# We manage height manually (grow AND shrink).
 	_key_edit.scroll_fit_content_height = true
 	_key_edit.scroll_vertical = 0
 	_key_edit.scroll_horizontal = 0
 	_key_edit.context_menu_enabled = true
 	_key_edit.caret_blink = true
 	_key_edit.gui_input.connect(_on_key_gui_input)
+	_key_edit.focus_entered.connect(_on_key_focus_entered)
 	_key_edit.focus_exited.connect(_on_key_focus_exited)
 	_key_edit.text_changed.connect(_on_key_text_changed)
 	add_child(_key_edit)
 
 	_key_edit.resized.connect(_recompute_key_height)
 	_recompute_key_height.call_deferred()
+
+
+## Emits row_selected so the parent editor knows which key is active.
+## Fires on any mouse click inside the key cell, not just on the panel.
+func _on_key_focus_entered() -> void:
+	row_selected.emit(key)
+
+
+func _on_key_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			row_selected.emit(key)
+			# NOTE: do NOT accept_event() here — the TextEdit needs the
+			# click to place the caret and take focus.
+
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+		_commit_key_rename(_key_edit.text)
+		accept_event()
 
 func _recompute_key_height() -> void:
 	if not _key_edit or not is_inside_tree():
@@ -391,13 +411,6 @@ func _apply_key_deletion_height_next_frame() -> void:
 	if _key_edit.custom_minimum_size.y < 24.0:
 		_key_edit.custom_minimum_size.y = 24.0
 		_key_edit.update_minimum_size()
-
-func _on_key_gui_input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed and not event.echo):
-		return
-	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-		_commit_key_rename(_key_edit.text)
-		accept_event()
 
 func _on_key_focus_exited() -> void:
 	if _key_edit and _key_edit.text != key:
