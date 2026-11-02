@@ -410,7 +410,10 @@ func _sync_scrolls(source: ScrollContainer) -> void:
 			continue
 		var scroll := sc as ScrollContainer
 		if scroll:
-			scroll.scroll_vertical = src_v
+			# Only write if the value actually differs, to avoid
+			# feedback loops that fight with _scroll_to_row().
+			if scroll.scroll_vertical != src_v:
+				scroll.scroll_vertical = src_v
 
 func _sync_header_to_table() -> void:
 	if not _h_key:
@@ -1197,14 +1200,15 @@ func _scroll_to_row(key: String) -> void:
 	if not trans_cell:
 		return
 
-	# Scroll all three columns to the same vertical offset.
-	_translation_column.ensure_control_visible(trans_cell)
-	var key_cell: BayterekLocalizationKeyRow = _get_key_cell(key)
-	if key_cell:
-		_key_column.ensure_control_visible(key_cell)
-	var orig_cell: BayterekLocalizationKeyRow = _get_orig_cell(key)
-	if orig_cell:
-		_original_column.ensure_control_visible(orig_cell)
+	# Scroll all three columns so the selected row is at the VERY TOP.
+	# We set scroll_vertical directly (rather than ensure_control_visible)
+	# because ensure_control_visible only scrolls when the target is out
+	# of view, and it scrolls it just barely into view — never pinning it
+	# to the top edge.
+	var target_scroll: int = int(trans_cell.position.y)
+	_key_column.scroll_vertical = target_scroll
+	_original_column.scroll_vertical = target_scroll
+	_translation_column.scroll_vertical = target_scroll
 
 	_on_row_selected(key)
 
