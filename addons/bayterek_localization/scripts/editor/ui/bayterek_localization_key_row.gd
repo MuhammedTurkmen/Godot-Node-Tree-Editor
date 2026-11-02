@@ -144,6 +144,10 @@ func _build_key_cell() -> void:
 	_key_edit.scroll_horizontal = 0
 	_key_edit.context_menu_enabled = true
 	_key_edit.caret_blink = true
+	# `mouse_filter` STOP olmalı — aksi halde tıklama TextEdit'e
+	# ulaşmaz ve caret yerleşmez. Default STOP'tur ama explicit
+	# bırakmak niyeti netleştirir.
+	_key_edit.mouse_filter = Control.MOUSE_FILTER_STOP
 	_key_edit.gui_input.connect(_on_key_gui_input)
 	_key_edit.focus_entered.connect(_on_key_focus_entered)
 	_key_edit.focus_exited.connect(_on_key_focus_exited)
@@ -153,26 +157,31 @@ func _build_key_cell() -> void:
 	_key_edit.resized.connect(_recompute_key_height)
 	_recompute_key_height.call_deferred()
 
-
 ## Emits row_selected so the parent editor knows which key is active.
 ## Fires on any mouse click inside the key cell, not just on the panel.
 func _on_key_focus_entered() -> void:
 	row_selected.emit(key)
 
+## Emits row_selected so the parent editor knows which key is active.
+## Fires on any mouse click inside the key cell.
+##
+## Not: `accept_event()` ÇAĞIRMIYORUZ ki TextEdit kendi caret
+## yerleştirmesini yapabilsin. Ancak TextEdit'in editlenebilir olup
+## olmadığı `is_original_locale`'e bağlı olduğundan, editlenemeyen
+## durumda tıklama event'i TextEdit tarafından yutulabiliyor — bu
+## yüzden event'i consume ETMİYORUZ, sadece sinyali emit ediyoruz.
 func _on_key_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			row_selected.emit(key)
-			# Event'i consume et: aksi halde panel seviyesindeki
-			# _gui_input da aynı tıkı işler ve row_selected iki kez
-			# emit edilebilir. Bu da Delete butonunun durumunu
-			# gereksiz yere iki kez günceller.
-			accept_event()
+			# accept_event() YOK — TextEdit'in kendi caret
+			# yerleştirmesine izin veriyoruz.
 
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-		_commit_key_rename(_key_edit.text)
+		if _key_edit and _key_edit.editable:
+			_commit_key_rename(_key_edit.text)
 		accept_event()
 
 func _recompute_key_height() -> void:

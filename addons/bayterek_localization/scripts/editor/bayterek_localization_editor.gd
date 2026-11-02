@@ -1295,7 +1295,30 @@ func _on_row_navigate_requested(key: String, direction: int) -> void:
 func _on_row_key_rename_requested(old_key: String, new_key: String) -> void:
 	if not is_original_locale:
 		return
-	if old_key.is_empty() or new_key.is_empty() or old_key == new_key:
+	if old_key.is_empty():
+		return
+
+	# Key isimlerinde boşluk ve baştaki/sondaki whitespace kabul edilmez.
+	# Kullanıcı "my key" yazarsa bunu "my_key" olarak normalize ediyoruz;
+	# böylece JSON dosyasında boşluklu anahtar oluşmaz ve lookup bozulmaz.
+	var trimmed: String = new_key.strip_edges()
+	if trimmed.is_empty():
+		# Boşaltılmışsa eski key'e geri dön.
+		var key_cell: BayterekLocalizationKeyRow = _get_key_cell(old_key)
+		if key_cell and key_cell.has_method("_apply_values"):
+			key_cell._apply_values()
+		return
+
+	# Tüm whitespace karakterlerini alt çizgiye çevir, ardından
+	# tekrarlanan alt çizgileri sadeleştir.
+	var normalized: String = _normalize_key_name(trimmed)
+
+	if normalized == old_key:
+		# Sadece whitespace düzeltmesi yapıldı, key aynı kaldı.
+		# UI'ı normalize edilmiş haliyle senkronize et.
+		var key_cell_same: BayterekLocalizationKeyRow = _get_key_cell(old_key)
+		if key_cell_same and key_cell_same.has_method("_apply_values"):
+			key_cell_same._apply_values()
 		return
 
 	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
@@ -1305,22 +1328,52 @@ func _on_row_key_rename_requested(old_key: String, new_key: String) -> void:
 	if not registry:
 		return
 
-	if _row_key_exists_anywhere(registry, new_key):
-		push_warning("[Editor] Rename failed: key '%s' already exists." % new_key)
-		var key_cell: BayterekLocalizationKeyRow = _get_key_cell(old_key)
-		if key_cell and key_cell.has_method("_apply_values"):
-			key_cell._apply_values()
+	if _row_key_exists_anywhere(registry, normalized):
+		push_warning("[Editor] Rename failed: key '%s' already exists." % normalized)
+		var key_cell2: BayterekLocalizationKeyRow = _get_key_cell(old_key)
+		if key_cell2 and key_cell2.has_method("_apply_values"):
+			key_cell2._apply_values()
 		return
 
 	if _undo_helper:
 		_undo_helper.push_rename_key(
 			old_key,
-			new_key,
+			normalized,
 			_apply_rename_key,
 			_apply_rename_key_undo
 		)
 	else:
-		_apply_rename_key(old_key, new_key)
+		_apply_rename_key(old_key, normalized)
+
+## Key isimlerini normalize eder:
+##   - Baştaki/sondaki boşlukları siler (zaten çağıran strip_edges yapıyor)
+##   - İç boşlukları ve diğer whitespace karakterlerini alt çizgiye çevirir
+##   - Tekrarlanan alt çizgileri tek alt çizgiye indirir
+##   - Baştaki/sondaki alt çizgileri temizler
+##
+## Örnek:
+##   "my key"        → "my_key"
+##   "foo   bar"     → "foo_bar"
+##   "  a b c  "     → "a_b_c"
+##   "a__b"          → "a_b"
+##   "a "            → "a"
+func _normalize_key_name(raw: String) -> String:
+	var trimmed: String = raw.strip_edges()
+	if trimmed.is_empty():
+		return ""
+
+	# Tüm whitespace (space, tab, newline) karakterlerini alt çizgiye çevir.
+	var regex_ws := RegEx.new()
+	regex_ws.compile("\\s+")
+	var underscored: String = regex_ws.sub(trimmed, "_", true)
+
+	# Tekrarlanan alt çizgileri sadeleştir.
+	var regex_dupes := RegEx.new()
+	regex_dupes.compile("_{2,}")
+	var collapsed: String = regex_dupes.sub(underscored, "_", true)
+
+	# Baştaki/sondaki alt çizgileri temizle.
+	return collapsed.strip_edges().trim_prefix("_").trim_suffix("_")
 
 func _apply_rename_key(old_key: String, new_key: String) -> void:
 	var loader: Node = get_node_or_null("/root/BayterekLocalizationLoader")
