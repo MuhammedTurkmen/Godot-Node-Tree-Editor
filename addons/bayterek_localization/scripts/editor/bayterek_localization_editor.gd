@@ -21,6 +21,7 @@ const SIDEBAR_COLLAPSED := SIDEBAR_TOGGLE_BTN_SIZE   # 24
 const PREVIEW_EXPANDED := 280
 const PREVIEW_COLLAPSED := PREVIEW_TOGGLE_BTN_SIZE   # 24
 
+const SIDEBAR_MAX_RATIO := 0.55
 
 var current_locale: String = ""
 var original_locale: String = ""
@@ -395,7 +396,8 @@ func _make_scroll_column(column_name: String, min_width: int) -> ScrollContainer
 	scroll.name = column_name
 	scroll.custom_minimum_size.x = min_width
 	scroll.size_flags_vertical = SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Yatay scroll'u AÇ — panel dar kaldığında uzun key'lere erişilebilsin.
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 
 	var content := VBoxContainer.new()
@@ -930,23 +932,25 @@ func _update_ui_state() -> void:
 	_sync_missing_btn.disabled = is_original_locale
 	_save_btn.disabled = not dirty
 
-	# Effective selection = _selected_key OR whatever the sidebar currently
-	# has selected. Reading the sidebar here makes the button robust against
-	# any missed row_selected signal (focus quirks, sidebar clicks, etc).
+	# Etkin seçim = _selected_key VEYA sidebar'ın şu an seçili item'ı.
+	# Sidebar fallback'i sayesinde row_selected sinyali kaçırılsa bile
+	# Delete butonu doğru durumu gösterir.
 	var effective_selection: String = _selected_key
 	if effective_selection.is_empty() and _sidebar_list:
 		var sel: PackedInt32Array = _sidebar_list.get_selected_items()
 		if sel.size() > 0:
 			effective_selection = _sidebar_list.get_item_text(sel[0])
 
-	# Delete key needs BOTH: original locale AND a selected key.
+	# Delete butonu: artık locale kısıtı YOK — sadece bir key seçili
+	# olması yeterli. Silme işlemi tüm locale'lerden yapılır
+	# (_delete_key_across_locales), bu yüzden orijinal locale şartı
+	# kaldırıldı; kullanıcıya hangi locale'de olursa olsun silme
+	# imkanı tanınır.
 	if _delete_key_btn:
 		var has_selection: bool = not effective_selection.is_empty()
-		_delete_key_btn.disabled = (not is_original_locale) or (not has_selection)
+		_delete_key_btn.disabled = not has_selection
 
-		if not is_original_locale:
-			_delete_key_btn.tooltip_text = "Only the original locale can delete keys."
-		elif not has_selection:
+		if not has_selection:
 			_delete_key_btn.tooltip_text = "Select a key first."
 		else:
 			_delete_key_btn.tooltip_text = "Delete the selected key from all locales."
@@ -986,9 +990,6 @@ func _on_sidebar_toggle() -> void:
 		_sidebar_title.visible = false
 		_sidebar_toggle_btn.text = "▶"
 
-		# ÖNEMLİ: önce minimum size'ı küçült, SONRA split_offset'i
-		# aynı değere ayarla. İkisi tutarlı olmazsa HSplitContainer
-		# genişliği eski değerde tutmaya çalışır.
 		_sidebar_root.custom_minimum_size.x = SIDEBAR_COLLAPSED
 		if _outer_split:
 			_outer_split.split_offset = SIDEBAR_COLLAPSED
@@ -999,8 +1000,8 @@ func _on_sidebar_toggle() -> void:
 
 		_sidebar_root.custom_minimum_size.x = SIDEBAR_EXPANDED
 		if _outer_split:
-			# Kullanıcının en son sürüklediği genişliğe geri dön.
-			var restore: int = clampi(_sidebar_locked_offset, SIDEBAR_EXPANDED, 400)
+			var max_offset: int = _get_sidebar_max_offset()
+			var restore: int = clampi(_sidebar_locked_offset, SIDEBAR_EXPANDED, max_offset)
 			_outer_split.split_offset = restore
 
 	if _outer_split:
@@ -1033,6 +1034,13 @@ func _on_preview_toggle() -> void:
 			var restore: int = clampi(_preview_locked_offset, -500, -PREVIEW_EXPANDED)
 			_inner_split.split_offset = restore
 
+	# Preview açıldığında sidebar'ın offset'ini yeniden sınırla,
+	# aksi halde sağ taraf taşabilir.
+	if not _preview_collapsed and not _sidebar_collapsed and _outer_split:
+		var max_offset: int = _get_sidebar_max_offset()
+		if _outer_split.split_offset > max_offset:
+			_outer_split.split_offset = max_offset
+
 	if _inner_split:
 		_inner_split.queue_sort()
 
@@ -1051,8 +1059,7 @@ func _on_sidebar_item_selected(index: int) -> void:
 		return
 	var key: String = _sidebar_list.get_item_text(index)
 
-	# Set the selection state IMMEDIATELY so the Delete button reflects
-	# the new selection even if _scroll_to_row bails out early.
+	# Seçimi HEMEN set et: buton durumu bir sonraki frame'i beklemesin.
 	_selected_key = key
 	_update_ui_state()
 
@@ -1157,7 +1164,13 @@ func _apply_value_from_undo(key: String, value: String) -> void:
 
 func _on_row_selected(key: String) -> void:
 	if key.is_empty():
+		# Boş key → seçimi temizle ve buton durumunu güncelle.
+		# (Eski kod burada sessizce return ediyordu; bu yüzden Delete
+		# butonu eski durumunda takılı kalabiliyordu.)
+		_selected_key = ""
+		_update_ui_state()
 		return
+
 	_selected_key = key
 
 	for i in _sidebar_list.item_count:
@@ -1180,9 +1193,7 @@ func _on_row_selected(key: String) -> void:
 		if tc:
 			tc.set_row_selected(is_sel)
 
-	# Refresh button states so Delete becomes enabled once a key is
-	# selected (it was previously stuck disabled because nothing
-	# called _update_ui_state() after selection).
+	# Refresh button states so Delete becomes enabled once a key is selected.
 	_update_ui_state()
 
 	_update_preview_for(key)
@@ -1447,9 +1458,7 @@ func _on_delete_key_pressed() -> void:
 		_show_info_toast("Only the original locale can delete keys.")
 		return
 
-	# Fallback: if _selected_key is empty, try to derive it from the
-	# sidebar selection (which the user might have clicked without
-	# triggering _on_row_selected due to focus quirks).
+	# Sidebar fallback: _selected_key boşsa sidebar'dan türet.
 	var selected_key: String = _selected_key
 	if selected_key.is_empty() and _sidebar_list:
 		var sel: PackedInt32Array = _sidebar_list.get_selected_items()
@@ -1942,14 +1951,34 @@ func _sync_dropdown_selection_to(locale: String) -> void:
 			return
 
 func _on_outer_split_dragged(offset: int) -> void:
-	if _outer_split:
-		var min_offset: int = SIDEBAR_COLLAPSED if _sidebar_collapsed else SIDEBAR_EXPANDED
-		var clamped: int = clampi(offset, min_offset, 400)
-		if _outer_split.split_offset != clamped:
-			_outer_split.split_offset = clamped
-			# Kullanıcının tercih ettiği genişliği hatırla (sadece açıkken).
-			if not _sidebar_collapsed:
-				_sidebar_locked_offset = clamped
+	if not _outer_split:
+		return
+
+	var min_offset: int = SIDEBAR_COLLAPSED if _sidebar_collapsed else SIDEBAR_EXPANDED
+	var max_offset: int = _get_sidebar_max_offset()
+
+	# `_get_sidebar_max_offset()` zaten preview panelini hesaba katıyor,
+	# fakat drag sırasında preview açıkken `_preview_locked_offset` da
+	# dikkate alınmalı. Preview açıkken mevcut split_offset'ı da hesaba
+	# katarak taşmayı önle.
+	if not _preview_collapsed and _inner_split:
+		# Inner split'in mevcut offset'i (negatif) sidebar'a ayrılan
+		# alanı daraltır. Toplam genişlikten bunu çıkar.
+		var inner_reserved: int = absi(_inner_split.split_offset)
+		if inner_reserved > 0:
+			var adjusted_max: int = int(
+				(float(_outer_split.size.x) - float(inner_reserved))
+				* SIDEBAR_MAX_RATIO
+			)
+			if adjusted_max > SIDEBAR_EXPANDED:
+				max_offset = mini(max_offset, adjusted_max)
+
+	var clamped: int = clampi(offset, min_offset, max_offset)
+	if _outer_split.split_offset != clamped:
+		_outer_split.split_offset = clamped
+		# Kullanıcının tercih ettiği genişliği hatırla (sadece açıkken).
+		if not _sidebar_collapsed:
+			_sidebar_locked_offset = clamped
 
 func _on_inner_split_dragged(offset: int) -> void:
 	if _inner_split:
@@ -1970,6 +1999,9 @@ func _notification(what: int) -> void:
 ## Does NOT touch `split_offset` — HSplitContainer manages that itself
 ## and overriding it here was the source of the infinite resize loop
 ## and the "preview goes off-screen" bug.
+##
+## Sidebar açıkken ve preview açıkken toplam genişliğin taşmadığından
+## emin olur.
 func _apply_layout_fix() -> void:
 	if not is_inside_tree():
 		return
@@ -1986,12 +2018,15 @@ func _apply_layout_fix() -> void:
 
 	# Sidebar durumu ile split_offset tutarlı mı? Tutarlı değilse düzelt.
 	if _outer_split:
+		var max_offset: int = _get_sidebar_max_offset()
 		if _sidebar_collapsed:
 			if _outer_split.split_offset > SIDEBAR_COLLAPSED:
 				_outer_split.split_offset = SIDEBAR_COLLAPSED
 		else:
 			if _outer_split.split_offset < SIDEBAR_EXPANDED:
 				_outer_split.split_offset = SIDEBAR_EXPANDED
+			elif _outer_split.split_offset > max_offset:
+				_outer_split.split_offset = max_offset
 
 	# Aynı kontrol preview için.
 	if _inner_split:
@@ -2001,6 +2036,21 @@ func _apply_layout_fix() -> void:
 		else:
 			if _inner_split.split_offset > -PREVIEW_EXPANDED:
 				_inner_split.split_offset = -PREVIEW_EXPANDED
+
+	# Preview açıksa ve sidebar açıksa, ikisinin toplam genişliği
+	# toplam genişliği aşmamalı. Aşarsa sidebar'ı küçült.
+	if not _sidebar_collapsed and not _preview_collapsed and _outer_split and _inner_split:
+		var total_width: int = int(_outer_split.size.x)
+		var current_sidebar: int = _outer_split.split_offset
+		var current_preview: int = absi(_inner_split.split_offset)
+		# Ana panel için en az 100px bırak
+		var min_main_width: int = 100
+		if current_sidebar + current_preview + min_main_width > total_width:
+			var allowed_sidebar: int = total_width - current_preview - min_main_width
+			if allowed_sidebar < SIDEBAR_EXPANDED:
+				allowed_sidebar = SIDEBAR_EXPANDED
+			if _outer_split.split_offset > allowed_sidebar:
+				_outer_split.split_offset = allowed_sidebar
 
 	_sync_header_to_table()
 
@@ -2029,3 +2079,35 @@ func _on_sidebar_search_changed(_new_text: String) -> void:
 		if not still_visible:
 			_selected_key = ""
 			_update_ui_state()
+
+## Sidebar'ın alabileceği maksimum split offset'i hesaplar.
+##
+## Sabit bir üst limit (eski 400px) yerine, mevcut split genişliğinin
+## belirli bir oranını kullanır. Böylece preview paneli açıkken de
+## sidebar uzun key'leri gösterecek kadar genişletilebilir.
+##
+## Ancak preview panelinin genişliğini de hesaba katarak, toplam
+## genişliğin taşmasını engeller.
+func _get_sidebar_max_offset() -> int:
+	if not _outer_split:
+		return SIDEBAR_EXPANDED
+
+	# Toplam kullanılabilir genişlik
+	var total_width: float = _outer_split.size.x
+	if total_width <= 0.0:
+		return SIDEBAR_EXPANDED
+
+	# Preview panelinin kapladığı alanı çıkar (açıksa EXPANDED,
+	# kapalıysa COLLAPSED). Böylece sidebar açıldığında sağ taraf
+	# taşmaz.
+	var preview_reserved: int = PREVIEW_COLLAPSED if _preview_collapsed else PREVIEW_EXPANDED
+
+	# Sidebar için kalan alanın en fazla %55'i
+	var available_for_sidebar: float = total_width - float(preview_reserved)
+	if available_for_sidebar <= 0.0:
+		return SIDEBAR_EXPANDED
+
+	var max_by_ratio: int = int(available_for_sidebar * SIDEBAR_MAX_RATIO)
+
+	# Güvenlik tabanı: en az SIDEBAR_EXPANDED kadar izin ver.
+	return max(SIDEBAR_EXPANDED, max_by_ratio)

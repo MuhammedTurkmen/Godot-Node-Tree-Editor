@@ -159,13 +159,15 @@ func _build_key_cell() -> void:
 func _on_key_focus_entered() -> void:
 	row_selected.emit(key)
 
-
 func _on_key_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			row_selected.emit(key)
-			# NOTE: do NOT accept_event() here — the TextEdit needs the
-			# click to place the caret and take focus.
+			# Event'i consume et: aksi halde panel seviyesindeki
+			# _gui_input da aynı tıkı işler ve row_selected iki kez
+			# emit edilebilir. Bu da Delete butonunun durumunu
+			# gereksiz yere iki kez günceller.
+			accept_event()
 
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
