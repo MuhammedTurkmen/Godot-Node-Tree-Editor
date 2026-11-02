@@ -441,13 +441,33 @@ func _do_import(path: String) -> void:
 	var csv_locales: PackedStringArray = parsed.get("locale_codes", [])
 	var rows: Array = parsed.get("rows", [])
 
-	var registered: PackedStringArray = _registry.get_all_locales()
+	if csv_locales.is_empty():
+		push_error("CSV import: no locale columns found in CSV.")
+		return
+
+	# Registry'de tanımlı olmayan locale'leri OTOMATİK oluştur.
+	# Bu özellikle "Registry reset" sonrası çok işe yarar: kullanıcı
+	# sadece CSV'yi import ederek tüm locale'leri geri getirebilir.
+	var registry_changed: bool = false
 	var valid_locales: PackedStringArray = []
+
 	for loc in csv_locales:
-		if registered.has(loc):
+		if _registry.has_locale(loc):
 			valid_locales.append(loc)
+			continue
+
+		# Yeni locale oluştur.
+		if _ensure_locale_in_registry(loc):
+			valid_locales.append(loc)
+			registry_changed = true
+			print("[CSV import] auto-created locale: %s" % loc)
 		else:
-			push_warning("CSV import: unknown locale '%s' — skipped." % loc)
+			push_warning("CSV import: could not create locale '%s' — skipped." % loc)
+
+	if registry_changed:
+		var loader: Node = Engine.get_main_loop().root.get_node_or_null("BayterekLocalizationLoader")
+		if loader and loader.has_method("save_registry"):
+			loader.call("save_registry")
 
 	if valid_locales.is_empty():
 		push_error("CSV import: no valid locales found in CSV.")
@@ -521,3 +541,52 @@ func _ordered_locale_codes() -> PackedStringArray:
 		out.append(loc)
 
 	return out
+
+## Registry'de olmayan bir locale'i otomatik oluşturur.
+##   "en_US"  → language "en" + region "US"
+##   "tr_TR"  → language "tr" + region "TR"
+##   "en"     → language "en" (bölgesiz locale)
+##   "zh_Hans_CN" → language "zh" + region "Hans_CN"
+##
+## Başarılıysa true döner.
+func _ensure_locale_in_registry(locale: String) -> bool:
+	if locale.is_empty():
+		return false
+	if _registry.has_locale(locale):
+		return true
+
+	var parts: PackedStringArray = locale.split("_", false)
+	if parts.size() < 1:
+		return false
+
+	var lang_code: String = parts[0].to_lower()
+	var region_code: String = ""
+
+	# İlk parça dil; kalan TÜM parçalar region kodu (Script + COUNTRY).
+	if parts.size() > 1:
+		var tail: Array[String] = []
+		for i in range(1, parts.size()):
+			tail.append(parts[i])
+		region_code = "_".join(tail)
+
+	# Dil yoksa oluştur.
+	var lang: LocalizationLanguage = _registry.get_language(lang_code)
+	if not lang:
+		var meta: Dictionary = Localization.find_language(lang_code)
+		lang = LocalizationLanguage.new()
+		lang.code = lang_code
+		lang.name = meta.get("name", lang_code) if not meta.is_empty() else lang_code
+		_registry.add_language(lang)
+
+	# Bölge varsa oluştur.
+	if not region_code.is_empty():
+		if not lang.has_region(region_code):
+			var rmeta: Dictionary = Localization.find_region(region_code)
+			var region := LocalizationRegion.new()
+			region.code = region_code
+			region.name = rmeta.get("name", region_code) if not rmeta.is_empty() else region_code
+			region.language_code = lang_code
+			region.file_path = Service.get_locale_file_path(locale)
+			lang.add_region(region)
+
+	return _registry.has_locale(locale)

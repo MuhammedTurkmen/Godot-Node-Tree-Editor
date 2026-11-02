@@ -1,3 +1,6 @@
 {
-	"hello_player": ""
+	"exit": "Çıkış",
+	"hello_player": "Merhaba, {player_name}",
+	"menu": "Menü",
+	"play": "Oyna"
 }

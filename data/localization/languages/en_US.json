@@ -1,5 +1,6 @@
 {
 	"exit": "Exit",
 	"hello_player": "Hello, {player_name}",
+	"menu": "Menu",
 	"play": "Play"
 }
