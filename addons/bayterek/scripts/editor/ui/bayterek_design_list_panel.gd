@@ -58,6 +58,10 @@ func _ready() -> void:
 	size_flags_vertical = SIZE_EXPAND_FILL
 	_build_ui()
 
+# ============================================================
+# UI BUILD (bottom box güncellendi)
+# ============================================================
+
 func _build_ui() -> void:
 	_header_row = HBoxContainer.new()
 	_header_row.add_theme_constant_override("separation", 4)
@@ -129,6 +133,24 @@ func _build_ui() -> void:
 	_delete_btn.size_flags_horizontal = SIZE_EXPAND_FILL
 	_delete_btn.pressed.connect(_on_delete_pressed)
 	_bottom_box.add_child(_delete_btn)
+
+	# --- Import / Export row ---
+	var io_box := HBoxContainer.new()
+	_content_root.add_child(io_box)
+
+	var import_btn := Button.new()
+	import_btn.text = "Import..."
+	import_btn.tooltip_text = "Import designs from a JSON file (adds to the existing ones)"
+	import_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+	import_btn.pressed.connect(_on_import_all_pressed)
+	io_box.add_child(import_btn)
+
+	var export_btn := Button.new()
+	export_btn.text = "Export All..."
+	export_btn.tooltip_text = "Export ALL designs into a single JSON file"
+	export_btn.size_flags_horizontal = SIZE_EXPAND_FILL
+	export_btn.pressed.connect(_on_export_all_pressed)
+	io_box.add_child(export_btn)
 
 # ============================================================
 # COLLAPSE / EXPAND
@@ -696,3 +718,222 @@ func _open_new_category_dialog(dropdown: OptionButton, _parent_dialog: Confirmat
 	add_child(dlg)
 	dlg.popup_centered(Vector2i(360, 200))
 	input.call_deferred("grab_focus")
+
+# ============================================================
+# IMPORT / EXPORT WIZARDS
+# ============================================================
+
+const USER_EXPORT_DIR := "user://MET/Bayterek/design_exports"
+
+func _ensure_user_export_dir() -> String:
+	_ensure_user_export_dir_silent()
+	return USER_EXPORT_DIR
+
+func _ensure_user_export_dir_silent() -> void:
+	if not DirAccess.dir_exists_absolute(USER_EXPORT_DIR):
+		DirAccess.make_dir_recursive_absolute(USER_EXPORT_DIR)
+
+# --- EXPORT ---
+
+func _on_export_all_pressed() -> void:
+	var designs: Array = BayterekDesignService.get_all_designs()
+	if designs.is_empty():
+		BayterekToast.info(_tree, "No designs to export")
+		return
+
+	_open_export_wizard(designs.size())
+
+func _open_export_wizard(design_count: int) -> void:
+	var user_dir: String = _ensure_user_export_dir()
+
+	var dialog := FileDialog.new()
+	dialog.name = "ExportDesignsWizard"
+	dialog.title = "Export %d Design(s) — Choose Output File" % design_count
+	dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	dialog.access = FileDialog.ACCESS_FILESYSTEM
+	dialog.use_native_dialog = false
+	dialog.unresizable = false
+	dialog.size = Vector2i(720, 480)
+	dialog.filters = PackedStringArray(["*.json ; JSON Files"])
+	dialog.current_dir = ProjectSettings.globalize_path(user_dir)
+	dialog.current_file = _make_export_filename()
+
+	dialog.file_selected.connect(_on_export_file_selected)
+	dialog.canceled.connect(func(): dialog.queue_free())
+
+	add_child(dialog)
+	dialog.popup_centered_ratio(0.6)
+
+func _make_export_filename() -> String:
+	var dt: Dictionary = Time.get_datetime_dict_from_system()
+	return "bayterek_designs_%04d-%02d-%02d_%02d%02d.json" % [
+		dt.get("year", 0), dt.get("month", 0), dt.get("day", 0),
+		dt.get("hour", 0), dt.get("minute", 0),
+	]
+
+func _on_export_file_selected(path: String) -> void:
+	if path.strip_edges().is_empty():
+		return
+
+	if not path.to_lower().ends_with(".json"):
+		path += ".json"
+
+	var result: Dictionary = BayterekDesignService.export_all_designs_to_json(path)
+
+	if not bool(result.get("ok", false)):
+		_show_result_dialog(
+			"Export Failed",
+			"Could not export designs.\n\n%s" % String(result.get("error", "Unknown error.")),
+			true
+		)
+		return
+
+	var exported_count: int = int(result.get("count", 0))
+	var real_path: String = String(result.get("path", path))
+
+	_show_result_dialog(
+		"Export Complete",
+		"%d design(s) exported to:\n\n%s\n\nYou can open the folder from the button below." % [
+			exported_count, real_path
+		],
+		false,
+		real_path
+	)
+	BayterekLogger.info("Exported %d design(s) to %s" % [exported_count, real_path], "designs")
+
+# --- IMPORT ---
+
+func _on_import_all_pressed() -> void:
+	_open_import_wizard()
+
+func _open_import_wizard() -> void:
+	var user_dir: String = _ensure_user_export_dir()
+
+	var dialog := FileDialog.new()
+	dialog.name = "ImportDesignsWizard"
+	dialog.title = "Import Designs — Choose JSON File"
+	dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	dialog.access = FileDialog.ACCESS_FILESYSTEM
+	dialog.use_native_dialog = false
+	dialog.unresizable = false
+	dialog.size = Vector2i(720, 480)
+	dialog.filters = PackedStringArray(["*.json ; JSON Files"])
+	dialog.current_dir = ProjectSettings.globalize_path(user_dir)
+
+	dialog.file_selected.connect(_on_import_file_selected)
+	dialog.canceled.connect(func(): dialog.queue_free())
+
+	add_child(dialog)
+	dialog.popup_centered_ratio(0.6)
+
+func _on_import_file_selected(path: String) -> void:
+	if path.strip_edges().is_empty():
+		return
+
+	# Önce kullanıcıya onay sor — mevcut tasarımlar korunacak,
+	# ama yine de beklenmedik büyük import'lar için güvenlik.
+	var confirm := ConfirmationDialog.new()
+	confirm.name = "ImportConfirm"
+	confirm.title = "Import Designs"
+	confirm.ok_button_text = "Import"
+	confirm.cancel_button_text = "Cancel"
+	confirm.dialog_text = (
+		"Import designs from:\n\n%s\n\n"
+		+ "Existing designs will NOT be overwritten. "
+		+ "Imported designs get unique names automatically."
+	) % path
+	confirm.unresizable = true
+
+	confirm.confirmed.connect(func():
+		confirm.queue_free()
+		_do_import(path)
+	)
+	confirm.canceled.connect(func(): confirm.queue_free())
+
+	add_child(confirm)
+	confirm.popup_centered(Vector2i(520, 220))
+
+func _do_import(path: String) -> void:
+	var result: Dictionary = BayterekDesignService.import_designs_from_json(path)
+
+	var imported: int = int(result.get("imported", 0))
+	var skipped: int = int(result.get("skipped", 0))
+	var errors: Array = result.get("errors", [])
+
+	# Yenile
+	refresh()
+	design_selected.emit(null)
+	design_category_changed.emit()
+
+	if not bool(result.get("ok", false)):
+		var err_text: String = "Unknown error."
+		if not errors.is_empty():
+			err_text = String(errors[0])
+		_show_result_dialog("Import Failed", err_text, true)
+		return
+
+	var msg: String = "%d design(s) imported." % imported
+	if skipped > 0:
+		msg += "\n%d design(s) skipped." % skipped
+	if not errors.is_empty():
+		msg += "\n\nWarnings:\n• " + "\n• ".join(errors)
+
+	_show_result_dialog(
+		"Import Complete",
+		msg,
+		imported == 0,
+		path
+	)
+	BayterekLogger.info("Imported %d design(s), skipped %d" % [imported, skipped], "designs")
+
+# --- RESULT DIALOG ---
+
+func _show_result_dialog(title: String, message: String, is_error: bool, path: String = "") -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.name = "DesignIOResult"
+	dialog.title = title
+	dialog.ok_button_text = "OK"
+	dialog.cancel_button_text = ""
+	dialog.unresizable = true
+
+	var vbox := VBoxContainer.new()
+	vbox.custom_minimum_size = Vector2(480, 0)
+	vbox.add_theme_constant_override("separation", 10)
+	dialog.add_child(vbox)
+
+	var info := Label.new()
+	info.text = message
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size = Vector2(480, 0)
+	info.add_theme_color_override("font_color",
+		Color(1.0, 0.5, 0.5) if is_error else Color(0.85, 0.95, 1.0))
+	vbox.add_child(info)
+
+	# Yol varsa "klasörü aç" ve "yolu kopyala" butonları
+	if not path.strip_edges().is_empty():
+		var path_row := HBoxContainer.new()
+		path_row.add_theme_constant_override("separation", 6)
+		vbox.add_child(path_row)
+
+		var base_dir: String = path.get_base_dir()
+		var open_btn := Button.new()
+		open_btn.text = "Open Folder"
+		open_btn.tooltip_text = "Open the containing folder in the OS file manager"
+		open_btn.pressed.connect(func():
+			var global_dir: String = base_dir
+			if base_dir.begins_with("user://") or base_dir.begins_with("res://"):
+				global_dir = ProjectSettings.globalize_path(base_dir)
+			if DirAccess.dir_exists_absolute(global_dir):
+				OS.shell_open(global_dir)
+		)
+		path_row.add_child(open_btn)
+
+		var copy_btn := Button.new()
+		copy_btn.text = "Copy Path"
+		copy_btn.pressed.connect(func():
+			DisplayServer.clipboard_set(path)
+		)
+		path_row.add_child(copy_btn)
+
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(560, 260))
