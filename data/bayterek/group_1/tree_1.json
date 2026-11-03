@@ -33,6 +33,15 @@
         "name_key": "attr_max_health",
         "operation": "add",
         "value_count": 1
+      },
+      "test": {
+        "cumulative": false,
+        "effect": "Effect {C}",
+        "effect_key": "desc_test",
+        "name": "test",
+        "name_key": "attr_test",
+        "operation": "add",
+        "value_count": 1
       }
     }
   },
@@ -175,6 +184,19 @@
             ],
             [
               100
+            ]
+          ]
+        },
+        "test": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              10
+            ],
+            [
+              15
             ]
           ]
         }
@@ -322,6 +344,19 @@
             ],
             [
               100
+            ]
+          ]
+        },
+        "test": {
+          "levels": [
+            [
+              5
+            ],
+            [
+              10
+            ],
+            [
+              15
             ]
           ]
         }

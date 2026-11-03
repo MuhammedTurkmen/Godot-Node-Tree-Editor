@@ -305,8 +305,7 @@ func _make_export_default_path() -> String:
 		dt.get("year", 0), dt.get("month", 0), dt.get("day", 0),
 		dt.get("hour", 0), dt.get("minute", 0),
 	]
-	return "user://localization/all_%s.csv" % timestamp
-
+	return "user://MET/Localization/all_%s.csv" % timestamp
 
 func _on_csv_export_completed(path: String) -> void:
 	print("[Browser] CSV exported: ", path)

@@ -7,7 +7,7 @@ extends EditorScript
 ##
 ## Call `run()` for the legacy behaviour (Phase 1 tests only).
 
-const SAVE_PATH := "user://bayterek_phase1_test.tres"
+const SAVE_PATH := "user://MET/Bayterek/bayterek_phase1_test.tres"
 
 # ============================================================
 # EDITOR SCRIPT ENTRY POINT

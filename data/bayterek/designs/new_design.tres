@@ -121,4 +121,5 @@ texture_filter_override = 2
 [resource]
 script = ExtResource("2_8idq7")
 id = "new_design"
+name = "Example Button"
 layers = Array[ExtResource("1_rlmi4")]([SubResource("Resource_u1mso"), SubResource("Resource_5qdsx")])

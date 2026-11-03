@@ -110,6 +110,7 @@ func _register_setting(setting_name: String, default_value: Variant, hint: int, 
 # ============================================================
 
 ## Ensures res://data/localization/ and res://data/localization/languages/ exist.
+## Also ensures the user://MET/Localization/ directory exists for CSV exports.
 func _ensure_data_directories() -> void:
 	var root: String = Localization.get_root_path()
 	var languages: String = Localization.get_languages_dir()
@@ -118,6 +119,16 @@ func _ensure_data_directories() -> void:
 		DirAccess.make_dir_recursive_absolute(root)
 	if not DirAccess.dir_exists_absolute(languages):
 		DirAccess.make_dir_recursive_absolute(languages)
+
+	# Ensure the MET/Localization user directory exists for CSV exports.
+	var user_met_dir: String = "user://MET/Localization"
+	var abs_user_met_dir: String = ProjectSettings.globalize_path(user_met_dir)
+	if not DirAccess.dir_exists_absolute(abs_user_met_dir):
+		var err: Error = DirAccess.make_dir_recursive_absolute(abs_user_met_dir)
+		if err != OK:
+			push_error("Bayterek Localization: could not create user directory: %s (err=%d)" % [abs_user_met_dir, err])
+		else:
+			print("[BayterekLocalization] User directory created: %s" % user_met_dir)
 
 # ============================================================
 # MAIN SCREEN

@@ -11,6 +11,7 @@
 [ext_resource type="Script" uid="uid://dfj1dcg6dio0o" path="res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd" id="6_qlprm"]
 [ext_resource type="Texture2D" uid="uid://ccrvoxhv3c5d0" path="res://assets/button_icon.png" id="7_6p5mu"]
 [ext_resource type="Script" uid="uid://d0deeukciqy7f" path="res://addons/bayterek/scripts/shared/bayterek_line_data.gd" id="9_qlprm"]
+[ext_resource type="AudioStream" uid="uid://c54qd30dnbq0b" path="res://assets/Hit7.wav" id="11_qlprm"]
 
 [sub_resource type="Resource" id="Resource_royti"]
 script = ExtResource("1_royti")
@@ -46,6 +47,15 @@ name_key = "attr_max_health"
 effect = "Effect {C}"
 value_count = 1
 effect_key = "desc_max_health"
+
+[sub_resource type="Resource" id="Resource_x43e0"]
+script = ExtResource("1_royti")
+id = "test"
+name = "test"
+name_key = "attr_test"
+effect = "Effect {C}"
+value_count = 1
+effect_key = "desc_test"
 
 [sub_resource type="Resource" id="Resource_j5a67"]
 script = ExtResource("6_qlprm")
@@ -317,7 +327,8 @@ in_nodes = Array[int]([1])
 attributes = {
 "diamond": [[15], [30], [45]],
 "gold": [[30], [105], [195]],
-"max_health": [[45], [75], [100]]
+"max_health": [[45], [75], [100]],
+"test": [[5], [10], [15]]
 }
 max_allocations = 3
 layers = Array[ExtResource("3_e1v5k")]([SubResource("Resource_tmiro"), SubResource("Resource_mklcx")])
@@ -583,7 +594,8 @@ attributes = {
 "diamond": [[15], [30], [45]],
 "gold": [[30], [105], [195]],
 "health_regen": [[5], [10], [15]],
-"max_health": [[45], [75], [100]]
+"max_health": [[45], [75], [100]],
+"test": [[5], [10], [15]]
 }
 max_allocations = 3
 layers = Array[ExtResource("3_e1v5k")]([SubResource("Resource_p8dnb"), SubResource("Resource_uf3jb")])
@@ -598,7 +610,10 @@ attributes = {
 "diamond": SubResource("Resource_royti"),
 "gold": SubResource("Resource_qlprm"),
 "health_regen": SubResource("Resource_6p5mu"),
-"max_health": SubResource("Resource_5lgyx")
+"max_health": SubResource("Resource_5lgyx"),
+"test": SubResource("Resource_x43e0")
 }
-hierarchy_split_offset = -490
+hierarchy_split_offset = -611
 prefabs_bar_visible = false
+default_purchase_mode = 1
+purchase_hold_sound = ExtResource("11_qlprm")

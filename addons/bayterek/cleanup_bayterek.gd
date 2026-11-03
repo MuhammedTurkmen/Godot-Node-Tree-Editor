@@ -29,14 +29,14 @@ const PROJECT_SETTING_PREFIXES := [
 ]
 
 const USER_FILES := [
-	"user://bayterek_phase1_test.tres",
-	"user://bayterek_phase1_test.tres.uid",
-	"user://bayterek_serializer_test.tree",
+	"user://MET/Bayterek/bayterek_phase1_test.tres",
+	"user://MET/Bayterek/bayterek_phase1_test.tres.uid",
+	"user://MET/Bayterek/bayterek_serializer_test.tree",
 ]
 
 const USER_DIRS := [
-	"user://bayterek",
-	"user://bayterek_v2",
+	"user://MET/Bayterek/bayterek",
+	"user://MET/Bayterek/bayterek_v2",
 ]
 
 # ============================================================

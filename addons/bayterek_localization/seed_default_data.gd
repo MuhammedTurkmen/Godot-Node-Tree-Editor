@@ -20,7 +20,7 @@ func _run() -> void:
 	# --- Export testi ---
 	var export_dialog := Dialog.new()
 	EditorInterface.get_editor_main_screen().add_child(export_dialog)
-	export_dialog.open_export(registry, "user://test_export.csv")
+	export_dialog.open_export(registry, "user://MET/Localization/test_export.csv")
 
 	await Engine.get_main_loop().process_frame
 
@@ -39,7 +39,7 @@ func _run() -> void:
 	# --- Import testi ---
 	var import_dialog := Dialog.new()
 	EditorInterface.get_editor_main_screen().add_child(import_dialog)
-	import_dialog.open_import(registry, "user://test_export.csv")
+	import_dialog.open_import(registry, "user://MET/Localization/test_export.csv")
 
 	await Engine.get_main_loop().process_frame
 

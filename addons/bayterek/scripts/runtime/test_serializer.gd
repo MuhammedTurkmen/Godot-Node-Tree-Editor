@@ -10,7 +10,7 @@ extends RefCounted
 
 const FIXTURE_DIR := "res://addons/bayterek/test_fixtures"
 const TREE_PATH := "res://addons/bayterek/test_fixtures/serializer_test_tree.tres"
-const SAVE_PATH := "user://bayterek_serializer_test.tree"
+const SAVE_PATH := "user://MET/Bayterek/bayterek_serializer_test.tree"
 
 static func run() -> bool:
 	print("=== Bayterek Serializer Test ===")

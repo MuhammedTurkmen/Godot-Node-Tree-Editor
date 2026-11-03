@@ -17,7 +17,7 @@ const DIALOG_H := 560
 const PREVIEW_HEIGHT := 240
 
 ## Default export/import klasörü — user:// altında otomatik oluşturulur.
-const DEFAULT_USER_DIR := "user://localization"
+const DEFAULT_USER_DIR := "user://MET/Localization"
 
 var _mode: int = Mode.EXPORT
 var _path_input: LineEdit
@@ -212,13 +212,21 @@ func _on_browse_pressed() -> void:
 
 	_file_dialog.filters = PackedStringArray(["*.csv ; CSV Files"])
 
-	var current_dir: String = _path_input.text.get_base_dir()
-	if not current_dir.is_empty():
-		var global_dir: String = current_dir
-		if current_dir.begins_with("user://") or current_dir.begins_with("res://"):
-			global_dir = ProjectSettings.globalize_path(current_dir)
-		if DirAccess.dir_exists_absolute(global_dir):
-			_file_dialog.current_dir = global_dir
+	# Export modunda her zaman user:// klasörünü aç.
+	# Import modunda mevcut path'in klasörünü aç.
+	if _mode == Mode.EXPORT:
+		var user_dir: String = ProjectSettings.globalize_path("user://")
+		if not DirAccess.dir_exists_absolute(user_dir):
+			DirAccess.make_dir_recursive_absolute(user_dir)
+		_file_dialog.current_dir = user_dir
+	else:
+		var current_dir: String = _path_input.text.get_base_dir()
+		if not current_dir.is_empty():
+			var global_dir: String = current_dir
+			if current_dir.begins_with("user://") or current_dir.begins_with("res://"):
+				global_dir = ProjectSettings.globalize_path(current_dir)
+			if DirAccess.dir_exists_absolute(global_dir):
+				_file_dialog.current_dir = global_dir
 
 	_file_dialog.popup_centered_ratio(0.6)
 

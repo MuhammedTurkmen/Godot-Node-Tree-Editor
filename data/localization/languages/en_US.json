@@ -1,4 +1,10 @@
 {
+	"attr_health_regen": "Health Regenaration",
+	"attr_max_health": "Max Health",
+	"attr_test": "Test",
+	"desc_health_regen": "Regen per second {health_regen_n}",
+	"desc_max_health": "Max Health gained {max_health_n}",
+	"desc_test": "test {test_n}",
 	"exit": "Exit",
 	"hello_player": "Hello, {player_name}",
 	"menu": "Menu",

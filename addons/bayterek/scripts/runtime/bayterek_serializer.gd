@@ -18,8 +18,8 @@ extends Node
 ##   inside an EditorScript and would otherwise be blocked by the
 ##   `Engine.is_editor_hint()` guard.
 
-const OLD_SAVE_PATH := "user://bayterek"
-const SAVE_PATH := "user://bayterek_v2"
+const OLD_SAVE_PATH := "user://MET/Bayterek/bayterek"
+const SAVE_PATH := "user://MET/Bayterek/bayterek_v2"
 
 ## Serializer schema version — bump this when the binary layout changes.
 ##   1 = legacy (no header, no allocation_level)
