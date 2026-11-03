@@ -7,12 +7,13 @@ extends ConfirmationDialog
 ## MarginContainer, direct VBoxContainer child with custom_minimum_size,
 ## min_size = Vector2i.ZERO, and reset_size() + size + popup_centered().
 
-signal applied(language_code: String, region_code: String)
+signal applied(language_code: String, region_code: String, script_code: String)
 
 const Localization = preload("res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd")
 
 var _lang_dropdown: OptionButton
 var _region_dropdown: OptionButton
+var _script_dropdown: OptionButton
 var _hint_label: Label
 
 var existing_language_codes: PackedStringArray = []
@@ -33,7 +34,7 @@ func _build_ui() -> void:
 	# Direct VBoxContainer as child — NO MarginContainer (Bayterek pattern).
 	var vbox := VBoxContainer.new()
 	vbox.name = "ContentVBox"
-	vbox.custom_minimum_size = Vector2(440, 140)
+	vbox.custom_minimum_size = Vector2(480, 200)
 	vbox.add_theme_constant_override("separation", 10)
 	add_child(vbox)
 
@@ -50,6 +51,21 @@ func _build_ui() -> void:
 	_lang_dropdown = OptionButton.new()
 	_lang_dropdown.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lang_row.add_child(_lang_dropdown)
+
+	# --- Script row ---
+	var script_row := HBoxContainer.new()
+	script_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(script_row)
+
+	var script_label := Label.new()
+	script_label.text = "Script:"
+	script_label.custom_minimum_size = Vector2(90, 0)
+	script_label.tooltip_text = "Optional writing system (e.g. Hans/Hant for Chinese)."
+	script_row.add_child(script_label)
+
+	_script_dropdown = OptionButton.new()
+	_script_dropdown.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	script_row.add_child(_script_dropdown)
 
 	# --- Region row ---
 	var region_row := HBoxContainer.new()
@@ -71,7 +87,7 @@ func _build_ui() -> void:
 	_hint_label.add_theme_color_override("font_color", Color(0.7, 0.75, 0.85))
 	_hint_label.add_theme_font_size_override("font_size", 11)
 	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_hint_label.custom_minimum_size = Vector2(440, 40)
+	_hint_label.custom_minimum_size = Vector2(480, 40)
 	vbox.add_child(_hint_label)
 
 func _populate_languages() -> void:
@@ -92,6 +108,21 @@ func _populate_languages() -> void:
 			_lang_dropdown.select(i)
 			_on_language_changed(i)
 			return
+
+func _populate_scripts() -> void:
+	_script_dropdown.clear()
+	_script_dropdown.add_item("(none — use language default)", 0)
+	_script_dropdown.set_item_metadata(0, "")
+
+	for i in Localization.SCRIPTS.size():
+		var entry: Dictionary = Localization.SCRIPTS[i]
+		var code: String = entry.get("code", "")
+		var name: String = entry.get("name", code)
+		_script_dropdown.add_item("%s  (%s)" % [name, code], i + 1)
+		_script_dropdown.set_item_metadata(i + 1, code)
+
+	_script_dropdown.select(0)
+	_script_dropdown.item_selected.connect(func(_idx: int): _update_hint())
 
 func _on_language_changed(_index: int) -> void:
 	_rebuild_region_dropdown()
@@ -120,14 +151,17 @@ func _rebuild_region_dropdown() -> void:
 func _update_hint() -> void:
 	var lang_code: String = _get_selected_language_code()
 	var region_code: String = _get_selected_region_code()
+	var script_code: String = _get_selected_script_code()
 
 	if lang_code.is_empty():
 		_hint_label.text = ""
 		return
 
 	var preview_locale: String = lang_code
+	if not script_code.is_empty():
+		preview_locale += "_" + script_code
 	if not region_code.is_empty():
-		preview_locale = "%s-%s" % [lang_code, region_code]
+		preview_locale += "_" + region_code
 
 	_hint_label.text = "Will create locale:  %s\n→  %s/%s.json" % [
 		preview_locale,
@@ -149,6 +183,13 @@ func _get_selected_region_code() -> String:
 	var meta = _region_dropdown.get_item_metadata(idx)
 	return "" if meta == null else String(meta)
 
+func _get_selected_script_code() -> String:
+	var idx: int = _script_dropdown.selected
+	if idx < 0 or idx >= _script_dropdown.item_count:
+		return ""
+	var meta = _script_dropdown.get_item_metadata(idx)
+	return "" if meta == null else String(meta)
+
 # ============================================================
 # PUBLIC API — Bayterek pattern
 # ============================================================
@@ -156,19 +197,25 @@ func _get_selected_region_code() -> String:
 func open(existing_codes: PackedStringArray) -> void:
 	existing_language_codes = existing_codes
 	_populate_languages()
+	_populate_scripts()
 
 	if _lang_dropdown.item_selected.is_connected(_on_language_changed):
 		_lang_dropdown.item_selected.disconnect(_on_language_changed)
 	_lang_dropdown.item_selected.connect(_on_language_changed)
 
+	if _region_dropdown.item_selected.is_connected(_on_language_changed):
+		_region_dropdown.item_selected.disconnect(_on_language_changed)
+	_region_dropdown.item_selected.connect(_on_language_changed)
+
 	# Bayterek pattern: reset_size() + size + popup_centered() (no args).
 	reset_size()
-	size = Vector2i(500, 260)
+	size = Vector2i(520, 320)
 	popup_centered()
 
 func _on_confirmed() -> void:
 	var lang_code: String = _get_selected_language_code()
 	var region_code: String = _get_selected_region_code()
+	var script_code: String = _get_selected_script_code()
 	if lang_code.is_empty():
 		return
-	applied.emit(lang_code, region_code)
+	applied.emit(lang_code, region_code, script_code)

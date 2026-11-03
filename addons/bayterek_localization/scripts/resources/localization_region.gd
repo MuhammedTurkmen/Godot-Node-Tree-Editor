@@ -16,17 +16,23 @@ extends Resource
 @export_storage var code: String = ""             ## ISO 3166-1 alpha-2 ("US", "GB", "TR")
 @export_storage var name: String = ""             ## Display name ("United States", "Türkiye")
 @export_storage var language_code: String = ""    ## Parent language ("en", "tr")
+@export_storage var script_code: String = ""      ## Optional script ("Latn", "Cyrl", "Hans", "Hant")
 @export_storage var file_path: String = ""        ## res://data/localization/languages/en_US.json
 
 # ============================================================
 # HELPERS
 # ============================================================
 
-## Returns the full locale code in Godot format, e.g. "en_US".
+## Returns the full locale code in Godot format, e.g. "en_US", "zh_Hans_CN".
 func get_locale() -> String:
-	if language_code.is_empty():
-		return code
-	return "%s_%s" % [language_code, code]
+	var parts: Array[String] = []
+	if not language_code.is_empty():
+		parts.append(language_code)
+	if not script_code.is_empty():
+		parts.append(script_code)
+	if not code.is_empty():
+		parts.append(code)
+	return "_".join(parts)
 
 func _to_string() -> String:
 	return "LocalizationRegion(locale='%s', name='%s')" % [get_locale(), name]

@@ -71,12 +71,11 @@ static func save_registry(registry: LocalizationRegistry) -> Error:
 
 ## Adds a language. If `region_code` is provided, immediately creates a
 ## region under it. Returns the new language or null on error.
-## Adds a language. If `region_code` is provided, immediately creates a
-## region under it. Returns the new language or null on error.
 static func add_language(
 	registry: LocalizationRegistry,
 	lang_code: String,
-	region_code: String = ""
+	region_code: String = "",
+	script_code: String = ""
 ) -> LocalizationLanguage:
 	if not registry:
 		return null
@@ -96,7 +95,7 @@ static func add_language(
 	registry.add_language(lang)
 
 	if not region_code.is_empty():
-		add_region(registry, lang_code, region_code)
+		add_region(registry, lang_code, region_code, script_code)
 
 	# Let the registry pick the best original locale (prefers English).
 	registry.ensure_original_locale()
@@ -136,7 +135,8 @@ static func remove_language(registry: LocalizationRegistry, lang_code: String) -
 static func add_region(
 	registry: LocalizationRegistry,
 	lang_code: String,
-	region_code: String
+	region_code: String,
+	script_code: String = ""
 ) -> LocalizationRegion:
 	if not registry:
 		return null
@@ -157,13 +157,14 @@ static func add_region(
 	region.code = region_code
 	region.name = meta.get("name", region_code)
 	region.language_code = lang_code
-	region.file_path = _language_file_path(lang_code, region_code)
+	region.script_code = script_code
+	region.file_path = _language_file_path(lang_code, region_code, script_code)
 
 	# If the language previously had no regions, it used its own JSON file
 	# (lang.json). Now that we're adding a region, we must materialise that
 	# language-only JSON into the region file so we don't lose keys.
 	if lang.regions.is_empty():
-		var old_path: String = _language_file_path(lang_code, "")
+		var old_path: String = _language_file_path(lang_code, "", "")
 		if FileAccess.file_exists(old_path):
 			var old_data: Dictionary = read_json(old_path)
 			write_json(region.file_path, old_data)
@@ -176,7 +177,7 @@ static func add_region(
 	lang.add_region(region)
 
 	if registry.original_locale == lang_code:
-		registry.original_locale = "%s-%s" % [lang_code, region_code]
+		registry.original_locale = region.get_locale()
 
 	return region
 
@@ -271,11 +272,12 @@ static func write_json(path: String, data: Dictionary) -> Error:
 # ============================================================
 
 ## Builds "res://data/localization/languages/<locale>.json".
-##   language-only:  _language_file_path("en", "")    -> ".../en.json"
-##   region:         _language_file_path("en", "US")  -> ".../en-US.json"
-static func _language_file_path(lang_code: String, region_code: String) -> String:
+##   language-only:  _language_file_path("en", "", "")       -> ".../en.json"
+##   region:         _language_file_path("en", "US", "")     -> ".../en_US.json"
+##   script+region:  _language_file_path("zh", "CN", "Hans") -> ".../zh_Hans_CN.json"
+static func _language_file_path(lang_code: String, region_code: String, script_code: String = "") -> String:
 	var dir: String = Localization.get_languages_dir()
-	var locale: String = Localization.compose_locale(lang_code, region_code)
+	var locale: String = Localization.compose_locale(lang_code, region_code, script_code)
 	return "%s/%s.json" % [dir, locale]
 
 ## Public helper for other classes.

@@ -590,3 +590,12 @@ func _ensure_locale_in_registry(locale: String) -> bool:
 			lang.add_region(region)
 
 	return _registry.has_locale(locale)
+
+## Imports a CSV file directly without showing the dialog UI.
+## Useful for quick import from the browser.
+func import_file(registry: LocalizationRegistry, path: String) -> void:
+	if not registry:
+		return
+	_registry = registry
+	_path_input.text = path
+	_do_import(path)
