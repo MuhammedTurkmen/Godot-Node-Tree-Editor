@@ -1,0 +1,350 @@
+@tool
+class_name SkillTreePrefabsService
+extends SkillTreeBaseService
+## Prefab creation / sync / deletion. Design-merkezli.
+
+signal prefab_created(prefab: SkillTreePrefab)
+signal prefab_removed(prefab: SkillTreePrefab)
+signal prefab_changed(prefab: SkillTreePrefab)
+
+var _ref_id_to_prefab: Dictionary = {}
+
+func load_tree(tree_data: SkillTree) -> void:
+	_tree_data = tree_data
+	_ref_id_to_prefab.clear()
+
+	# 1) Register every prefab first, so we can resolve references below.
+	for prefab in _tree_data.prefabs:
+		if not prefab:
+			continue
+		if prefab.reference_id.is_empty():
+			continue
+		_ref_id_to_prefab[prefab.reference_id] = prefab
+		prefab_created.emit(prefab)
+
+	# 2) Bind nodes to their prefabs.
+	#
+	# IMPORTANT RUNTIME ORDERING:
+	#   In `_create_services`, `nodes_service.load_tree()` runs BEFORE
+	#   `prefabs_service.load_tree()`. That means each node's first
+	#   `refresh_visuals()` call happens with `node.prefab = null`, so
+	#   `apply_exported_overrides(design, null)` cannot read the
+	#   prefab's `exported_values` — every prefab-level override
+	#   (tint colors, transform tweaks, etc.) was silently ignored at
+	#   runtime, even though it worked in the editor (where the prefab
+	#   binding was already in place).
+	#
+	#   Fix: after binding `node.prefab`, call `rebuild_from_design()`
+	#   so `_design_applied` is reset and `refresh_visuals()` re-runs
+	#   the override application with the prefab now available.
+	if _tree_view and _tree_view.nodes_service:
+		for node in _tree_view.nodes_service.get_all_nodes():
+			if not node.node_data:
+				continue
+			var ref_id: String = node.node_data.reference_id
+			if ref_id.is_empty():
+				continue
+			var prefab: SkillTreePrefab = _ref_id_to_prefab.get(ref_id, null)
+			if prefab:
+				node.prefab = prefab
+				prefab.add_node(node)
+				if node.has_method("rebuild_from_design"):
+					node.rebuild_from_design()
+
+func get_prefab_by_reference_id(reference_id: String) -> SkillTreePrefab:
+	return _ref_id_to_prefab.get(reference_id, null)
+
+func get_all_prefabs() -> Array:
+	return _tree_data.prefabs.duplicate() if _tree_data else []
+
+# ============================================================
+# CREATE PREFAB
+# ============================================================
+
+func create_prefab(node: SkillTreeNodeButton, prefab_name: String) -> SkillTreePrefab:
+	if not node or not node.node_data:
+		return null
+	if prefab_name.strip_edges().is_empty():
+		return null
+
+	var trimmed: String = prefab_name.strip_edges()
+
+	var prefab := SkillTreePrefab.new()
+	prefab.reference_id = BayterekUUIDGenerator.v4()
+	prefab.id = Bayterek.to_snake_case(trimmed)
+	prefab.node_name = trimmed
+	prefab.description = node.node_data.description
+	prefab.attributes = node.node_data.attributes.duplicate(true)
+	prefab.max_allocations = node.node_data.max_allocations
+	prefab.design_id = node.node_data.design_id
+
+	var design: SkillTreeNodeDesign = null
+	if not prefab.design_id.is_empty():
+		design = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
+	if design:
+		# Pass the node's current overrides so they become the prefab's
+		# starting values (fixes the "exported_values empty" bug).
+		prefab.copy_exported_fields_from(
+			design,
+			node.node_data.exported_overrides
+		)
+
+	node.node_data.reference_id = prefab.reference_id
+	node.prefab = prefab
+	_ref_id_to_prefab[prefab.reference_id] = prefab
+
+	_tree_data.prefabs.append(prefab)
+	prefab.add_node(node)
+
+	prefab_created.emit(prefab)
+	return prefab
+
+# ============================================================
+# RENAME / DUPLICATE
+# ============================================================
+
+func rename_prefab(prefab: SkillTreePrefab, new_name: String) -> bool:
+	if not prefab:
+		return false
+	var trimmed: String = new_name.strip_edges()
+	if trimmed.is_empty():
+		return false
+	if trimmed == prefab.node_name:
+		return true
+
+	prefab.set_node_name(trimmed)
+	prefab_changed.emit(prefab)
+	return true
+
+func duplicate_prefab(source: SkillTreePrefab) -> SkillTreePrefab:
+	if not source:
+		return null
+
+	var copy := SkillTreePrefab.new()
+	copy.reference_id = BayterekUUIDGenerator.v4()
+	copy.node_name = source.node_name + " Copy"
+	copy.id = Bayterek.to_snake_case(copy.node_name)
+	copy.description = source.description
+	copy.design_id = source.design_id
+	copy.attributes = source.attributes.duplicate(true)
+	copy.max_allocations = source.max_allocations
+	copy.exported_fields = source.exported_fields.duplicate(true)
+	copy.exported_values = source.exported_values.duplicate(true)
+
+	_tree_data.prefabs.append(copy)
+	_ref_id_to_prefab[copy.reference_id] = copy
+
+	prefab_created.emit(copy)
+	return copy
+
+# ============================================================
+# MAKE UNIQUE
+# ============================================================
+
+func make_unique(node: SkillTreeNodeButton) -> void:
+	if not node or not node.prefab:
+		return
+
+	var prefab: SkillTreePrefab = node.prefab
+	prefab.remove_node(node)
+	node.prefab = null
+	node.node_data.reference_id = ""
+	node.node_data.clear_all_attribute_overrides()
+	node.node_data.clear_all_exported_overrides()
+
+# ============================================================
+# DELETE PREFAB
+# ============================================================
+
+enum DeleteMode {
+	ORPHAN_NODES,
+	DELETE_NODES,
+	MAKE_UNIQUE,
+}
+
+func delete_prefab(prefab: SkillTreePrefab, mode: DeleteMode = DeleteMode.ORPHAN_NODES) -> void:
+	if not prefab:
+		return
+
+	var nodes_snapshot: Array = prefab.get_nodes().duplicate()
+
+	match mode:
+		DeleteMode.ORPHAN_NODES:
+			for node in nodes_snapshot:
+				if not is_instance_valid(node):
+					continue
+				node.prefab = null
+				if node.node_data:
+					node.node_data.reference_id = ""
+					node.node_data.clear_all_attribute_overrides()
+					node.node_data.clear_all_exported_overrides()
+
+		DeleteMode.DELETE_NODES:
+			if _tree_view and _tree_view.nodes_service:
+				for node in nodes_snapshot:
+					if not is_instance_valid(node):
+						continue
+					if _tree_view.connections_service:
+						_tree_view.connections_service.remove_all_connections_of(node)
+					_tree_view.nodes_service.delete_node(node)
+					_tree_view.node_deleted.emit(node)
+
+		DeleteMode.MAKE_UNIQUE:
+			for node in nodes_snapshot:
+				if not is_instance_valid(node):
+					continue
+				node.prefab = null
+				if node.node_data:
+					node.node_data.reference_id = ""
+					node.node_data.clear_all_attribute_overrides()
+					node.node_data.clear_all_exported_overrides()
+
+	_tree_data.prefabs.erase(prefab)
+
+	if not prefab.reference_id.is_empty():
+		_ref_id_to_prefab.erase(prefab.reference_id)
+
+	prefab.nodes.clear()
+	prefab_removed.emit(prefab)
+
+func find_orphan_prefabs() -> Array:
+	var orphans: Array = []
+	for prefab in get_all_prefabs():
+		if prefab.reference_id.is_empty():
+			continue
+		if prefab.get_nodes().is_empty():
+			orphans.append(prefab)
+	return orphans
+
+func cleanup_orphan_prefabs() -> int:
+	var orphans: Array = find_orphan_prefabs()
+	for prefab in orphans:
+		delete_prefab(prefab, DeleteMode.ORPHAN_NODES)
+	return orphans.size()
+
+# ============================================================
+# EXPORTED VALUES
+# ============================================================
+
+func set_prefab_exported_value(prefab: SkillTreePrefab, field_path: String, value: Variant) -> void:
+	if not prefab:
+		return
+	if not prefab.is_field_exported(field_path):
+		return
+	prefab.exported_values[field_path] = value
+	prefab.exported_values_changed.emit(prefab)
+
+	for node in prefab.get_nodes():
+		if not is_instance_valid(node):
+			continue
+		node.rebuild_from_design()
+
+	prefab_changed.emit(prefab)
+
+func set_node_exported_override(node: SkillTreeNodeButton, field_path: String, value: Variant) -> void:
+	if not node or not node.node_data:
+		return
+	node.node_data.set_exported_override(field_path, value)
+	node.rebuild_from_design()
+
+func clear_node_exported_override(node: SkillTreeNodeButton, field_path: String) -> void:
+	if not node or not node.node_data:
+		return
+	node.node_data.clear_exported_override(field_path)
+	node.rebuild_from_design()
+
+func notify_exported_values_changed(prefab: SkillTreePrefab) -> void:
+	if not prefab:
+		return
+	for node in prefab.get_nodes():
+		if is_instance_valid(node) and node.has_method("rebuild_from_design"):
+			node.rebuild_from_design()
+	prefab_changed.emit(prefab)
+
+# ============================================================
+# PREFAB-BOUND APPEARANCE CHANGES
+# ============================================================
+#
+# When a node is bound to a prefab, appearance changes made on that
+# node should propagate to EVERY instance of the prefab. This is the
+# "shared appearance" model:
+#
+#   - Appearance fields (tint color, transform, etc.) → stored in the
+#     prefab's `exported_values`, applied to ALL bound nodes.
+#   - Attribute values (strength, agility, etc.) → stored per-node in
+#     `node_data.attributes`, fully independent.
+#
+# This function is the single entry point for appearance changes made
+# on a prefab-bound node. It writes to the PREFAB (not the node's own
+# override) and re-applies to every bound instance.
+
+## Routes an appearance change from a prefab-bound node to the shared
+## prefab. Returns true if the change was routed (i.e. the node is
+## bound to a prefab that exports this field).
+##
+## When this returns true, the caller should ALSO clear any local
+## override the node had for this field so the prefab's value shows
+## through cleanly.
+func set_prefab_bound_exported_value(
+	node: SkillTreeNodeButton,
+	field_path: String,
+	value: Variant
+) -> bool:
+	if not node or not node.prefab:
+		return false
+	if not node.prefab.is_field_exported(field_path):
+		return false
+
+	# Write to the SHARED prefab, not the node's own override.
+	node.prefab.exported_values[field_path] = value
+
+	# Re-apply to every bound instance (including this one).
+	notify_exported_values_changed(node.prefab)
+
+	prefab_changed.emit(node.prefab)
+	return true
+
+# ============================================================
+# RESET TO PREFAB
+# ============================================================
+
+func reset_node_to_prefab_defaults(node: SkillTreeNodeButton) -> void:
+	if not node or not node.prefab or not node.node_data:
+		return
+
+	var prefab: SkillTreePrefab = node.prefab
+
+	node.node_data.name = prefab.node_name
+	node.node_data.description = prefab.description
+	node.node_data.attributes = prefab.attributes.duplicate(true)
+	node.node_data.max_allocations = prefab.max_allocations
+	node.node_data.clear_all_attribute_overrides()
+	node.node_data.clear_all_exported_overrides()
+
+	var design: SkillTreeNodeDesign = null
+	if not prefab.design_id.is_empty():
+		design = Bayterek.get_designs_registry().get_design_by_id(prefab.design_id)
+	if design:
+		# apply_design() copies the layers, remaps the design's progress
+		# layer id to this node's copy (populating node_progress_layer_id),
+		# and sets design_size + scale.
+		node.node_data.apply_design(design)
+
+	if not prefab.exported_values.is_empty():
+		node.node_data.exported_overrides = prefab.exported_values.duplicate(true)
+
+	if node.has_method("rebuild_from_design"):
+		node.rebuild_from_design()
+
+func reset_attribute_to_prefab_default(node: SkillTreeNodeButton, attr_id: String) -> void:
+	if not node or not node.prefab or not node.node_data:
+		return
+
+	var prefab: SkillTreePrefab = node.prefab
+
+	if prefab.attributes.has(attr_id):
+		node.node_data.attributes[attr_id] = prefab.attributes[attr_id].duplicate(true)
+	else:
+		node.node_data.attributes.erase(attr_id)
+
+	node.node_data.clear_attribute_override(attr_id)

@@ -1,0 +1,325 @@
+Bayterek Rename Report
+DRY_RUN=false
+
+
+=== ÖZET ===
+Değişen dosya sayısı: 117
+Rename edilen dosya sayısı: 192
+Rename edilen klasör sayısı: 2
+
+=== DEĞİŞEN DOSYALAR ===
+  res://addons/bayterek/bayterek_plugin.gd
+  res://addons/bayterek/cleanup_bayterek.gd
+  res://addons/bayterek/plugin.cfg
+  res://addons/bayterek/scaffold_bayterek.gd
+  res://addons/bayterek/scripts/editor/bayterek_attributes_editor.gd
+  res://addons/bayterek/scripts/editor/bayterek_browser.gd
+  res://addons/bayterek/scripts/editor/bayterek_editor.gd
+  res://addons/bayterek/scripts/editor/bayterek_editor_context.gd
+  res://addons/bayterek/scripts/editor/bayterek_hierarchy.gd
+  res://addons/bayterek/scripts/editor/bayterek_inspector.gd
+  res://addons/bayterek/scripts/editor/bayterek_inspector_attributes.gd
+  res://addons/bayterek/scripts/editor/bayterek_inspector_connections.gd
+  res://addons/bayterek/scripts/editor/bayterek_inspector_exported_fields.gd
+  res://addons/bayterek/scripts/editor/bayterek_main_screen.gd
+  res://addons/bayterek/scripts/editor/bayterek_node_editor_screen.gd
+  res://addons/bayterek/scripts/editor/bayterek_selection_box.gd
+  res://addons/bayterek/scripts/editor/bayterek_settings.gd
+  res://addons/bayterek/scripts/editor/bayterek_shortcuts.gd
+  res://addons/bayterek/scripts/editor/bayterek_validator.gd
+  res://addons/bayterek/scripts/editor/fuzzy_search.gd
+  res://addons/bayterek/scripts/editor/test_copy_paste.gd
+  res://addons/bayterek/scripts/editor/ui/audio_stream_input.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_design_list_panel.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_export_helper.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_group_dialog.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_editor.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_node.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_preview.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_preview_panel.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_state_colors.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_state_textures.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_transform_form.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_node_search.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_picker.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_prefabs_bar.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_prefab_card.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_prefab_thumbnail.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_procedural_grid.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_rename_dialog.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_toast.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_tree_ui.gd
+  res://addons/bayterek/scripts/editor/ui/icon_button.gd
+  res://addons/bayterek/scripts/editor/ui/line_edit_icon.gd
+  res://addons/bayterek/scripts/editor/ui/texture_input.gd
+  res://addons/bayterek/scripts/resources/bayterek_attribute.gd
+  res://addons/bayterek/scripts/resources/bayterek_design_registry.gd
+  res://addons/bayterek/scripts/resources/bayterek_group.gd
+  res://addons/bayterek/scripts/resources/bayterek_node.gd
+  res://addons/bayterek/scripts/resources/bayterek_node_design.gd
+  res://addons/bayterek/scripts/resources/bayterek_node_group.gd
+  res://addons/bayterek/scripts/resources/bayterek_prefab.gd
+  res://addons/bayterek/scripts/resources/bayterek_registry.gd
+  res://addons/bayterek/scripts/resources/bayterek_skill_tree_data.gd
+  res://addons/bayterek/scripts/resources/bayterek_tree.gd
+  res://addons/bayterek/scripts/resources/bayterek_tree_state.gd
+  res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd
+  res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd
+  res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd
+  res://addons/bayterek/scripts/resources/layers/test_allocation.gd
+  res://addons/bayterek/scripts/resources/layers/test_phase1.gd
+  res://addons/bayterek/scripts/runtime/bayterek_audio_manager.gd
+  res://addons/bayterek/scripts/runtime/bayterek_runtime_animator.gd
+  res://addons/bayterek/scripts/runtime/bayterek_serializer.gd
+  res://addons/bayterek/scripts/runtime/test_serializer.gd
+  res://addons/bayterek/scripts/shared/bayterek.gd
+  res://addons/bayterek/scripts/shared/bayterek_allocation_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_animator_builder.gd
+  res://addons/bayterek/scripts/shared/bayterek_arrow_overlay.gd
+  res://addons/bayterek/scripts/shared/bayterek_base_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_builder.gd
+  res://addons/bayterek/scripts/shared/bayterek_camera.gd
+  res://addons/bayterek/scripts/shared/bayterek_connection.gd
+  res://addons/bayterek/scripts/shared/bayterek_connections_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_decorations_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_design_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_group_frame.gd
+  res://addons/bayterek/scripts/shared/bayterek_group_frames_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_line_2d.gd
+  res://addons/bayterek/scripts/shared/bayterek_line_data.gd
+  res://addons/bayterek/scripts/shared/bayterek_loader.gd
+  res://addons/bayterek/scripts/shared/bayterek_logger.gd
+  res://addons/bayterek/scripts/shared/bayterek_nodes_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_node_animator.gd
+  res://addons/bayterek/scripts/shared/bayterek_node_button.gd
+  res://addons/bayterek/scripts/shared/bayterek_prefabs_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_skill_tree_json.gd
+  res://addons/bayterek/scripts/shared/bayterek_tooltip.gd
+  res://addons/bayterek/scripts/shared/bayterek_tree_view.gd
+  res://addons/bayterek/scripts/shared/test_prefab.gd
+  res://addons/bayterek_localization/bayterek_localization_plugin.gd
+  res://addons/bayterek_localization/plugin.cfg
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_browser.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_editor.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_fuzzy.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_import_export_dialog.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_language_dialog.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_main_screen.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_polyglot_import.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_region_dialog.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_undo_helper.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_key_completer.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_key_row.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_placeholder_highlighter.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_preview_panel.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_translation_field.gd
+  res://addons/bayterek_localization/scripts/runtime/game_localization.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_csv.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_format_string.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_loader.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_service.gd
+  res://addons/bayterek_localization/seed_default_data.gd
+  res://data/bayterek/registry.tres
+  res://data/localization/localization_registry.tres
+  res://debug/scenes/test.gd
+  res://debug/scenes/test_purchase.gd
+  res://project.godot
+
+=== RENAME EDİLEN DOSYALAR ===
+  res://addons/bayterek/bayterek_plugin.gd → res://addons/bayterek/skilltree_plugin.gd
+  res://addons/bayterek/bayterek_plugin.gd.uid → res://addons/bayterek/skilltree_plugin.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_attributes_editor.gd → res://addons/bayterek/scripts/editor/skilltree_attributes_editor.gd
+  res://addons/bayterek/scripts/editor/bayterek_attributes_editor.gd.uid → res://addons/bayterek/scripts/editor/skilltree_attributes_editor.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_browser.gd → res://addons/bayterek/scripts/editor/skilltree_browser.gd
+  res://addons/bayterek/scripts/editor/bayterek_browser.gd.uid → res://addons/bayterek/scripts/editor/skilltree_browser.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_editor.gd → res://addons/bayterek/scripts/editor/skilltree_editor.gd
+  res://addons/bayterek/scripts/editor/bayterek_editor.gd.uid → res://addons/bayterek/scripts/editor/skilltree_editor.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_editor_context.gd → res://addons/bayterek/scripts/editor/skilltree_editor_context.gd
+  res://addons/bayterek/scripts/editor/bayterek_editor_context.gd.uid → res://addons/bayterek/scripts/editor/skilltree_editor_context.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_hierarchy.gd → res://addons/bayterek/scripts/editor/skilltree_hierarchy.gd
+  res://addons/bayterek/scripts/editor/bayterek_hierarchy.gd.uid → res://addons/bayterek/scripts/editor/skilltree_hierarchy.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_inspector.gd → res://addons/bayterek/scripts/editor/skilltree_inspector.gd
+  res://addons/bayterek/scripts/editor/bayterek_inspector.gd.uid → res://addons/bayterek/scripts/editor/skilltree_inspector.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_inspector_attributes.gd → res://addons/bayterek/scripts/editor/skilltree_inspector_attributes.gd
+  res://addons/bayterek/scripts/editor/bayterek_inspector_attributes.gd.uid → res://addons/bayterek/scripts/editor/skilltree_inspector_attributes.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_inspector_connections.gd → res://addons/bayterek/scripts/editor/skilltree_inspector_connections.gd
+  res://addons/bayterek/scripts/editor/bayterek_inspector_connections.gd.uid → res://addons/bayterek/scripts/editor/skilltree_inspector_connections.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_inspector_exported_fields.gd → res://addons/bayterek/scripts/editor/skilltree_inspector_exported_fields.gd
+  res://addons/bayterek/scripts/editor/bayterek_inspector_exported_fields.gd.uid → res://addons/bayterek/scripts/editor/skilltree_inspector_exported_fields.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_main_screen.gd → res://addons/bayterek/scripts/editor/skilltree_main_screen.gd
+  res://addons/bayterek/scripts/editor/bayterek_main_screen.gd.uid → res://addons/bayterek/scripts/editor/skilltree_main_screen.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_node_editor_screen.gd → res://addons/bayterek/scripts/editor/skilltree_node_editor_screen.gd
+  res://addons/bayterek/scripts/editor/bayterek_node_editor_screen.gd.uid → res://addons/bayterek/scripts/editor/skilltree_node_editor_screen.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_selection_box.gd → res://addons/bayterek/scripts/editor/skilltree_selection_box.gd
+  res://addons/bayterek/scripts/editor/bayterek_selection_box.gd.uid → res://addons/bayterek/scripts/editor/skilltree_selection_box.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_settings.gd → res://addons/bayterek/scripts/editor/skilltree_settings.gd
+  res://addons/bayterek/scripts/editor/bayterek_settings.gd.uid → res://addons/bayterek/scripts/editor/skilltree_settings.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_shortcuts.gd → res://addons/bayterek/scripts/editor/skilltree_shortcuts.gd
+  res://addons/bayterek/scripts/editor/bayterek_shortcuts.gd.uid → res://addons/bayterek/scripts/editor/skilltree_shortcuts.gd.uid
+  res://addons/bayterek/scripts/editor/bayterek_validator.gd → res://addons/bayterek/scripts/editor/skilltree_validator.gd
+  res://addons/bayterek/scripts/editor/bayterek_validator.gd.uid → res://addons/bayterek/scripts/editor/skilltree_validator.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_design_list_panel.gd → res://addons/bayterek/scripts/editor/ui/skilltree_design_list_panel.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_design_list_panel.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_design_list_panel.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_export_helper.gd → res://addons/bayterek/scripts/editor/ui/skilltree_export_helper.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_export_helper.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_export_helper.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_group_dialog.gd → res://addons/bayterek/scripts/editor/ui/skilltree_group_dialog.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_group_dialog.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_group_dialog.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_editor.gd → res://addons/bayterek/scripts/editor/ui/skilltree_layer_editor.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_editor.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_layer_editor.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_node.gd → res://addons/bayterek/scripts/editor/ui/skilltree_layer_node.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_node.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_layer_node.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_preview.gd → res://addons/bayterek/scripts/editor/ui/skilltree_layer_preview.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_preview.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_layer_preview.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_preview_panel.gd → res://addons/bayterek/scripts/editor/ui/skilltree_layer_preview_panel.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_preview_panel.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_layer_preview_panel.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_state_colors.gd → res://addons/bayterek/scripts/editor/ui/skilltree_layer_state_colors.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_state_colors.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_layer_state_colors.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_state_textures.gd → res://addons/bayterek/scripts/editor/ui/skilltree_layer_state_textures.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_state_textures.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_layer_state_textures.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_transform_form.gd → res://addons/bayterek/scripts/editor/ui/skilltree_layer_transform_form.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_layer_transform_form.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_layer_transform_form.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_node_search.gd → res://addons/bayterek/scripts/editor/ui/skilltree_node_search.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_node_search.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_node_search.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_picker.gd → res://addons/bayterek/scripts/editor/ui/skilltree_picker.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_picker.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_picker.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_prefabs_bar.gd → res://addons/bayterek/scripts/editor/ui/skilltree_prefabs_bar.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_prefabs_bar.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_prefabs_bar.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_prefab_card.gd → res://addons/bayterek/scripts/editor/ui/skilltree_prefab_card.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_prefab_card.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_prefab_card.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_prefab_thumbnail.gd → res://addons/bayterek/scripts/editor/ui/skilltree_prefab_thumbnail.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_prefab_thumbnail.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_prefab_thumbnail.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_procedural_grid.gd → res://addons/bayterek/scripts/editor/ui/skilltree_procedural_grid.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_procedural_grid.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_procedural_grid.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_rename_dialog.gd → res://addons/bayterek/scripts/editor/ui/skilltree_rename_dialog.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_rename_dialog.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_rename_dialog.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_toast.gd → res://addons/bayterek/scripts/editor/ui/skilltree_toast.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_toast.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_toast.gd.uid
+  res://addons/bayterek/scripts/editor/ui/bayterek_tree_ui.gd → res://addons/bayterek/scripts/editor/ui/skilltree_tree_ui.gd
+  res://addons/bayterek/scripts/editor/ui/bayterek_tree_ui.gd.uid → res://addons/bayterek/scripts/editor/ui/skilltree_tree_ui.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_attribute.gd → res://addons/bayterek/scripts/resources/skilltree_attribute.gd
+  res://addons/bayterek/scripts/resources/bayterek_attribute.gd.uid → res://addons/bayterek/scripts/resources/skilltree_attribute.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_design_registry.gd → res://addons/bayterek/scripts/resources/skilltree_design_registry.gd
+  res://addons/bayterek/scripts/resources/bayterek_design_registry.gd.uid → res://addons/bayterek/scripts/resources/skilltree_design_registry.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_group.gd → res://addons/bayterek/scripts/resources/skilltree_group.gd
+  res://addons/bayterek/scripts/resources/bayterek_group.gd.uid → res://addons/bayterek/scripts/resources/skilltree_group.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_node.gd → res://addons/bayterek/scripts/resources/skilltree_node.gd
+  res://addons/bayterek/scripts/resources/bayterek_node.gd.uid → res://addons/bayterek/scripts/resources/skilltree_node.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_node_design.gd → res://addons/bayterek/scripts/resources/skilltree_node_design.gd
+  res://addons/bayterek/scripts/resources/bayterek_node_design.gd.uid → res://addons/bayterek/scripts/resources/skilltree_node_design.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_node_group.gd → res://addons/bayterek/scripts/resources/skilltree_node_group.gd
+  res://addons/bayterek/scripts/resources/bayterek_node_group.gd.uid → res://addons/bayterek/scripts/resources/skilltree_node_group.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_prefab.gd → res://addons/bayterek/scripts/resources/skilltree_prefab.gd
+  res://addons/bayterek/scripts/resources/bayterek_prefab.gd.uid → res://addons/bayterek/scripts/resources/skilltree_prefab.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_registry.gd → res://addons/bayterek/scripts/resources/skilltree_registry.gd
+  res://addons/bayterek/scripts/resources/bayterek_registry.gd.uid → res://addons/bayterek/scripts/resources/skilltree_registry.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_skill_tree_data.gd → res://addons/bayterek/scripts/resources/skilltree_data.gd
+  res://addons/bayterek/scripts/resources/bayterek_skill_tree_data.gd.uid → res://addons/bayterek/scripts/resources/skilltree_data.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_tree.gd → res://addons/bayterek/scripts/resources/skilltree_tree.gd
+  res://addons/bayterek/scripts/resources/bayterek_tree.gd.uid → res://addons/bayterek/scripts/resources/skilltree_tree.gd.uid
+  res://addons/bayterek/scripts/resources/bayterek_tree_state.gd → res://addons/bayterek/scripts/resources/skilltree_tree_state.gd
+  res://addons/bayterek/scripts/resources/bayterek_tree_state.gd.uid → res://addons/bayterek/scripts/resources/skilltree_tree_state.gd.uid
+  res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd → res://addons/bayterek/scripts/resources/layers/skilltree_layer.gd
+  res://addons/bayterek/scripts/resources/layers/bayterek_layer.gd.uid → res://addons/bayterek/scripts/resources/layers/skilltree_layer.gd.uid
+  res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd → res://addons/bayterek/scripts/resources/layers/skilltree_layer_transform.gd
+  res://addons/bayterek/scripts/resources/layers/bayterek_layer_transform.gd.uid → res://addons/bayterek/scripts/resources/layers/skilltree_layer_transform.gd.uid
+  res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd → res://addons/bayterek/scripts/resources/layers/skilltree_texture_layer.gd
+  res://addons/bayterek/scripts/resources/layers/bayterek_texture_layer.gd.uid → res://addons/bayterek/scripts/resources/layers/skilltree_texture_layer.gd.uid
+  res://addons/bayterek/scripts/runtime/bayterek_audio_manager.gd → res://addons/bayterek/scripts/runtime/skilltree_audio_manager.gd
+  res://addons/bayterek/scripts/runtime/bayterek_audio_manager.gd.uid → res://addons/bayterek/scripts/runtime/skilltree_audio_manager.gd.uid
+  res://addons/bayterek/scripts/runtime/bayterek_runtime_animator.gd → res://addons/bayterek/scripts/runtime/skilltree_runtime_animator.gd
+  res://addons/bayterek/scripts/runtime/bayterek_runtime_animator.gd.uid → res://addons/bayterek/scripts/runtime/skilltree_runtime_animator.gd.uid
+  res://addons/bayterek/scripts/runtime/bayterek_serializer.gd → res://addons/bayterek/scripts/runtime/skilltree_serializer.gd
+  res://addons/bayterek/scripts/runtime/bayterek_serializer.gd.uid → res://addons/bayterek/scripts/runtime/skilltree_serializer.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek.gd → res://addons/bayterek/scripts/shared/skill_tree_forger.gd
+  res://addons/bayterek/scripts/shared/bayterek.gd.uid → res://addons/bayterek/scripts/shared/skill_tree_forger.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_allocation_service.gd → res://addons/bayterek/scripts/shared/skilltree_allocation_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_allocation_service.gd.uid → res://addons/bayterek/scripts/shared/skilltree_allocation_service.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_animator_builder.gd → res://addons/bayterek/scripts/shared/skilltree_animator_builder.gd
+  res://addons/bayterek/scripts/shared/bayterek_animator_builder.gd.uid → res://addons/bayterek/scripts/shared/skilltree_animator_builder.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_arrow_overlay.gd → res://addons/bayterek/scripts/shared/skilltree_arrow_overlay.gd
+  res://addons/bayterek/scripts/shared/bayterek_arrow_overlay.gd.uid → res://addons/bayterek/scripts/shared/skilltree_arrow_overlay.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_base_service.gd → res://addons/bayterek/scripts/shared/skilltree_base_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_base_service.gd.uid → res://addons/bayterek/scripts/shared/skilltree_base_service.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_builder.gd → res://addons/bayterek/scripts/shared/skilltree_builder.gd
+  res://addons/bayterek/scripts/shared/bayterek_builder.gd.uid → res://addons/bayterek/scripts/shared/skilltree_builder.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_camera.gd → res://addons/bayterek/scripts/shared/skilltree_camera.gd
+  res://addons/bayterek/scripts/shared/bayterek_camera.gd.uid → res://addons/bayterek/scripts/shared/skilltree_camera.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_connection.gd → res://addons/bayterek/scripts/shared/skilltree_connection.gd
+  res://addons/bayterek/scripts/shared/bayterek_connection.gd.uid → res://addons/bayterek/scripts/shared/skilltree_connection.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_connections_service.gd → res://addons/bayterek/scripts/shared/skilltree_connections_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_connections_service.gd.uid → res://addons/bayterek/scripts/shared/skilltree_connections_service.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_decorations_service.gd → res://addons/bayterek/scripts/shared/skilltree_decorations_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_decorations_service.gd.uid → res://addons/bayterek/scripts/shared/skilltree_decorations_service.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_design_service.gd → res://addons/bayterek/scripts/shared/skilltree_design_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_design_service.gd.uid → res://addons/bayterek/scripts/shared/skilltree_design_service.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_group_frame.gd → res://addons/bayterek/scripts/shared/skilltree_group_frame.gd
+  res://addons/bayterek/scripts/shared/bayterek_group_frame.gd.uid → res://addons/bayterek/scripts/shared/skilltree_group_frame.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_group_frames_service.gd → res://addons/bayterek/scripts/shared/skilltree_group_frames_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_group_frames_service.gd.uid → res://addons/bayterek/scripts/shared/skilltree_group_frames_service.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_line_2d.gd → res://addons/bayterek/scripts/shared/skilltree_line_2d.gd
+  res://addons/bayterek/scripts/shared/bayterek_line_2d.gd.uid → res://addons/bayterek/scripts/shared/skilltree_line_2d.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_line_data.gd → res://addons/bayterek/scripts/shared/skilltree_line_data.gd
+  res://addons/bayterek/scripts/shared/bayterek_line_data.gd.uid → res://addons/bayterek/scripts/shared/skilltree_line_data.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_loader.gd → res://addons/bayterek/scripts/shared/skilltree_loader.gd
+  res://addons/bayterek/scripts/shared/bayterek_loader.gd.uid → res://addons/bayterek/scripts/shared/skilltree_loader.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_logger.gd → res://addons/bayterek/scripts/shared/skilltree_logger.gd
+  res://addons/bayterek/scripts/shared/bayterek_logger.gd.uid → res://addons/bayterek/scripts/shared/skilltree_logger.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_nodes_service.gd → res://addons/bayterek/scripts/shared/skilltree_nodes_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_nodes_service.gd.uid → res://addons/bayterek/scripts/shared/skilltree_nodes_service.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_node_animator.gd → res://addons/bayterek/scripts/shared/skilltree_node_animator.gd
+  res://addons/bayterek/scripts/shared/bayterek_node_animator.gd.uid → res://addons/bayterek/scripts/shared/skilltree_node_animator.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_node_button.gd → res://addons/bayterek/scripts/shared/skilltree_node_button.gd
+  res://addons/bayterek/scripts/shared/bayterek_node_button.gd.uid → res://addons/bayterek/scripts/shared/skilltree_node_button.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_prefabs_service.gd → res://addons/bayterek/scripts/shared/skilltree_prefabs_service.gd
+  res://addons/bayterek/scripts/shared/bayterek_prefabs_service.gd.uid → res://addons/bayterek/scripts/shared/skilltree_prefabs_service.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_skill_tree_json.gd → res://addons/bayterek/scripts/shared/skilltree_json.gd
+  res://addons/bayterek/scripts/shared/bayterek_skill_tree_json.gd.uid → res://addons/bayterek/scripts/shared/skilltree_json.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_tooltip.gd → res://addons/bayterek/scripts/shared/skilltree_tooltip.gd
+  res://addons/bayterek/scripts/shared/bayterek_tooltip.gd.uid → res://addons/bayterek/scripts/shared/skilltree_tooltip.gd.uid
+  res://addons/bayterek/scripts/shared/bayterek_tree_view.gd → res://addons/bayterek/scripts/shared/skilltree_tree_view.gd
+  res://addons/bayterek/scripts/shared/bayterek_tree_view.gd.uid → res://addons/bayterek/scripts/shared/skilltree_tree_view.gd.uid
+  res://addons/bayterek_localization/bayterek_localization_plugin.gd → res://addons/bayterek_localization/localeforge_plugin.gd
+  res://addons/bayterek_localization/bayterek_localization_plugin.gd.uid → res://addons/bayterek_localization/localeforge_plugin.gd.uid
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_browser.gd → res://addons/bayterek_localization/scripts/editor/localeforge_browser.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_browser.gd.uid → res://addons/bayterek_localization/scripts/editor/localeforge_browser.gd.uid
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_editor.gd → res://addons/bayterek_localization/scripts/editor/localeforge_editor.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_editor.gd.uid → res://addons/bayterek_localization/scripts/editor/localeforge_editor.gd.uid
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_fuzzy.gd → res://addons/bayterek_localization/scripts/editor/localeforge_fuzzy.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_fuzzy.gd.uid → res://addons/bayterek_localization/scripts/editor/localeforge_fuzzy.gd.uid
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_import_export_dialog.gd → res://addons/bayterek_localization/scripts/editor/localeforge_import_export_dialog.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_import_export_dialog.gd.uid → res://addons/bayterek_localization/scripts/editor/localeforge_import_export_dialog.gd.uid
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_language_dialog.gd → res://addons/bayterek_localization/scripts/editor/localeforge_language_dialog.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_language_dialog.gd.uid → res://addons/bayterek_localization/scripts/editor/localeforge_language_dialog.gd.uid
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_main_screen.gd → res://addons/bayterek_localization/scripts/editor/localeforge_main_screen.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_main_screen.gd.uid → res://addons/bayterek_localization/scripts/editor/localeforge_main_screen.gd.uid
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_polyglot_import.gd → res://addons/bayterek_localization/scripts/editor/localeforge_polyglot_import.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_polyglot_import.gd.uid → res://addons/bayterek_localization/scripts/editor/localeforge_polyglot_import.gd.uid
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_region_dialog.gd → res://addons/bayterek_localization/scripts/editor/localeforge_region_dialog.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_region_dialog.gd.uid → res://addons/bayterek_localization/scripts/editor/localeforge_region_dialog.gd.uid
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_undo_helper.gd → res://addons/bayterek_localization/scripts/editor/localeforge_undo_helper.gd
+  res://addons/bayterek_localization/scripts/editor/bayterek_localization_undo_helper.gd.uid → res://addons/bayterek_localization/scripts/editor/localeforge_undo_helper.gd.uid
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_key_completer.gd → res://addons/bayterek_localization/scripts/editor/ui/localeforge_key_completer.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_key_completer.gd.uid → res://addons/bayterek_localization/scripts/editor/ui/localeforge_key_completer.gd.uid
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_key_row.gd → res://addons/bayterek_localization/scripts/editor/ui/localeforge_key_row.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_key_row.gd.uid → res://addons/bayterek_localization/scripts/editor/ui/localeforge_key_row.gd.uid
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_placeholder_highlighter.gd → res://addons/bayterek_localization/scripts/editor/ui/localeforge_placeholder_highlighter.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_placeholder_highlighter.gd.uid → res://addons/bayterek_localization/scripts/editor/ui/localeforge_placeholder_highlighter.gd.uid
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_preview_panel.gd → res://addons/bayterek_localization/scripts/editor/ui/localeforge_preview_panel.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_preview_panel.gd.uid → res://addons/bayterek_localization/scripts/editor/ui/localeforge_preview_panel.gd.uid
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_translation_field.gd → res://addons/bayterek_localization/scripts/editor/ui/localeforge_translation_field.gd
+  res://addons/bayterek_localization/scripts/editor/ui/bayterek_localization_translation_field.gd.uid → res://addons/bayterek_localization/scripts/editor/ui/localeforge_translation_field.gd.uid
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd → res://addons/bayterek_localization/scripts/shared/localization_forger.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization.gd.uid → res://addons/bayterek_localization/scripts/shared/localization_forger.gd.uid
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_csv.gd → res://addons/bayterek_localization/scripts/shared/localeforge_csv.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_csv.gd.uid → res://addons/bayterek_localization/scripts/shared/localeforge_csv.gd.uid
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_format_string.gd → res://addons/bayterek_localization/scripts/shared/localeforge_format_string.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_format_string.gd.uid → res://addons/bayterek_localization/scripts/shared/localeforge_format_string.gd.uid
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_loader.gd → res://addons/bayterek_localization/scripts/shared/localeforge_loader.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_loader.gd.uid → res://addons/bayterek_localization/scripts/shared/localeforge_loader.gd.uid
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_service.gd → res://addons/bayterek_localization/scripts/shared/localeforge_service.gd
+  res://addons/bayterek_localization/scripts/shared/bayterek_localization_service.gd.uid → res://addons/bayterek_localization/scripts/shared/localeforge_service.gd.uid
+
+=== RENAME EDİLEN KLASÖRLER ===
+  res://addons/bayterek → res://addons/skill_tree_forger
+  res://addons/bayterek_localization → res://addons/localization_forger

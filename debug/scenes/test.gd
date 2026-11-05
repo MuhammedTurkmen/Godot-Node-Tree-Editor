@@ -17,7 +17,7 @@ var _top_bar: HBoxContainer
 var _anim_enter_bar: HBoxContainer
 var _anim_exit_bar: HBoxContainer
 var _tree_container: Control
-var _tree_view: BayterekTreeView
+var _tree_view: SkillTreeView
 var _refund_btn: Button
 var _confirm_btn: Button
 
@@ -57,11 +57,11 @@ const MAX_SPEED := 3.0
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 
-	_loader = get_node_or_null("/root/BayterekLoader")
-	_serializer = get_node_or_null("/root/BayterekSerializer")
+	_loader = get_node_or_null("/root/SkillTreeLoader")
+	_serializer = get_node_or_null("/root/SkillTreeSerializer")
 
 	if not _loader:
-		push_warning("Bayterek runtime_test: 'BayterekLoader' autoload bulunamadı — plugin açık mı?")
+		push_warning("Bayterek runtime_test: 'SkillTreeLoader' autoload bulunamadı — plugin açık mı?")
 		_show_placeholder("Bayterek plugin is disabled.\nEnable it in Project Settings → Plugins.")
 		return
 
@@ -382,7 +382,7 @@ func _build_enter_easing_dropdown(parent: HBoxContainer) -> void:
 	var dd := OptionButton.new()
 	dd.name = "EnterEasingDropdown"
 	dd.tooltip_text = "Easing curve for the enter animation."
-	var names: Array = BayterekAnimatorBuilder.get_easing_names()
+	var names: Array = SkillTreeAnimatorBuilder.get_easing_names()
 	for i in names.size():
 		dd.add_item(String(names[i]), i)
 		dd.set_item_metadata(i, String(names[i]))
@@ -405,7 +405,7 @@ func _build_exit_easing_dropdown(parent: HBoxContainer) -> void:
 	var dd := OptionButton.new()
 	dd.name = "ExitEasingDropdown"
 	dd.tooltip_text = "Easing curve for the exit animation."
-	var names: Array = BayterekAnimatorBuilder.get_easing_names()
+	var names: Array = SkillTreeAnimatorBuilder.get_easing_names()
 	for i in names.size():
 		dd.add_item(String(names[i]), i)
 		dd.set_item_metadata(i, String(names[i]))
@@ -611,7 +611,7 @@ func _populate_browser_tree() -> void:
 	_browser_tree.clear()
 	_browser_tree.create_item()
 
-	var registry: BayterekRegistry = _loader.call("get_registry") if _loader else null
+	var registry: SkillTreeRegistry = _loader.call("get_registry") if _loader else null
 	if not registry:
 		_browser_status.text = "Registry yüklenemedi."
 		return
@@ -620,14 +620,14 @@ func _populate_browser_tree() -> void:
 	var total_groups: int = 0
 	var total_trees: int = 0
 
-	for group: BayterekGroup in registry.groups:
+	for group: SkillTreeGroup in registry.groups:
 		total_groups += 1
 		var g_item := root.create_child()
 		g_item.set_text(0, "📁 %s" % group.name)
 		g_item.set_metadata(0, {"type": "group", "name": group.name})
 		g_item.set_collapsed(false)
 
-		for tree: BayterekTree in group.trees:
+		for tree: SkillTree in group.trees:
 			total_trees += 1
 			var t_item := g_item.create_child()
 			t_item.set_text(0, "🌳 %s" % tree.name)
@@ -680,7 +680,7 @@ func _show_tree_view(group_name: String, tree_name: String) -> void:
 	for child in _tree_container.get_children():
 		child.queue_free()
 
-	_tree_view = BayterekBuilder.new(tree) \
+	_tree_view = SkillTreeBuilder.new(tree) \
 		.set_parent(_tree_container) \
 		.node_allocated_callback(_on_node_allocated) \
 		.node_deallocated_callback(_on_node_deallocated) \
@@ -784,7 +784,7 @@ func _disconnect_allocation_signals() -> void:
 	if svc.node_deallocated.is_connected(_on_allocation_state_changed):
 		svc.node_deallocated.disconnect(_on_allocation_state_changed)
 
-func _on_allocation_state_changed(_node: BayterekNodeButton = null) -> void:
+func _on_allocation_state_changed(_node: SkillTreeNodeButton = null) -> void:
 	_update_hud()
 	_update_confirm_button_state()
 
@@ -797,10 +797,10 @@ func _on_refund_mode_changed() -> void:
 # CALLBACKS
 # ============================================================
 
-func _on_node_allocated(node: BayterekNode) -> void:
+func _on_node_allocated(node: SkillTreeNode) -> void:
 	print("Test: Allocated → %s" % node.name)
 
-func _on_node_deallocated(node: BayterekNode) -> void:
+func _on_node_deallocated(node: SkillTreeNode) -> void:
 	print("Test: Deallocated → %s" % node.name)
 
 func _on_refund_button_pressed() -> void:
@@ -842,7 +842,7 @@ func _on_save_pressed() -> void:
 	if not _tree_view or not _tree_view._tree_data: return
 	var tree = _tree_view._tree_data
 	if not tree.tree_state:
-		tree.tree_state = BayterekTreeState.new()
+		tree.tree_state = SkillTreeState.new()
 	_serializer.call("save_tree_state", tree)
 	print("Test: Saved")
 
@@ -863,7 +863,7 @@ func _on_reset_save_pressed() -> void:
 	if _serializer:
 		_serializer.call("delete_tree_state", tree)
 	if not tree.tree_state:
-		tree.tree_state = BayterekTreeState.new()
+		tree.tree_state = SkillTreeState.new()
 	tree.tree_state.allocated_nodes.clear()
 	tree.tree_state.allocation_level.clear()
 	if _tree_view.allocation_service:

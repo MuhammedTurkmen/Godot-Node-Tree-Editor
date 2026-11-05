@@ -17,11 +17,11 @@ config/icon="res://assets/icon.svg"
 
 [autoload]
 
+SkillTreeLoader="*uid://nkd7mhbs2vhv"
+SkillTreeSerializer="*uid://bncb0tmve5k7w"
+SkillTreeAudioManager="*uid://d3rv5nr0ujrjb"
 GameLocalization="*uid://brfo61g2bql3o"
-BayterekLocalizationLoader="*uid://cjmtxiyjohf62"
-BayterekLoader="*uid://nkd7mhbs2vhv"
-BayterekSerializer="*uid://bncb0tmve5k7w"
-BayterekAudioManager="*uid://d3rv5nr0ujrjb"
+LocaleForgeLoader="*uid://cjmtxiyjohf62"
 
 [debug]
 
@@ -38,7 +38,7 @@ project/assembly_name="TestProject"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/bayterek/plugin.cfg", "res://addons/bayterek_localization/plugin.cfg", "res://addons/file_exporter/plugin.cfg", "res://addons/my_tools/plugin.cfg")
+enabled=PackedStringArray("res://addons/file_exporter/plugin.cfg", "res://addons/localization_forger/plugin.cfg", "res://addons/my_tools/plugin.cfg", "res://addons/skill_tree_forger/plugin.cfg")
 
 [physics]
 

@@ -8,8 +8,8 @@ const GIVE_AMOUNT := 50
 
 var _wallet: Dictionary = {}
 var _granted: Dictionary = {}
-var _tree_view: BayterekTreeView = null
-var _tree_data: BayterekTree = null
+var _tree_view: SkillTreeView = null
+var _tree_data: SkillTree = null
 var _wallet_label: Label = null
 var _state_label: Label = null
 
@@ -17,7 +17,7 @@ var _state_label: Label = null
 var _toolbar: HBoxContainer = null
 
 ## Data object loaded from the tree's JSON mirror (null if unavailable).
-var _skill_tree_data: BayterekSkillTreeData = null
+var _skill_tree_data: SkillTreeData = null
 
 func _ready() -> void:
 	print("========================================")
@@ -32,10 +32,10 @@ func _ready() -> void:
 	_build_ui()
 
 	# 2) Then try to load the tree.
-	var loader = get_node_or_null("/root/BayterekLoader")
-	print("[READY] BayterekLoader: ", loader)
+	var loader = get_node_or_null("/root/SkillTreeLoader")
+	print("[READY] SkillTreeLoader: ", loader)
 	if not loader:
-		push_error("BayterekLoader autoload missing — enable the Bayterek plugin.")
+		push_error("SkillTreeLoader autoload missing — enable the Bayterek plugin.")
 		return
 
 	var path: String = "%s/%s" % [GROUP_NAME, TREE_NAME]
@@ -89,7 +89,7 @@ func _initialize_wallet() -> void:
 
 	# Fallback: constant default for every currency attribute.
 	for attr_id in _tree_data.attributes.keys():
-		var attr: BayterekAttribute = _tree_data.attributes[attr_id]
+		var attr: SkillTreeAttribute = _tree_data.attributes[attr_id]
 		if not attr or not attr.is_currency:
 			continue
 		_wallet[attr_id] = DEFAULT_CURRENCY
@@ -211,7 +211,7 @@ func _build_currency_buttons() -> void:
 
 	var added: int = 0
 	for attr_id in _tree_data.attributes.keys():
-		var attr: BayterekAttribute = _tree_data.attributes[attr_id]
+		var attr: SkillTreeAttribute = _tree_data.attributes[attr_id]
 		if not attr or not attr.is_currency:
 			continue
 
@@ -246,7 +246,7 @@ func _build_tree_view() -> void:
 
 	print("[TREE] tree_container size=", tree_container.size)
 
-	_tree_view = BayterekBuilder.new(_tree_data) \
+	_tree_view = SkillTreeBuilder.new(_tree_data) \
 		.set_parent(tree_container) \
 		.node_allocated_callback(_on_node_allocated) \
 		.node_deallocated_callback(_on_node_deallocated) \
@@ -297,11 +297,11 @@ func _wallet_refund(attr_id: String, amount: int) -> void:
 # ALLOC CALLBACKS
 # ============================================================
 
-func _on_node_allocated(node: BayterekNode) -> void:
+func _on_node_allocated(node: SkillTreeNode) -> void:
 	print("[ALLOC] allocated: ", node.name)
 	_recompute()
 
-func _on_node_deallocated(node: BayterekNode) -> void:
+func _on_node_deallocated(node: SkillTreeNode) -> void:
 	print("[ALLOC] deallocated: ", node.name)
 	_recompute()
 
@@ -317,8 +317,8 @@ func _on_node_deallocated(node: BayterekNode) -> void:
 ## SET / MULTIPLY / MIN / MAX fall back to absolute mode because
 ## summing their per-level values would produce nonsensical totals.
 static func _is_cumulative_op(op: int) -> bool:
-	return op == int(BayterekAttribute.Operation.ADD) \
-		or op == int(BayterekAttribute.Operation.SUBTRACT)
+	return op == int(SkillTreeAttribute.Operation.ADD) \
+		or op == int(SkillTreeAttribute.Operation.SUBTRACT)
 
 # ============================================================
 # ATTRIBUTE ACCUMULATION
@@ -341,7 +341,7 @@ func _recompute() -> void:
 			level = int(_tree_data.tree_state.allocation_level[node_data.id])
 
 		for attr_id in node_data.attributes.keys():
-			var attr: BayterekAttribute = _tree_data.attributes.get(attr_id, null)
+			var attr: SkillTreeAttribute = _tree_data.attributes.get(attr_id, null)
 			if not attr or attr.is_currency:
 				continue
 
@@ -381,28 +381,28 @@ func _recompute() -> void:
 
 	var granted: Dictionary = {}
 	for attr_id in contributions.keys():
-		var attr: BayterekAttribute = _tree_data.attributes.get(attr_id, null)
+		var attr: SkillTreeAttribute = _tree_data.attributes.get(attr_id, null)
 		if not attr:
 			continue
 		var values: Array = contributions[attr_id]
 		var total: float = 0.0
 		match attr.operation:
-			BayterekAttribute.Operation.ADD:
+			SkillTreeAttribute.Operation.ADD:
 				total = 0.0
 				for v in values: total += v
-			BayterekAttribute.Operation.SUBTRACT:
+			SkillTreeAttribute.Operation.SUBTRACT:
 				total = 0.0
 				for v in values: total -= v
-			BayterekAttribute.Operation.SET:
+			SkillTreeAttribute.Operation.SET:
 				if not values.is_empty(): total = float(values[values.size() - 1])
-			BayterekAttribute.Operation.MULTIPLY:
+			SkillTreeAttribute.Operation.MULTIPLY:
 				total = 1.0
 				for v in values: total *= v
-			BayterekAttribute.Operation.MIN:
+			SkillTreeAttribute.Operation.MIN:
 				total = INF
 				for v in values: total = minf(total, v)
 				if is_inf(total): total = 0.0
-			BayterekAttribute.Operation.MAX:
+			SkillTreeAttribute.Operation.MAX:
 				total = -INF
 				for v in values: total = maxf(total, v)
 				if is_inf(total): total = 0.0
@@ -433,7 +433,7 @@ func _refresh_hud() -> void:
 	var lines: Array[String] = ["WALLET"]
 	var any_currency: bool = false
 	for attr_id in _tree_data.attributes.keys():
-		var attr: BayterekAttribute = _tree_data.attributes[attr_id]
+		var attr: SkillTreeAttribute = _tree_data.attributes[attr_id]
 		if not attr or not attr.is_currency:
 			continue
 		lines.append("  %s: %d" % [attr.get_display_name(), int(_wallet.get(attr_id, 0))])
@@ -445,7 +445,7 @@ func _refresh_hud() -> void:
 	lines.append("STATS")
 	var any: bool = false
 	for attr_id in _tree_data.attributes.keys():
-		var attr: BayterekAttribute = _tree_data.attributes[attr_id]
+		var attr: SkillTreeAttribute = _tree_data.attributes[attr_id]
 		if not attr or attr.is_currency:
 			continue
 		var v: int = int(_granted.get(attr_id, 0))
